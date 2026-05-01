@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  client-manager:
+    build: .
+    container_name: client-manager
+    ports:
+      - "8080:80"
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
