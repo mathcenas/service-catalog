@@ -98,8 +98,29 @@ export type Service = {
   confirmed_hours_monthly?: number;
   managed_roles?: ManagedRole[];
   location?: string;
+  business_name?: string;
+  business_description?: string;
+  sla_level?: string;
+  includes?: string[];
+  excludes?: string[];
+  client_responsibilities?: string[];
+  operational_status?: OperationalStatus;
   created_at: string;
   updated_at: string;
+};
+
+export type OperationalStatus = 'Operational' | 'Maintenance' | 'Degraded' | 'Down';
+
+export const OPERATIONAL_STATUSES: OperationalStatus[] = ['Operational', 'Maintenance', 'Degraded', 'Down'];
+
+export type ServiceChange = {
+  id: string;
+  user_id: string;
+  service_id: string;
+  change_date: string;
+  summary: string;
+  details?: string;
+  created_at: string;
 };
 
 export type ShareToken = {

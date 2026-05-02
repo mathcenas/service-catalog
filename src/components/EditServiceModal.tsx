@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import { Service, Client, ServiceType, Project, MANAGED_ROLES, ManagedRole, supabase } from '../lib/supabase';
+import { Service, Client, ServiceType, Project, MANAGED_ROLES, ManagedRole, OPERATIONAL_STATUSES, OperationalStatus, supabase } from '../lib/supabase';
 
 type Props = {
   service: Service;
@@ -37,6 +37,13 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
     ram: service.specifications?.ram || '',
     storage: service.specifications?.storage || '',
     bandwidth: service.specifications?.bandwidth || '',
+    business_name: service.business_name || '',
+    business_description: service.business_description || '',
+    sla_level: service.sla_level || '',
+    operational_status: (service.operational_status || 'Operational') as OperationalStatus,
+    includes: (service.includes || []).join('\n'),
+    excludes: (service.excludes || []).join('\n'),
+    client_responsibilities: (service.client_responsibilities || []).join('\n'),
   });
   const [selectedRoles, setSelectedRoles] = useState<ManagedRole[]>(
     (service.managed_roles as ManagedRole[]) || []
@@ -92,6 +99,13 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
         location: formData.location || null,
         managed_roles: selectedRoles.length > 0 ? selectedRoles : null,
         specifications: Object.keys(specifications).length > 0 ? specifications : null,
+        business_name: formData.business_name || null,
+        business_description: formData.business_description || null,
+        sla_level: formData.sla_level || null,
+        operational_status: formData.operational_status,
+        includes: splitLines(formData.includes),
+        excludes: splitLines(formData.excludes),
+        client_responsibilities: splitLines(formData.client_responsibilities),
       })
       .eq('id', service.id);
 
@@ -106,6 +120,9 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
   };
 
   const set = (key: string, value: any) => setFormData(prev => ({ ...prev, [key]: value }));
+
+  const splitLines = (text: string): string[] =>
+    text.split('\n').map(s => s.trim()).filter(Boolean);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -168,6 +185,53 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
                     {type}
                   </button>
                 ))}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100">Client-Facing Service Sheet (ISO 20000)</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Business Name</label>
+                <input type="text" value={formData.business_name} onChange={e => set('business_name', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  placeholder="e.g., Data Continuity" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">SLA Level</label>
+                <input type="text" value={formData.sla_level} onChange={e => set('sla_level', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  placeholder="e.g., 99.9% Recoverability" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Business Description</label>
+                <textarea value={formData.business_description} onChange={e => set('business_description', e.target.value)} rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Operational Status</label>
+                <select value={formData.operational_status} onChange={e => set('operational_status', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+                  {OPERATIONAL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">What's Included (one per line)</label>
+                <textarea value={formData.includes} onChange={e => set('includes', e.target.value)} rows={4}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">What's NOT Included</label>
+                <textarea value={formData.excludes} onChange={e => set('excludes', e.target.value)} rows={4}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Client Responsibilities</label>
+                <textarea value={formData.client_responsibilities} onChange={e => set('client_responsibilities', e.target.value)} rows={4}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none text-sm" />
               </div>
             </div>
           </div>

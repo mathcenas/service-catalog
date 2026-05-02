@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Server, CreditCard as Edit2, Trash2, Calendar, DollarSign, ExternalLink } from 'lucide-react';
+import { Server, CreditCard as Edit2, Trash2, Calendar, DollarSign, ExternalLink, History } from 'lucide-react';
 import { Service, Client, ServiceType, Project, supabase } from '../lib/supabase';
 import { EditServiceModal } from './EditServiceModal';
+import { ServiceChangesModal } from './ServiceChangesModal';
 
 type Props = {
   services: Service[];
@@ -12,6 +13,7 @@ type Props = {
 
 export function ServiceList({ services, clients, projects, onUpdate }: Props) {
   const [editingService, setEditingService] = useState<Service | null>(null);
+  const [changesService, setChangesService] = useState<Service | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
 
@@ -162,6 +164,13 @@ export function ServiceList({ services, clients, projects, onUpdate }: Props) {
                         </a>
                       )}
                       <button
+                        onClick={() => setChangesService(service)}
+                        className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Change history"
+                      >
+                        <History className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={() => setEditingService(service)}
                         className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                         title="Edit"
@@ -195,6 +204,13 @@ export function ServiceList({ services, clients, projects, onUpdate }: Props) {
             setEditingService(null);
             onUpdate();
           }}
+        />
+      )}
+
+      {changesService && (
+        <ServiceChangesModal
+          service={changesService}
+          onClose={() => setChangesService(null)}
         />
       )}
     </>
