@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Server, CreditCard as Edit2, Trash2, Calendar, DollarSign, ExternalLink } from 'lucide-react';
-import { Service, Client, ServiceType, supabase } from '../lib/supabase';
+import { Service, Client, ServiceType, Project, supabase } from '../lib/supabase';
 import { EditServiceModal } from './EditServiceModal';
 
 type Props = {
   services: Service[];
   clients: Client[];
+  projects: Project[];
   onUpdate: () => void;
 };
 
-export function ServiceList({ services, clients, onUpdate }: Props) {
+export function ServiceList({ services, clients, projects, onUpdate }: Props) {
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
@@ -41,6 +42,11 @@ export function ServiceList({ services, clients, onUpdate }: Props) {
   const getServiceTypeName = (typeId: string) => {
     const type = serviceTypes.find(t => t.id === typeId);
     return type?.name || 'Unknown';
+  };
+
+  const getProjectName = (projectId?: string) => {
+    if (!projectId) return null;
+    return projects.find(p => p.id === projectId)?.name || null;
   };
 
   const isExpiringSoon = (date?: string) => {
@@ -105,7 +111,10 @@ export function ServiceList({ services, clients, onUpdate }: Props) {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900">
-                    {getClientName(service.client_id)}
+                    <div>{getClientName(service.client_id)}</div>
+                    {getProjectName(service.project_id) && (
+                      <div className="text-xs text-blue-600 mt-0.5">{getProjectName(service.project_id)}</div>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900">
                     {getServiceTypeName(service.service_type_id)}
@@ -180,6 +189,7 @@ export function ServiceList({ services, clients, onUpdate }: Props) {
         <EditServiceModal
           service={editingService}
           clients={clients}
+          projects={projects}
           onClose={() => setEditingService(null)}
           onSuccess={() => {
             setEditingService(null);

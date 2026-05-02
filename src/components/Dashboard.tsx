@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload } from 'lucide-react';
-import { supabase, Client, Service } from '../lib/supabase';
+import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen } from 'lucide-react';
+import { supabase, Client, Service, Project, ServiceType } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { ClientList } from './ClientList';
 import { ServiceList } from './ServiceList';
+import { ProjectList } from './ProjectList';
 import { AddClientModal } from './AddClientModal';
 import { AddServiceModal } from './AddServiceModal';
+import { AddProjectModal } from './AddProjectModal';
 import { ImportModal } from './ImportModal';
 
 type Stats = {
@@ -19,7 +21,7 @@ type Stats = {
 
 export function Dashboard() {
   const { signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'services'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'projects' | 'services'>('dashboard');
   const [stats, setStats] = useState<Stats>({
     totalClients: 0,
     activeClients: 0,
@@ -30,9 +32,12 @@ export function Dashboard() {
   });
   const [clients, setClients] = useState<Client[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddClient, setShowAddClient] = useState(false);
   const [showAddService, setShowAddService] = useState(false);
+  const [showAddProject, setShowAddProject] = useState(false);
   const [showImport, setShowImport] = useState(false);
 
   const fetchData = async () => {
@@ -47,11 +52,23 @@ export function Dashboard() {
       .select('*')
       .order('created_at', { ascending: false });
 
+    const { data: projectsData } = await supabase
+      .from('projects')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    const { data: typesData } = await supabase
+      .from('service_types')
+      .select('*')
+      .order('name');
+
     const clients = clientsData || [];
     const services = servicesData || [];
 
     setClients(clients);
     setServices(services);
+    setProjects(projectsData || []);
+    setServiceTypes(typesData || []);
 
     const activeClients = clients.filter(c => c.status === 'Active').length;
     const activeServices = services.filter(s => s.status === 'Active').length;
@@ -144,6 +161,16 @@ export function Dashboard() {
             }`}
           >
             Clients
+          </button>
+          <button
+            onClick={() => setActiveTab('projects')}
+            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === 'projects'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Projects
           </button>
           <button
             onClick={() => setActiveTab('services')}
@@ -301,6 +328,24 @@ export function Dashboard() {
           </div>
         )}
 
+        {activeTab === 'projects' && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Projects</h2>
+              {clients.length > 0 && (
+                <button
+                  onClick={() => setShowAddProject(true)}
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+                >
+                  <FolderOpen className="w-5 h-5" />
+                  New Project
+                </button>
+              )}
+            </div>
+            <ProjectList projects={projects} clients={clients} services={services} serviceTypes={serviceTypes} onUpdate={fetchData} />
+          </div>
+        )}
+
         {activeTab === 'services' && (
           <div>
             <div className="flex justify-between items-center mb-6">
@@ -322,7 +367,7 @@ export function Dashboard() {
                 </button>
               </div>
             </div>
-            <ServiceList services={services} clients={clients} onUpdate={fetchData} />
+            <ServiceList services={services} clients={clients} projects={projects} onUpdate={fetchData} />
           </div>
         )}
       </div>
@@ -332,7 +377,15 @@ export function Dashboard() {
       )}
 
       {showAddService && (
-        <AddServiceModal onClose={() => setShowAddService(false)} onSuccess={handleServiceAdded} clients={clients} />
+        <AddServiceModal onClose={() => setShowAddService(false)} onSuccess={handleServiceAdded} clients={clients} projects={projects} />
+      )}
+
+      {showAddProject && (
+        <AddProjectModal
+          clients={clients}
+          onClose={() => setShowAddProject(false)}
+          onSuccess={() => { setShowAddProject(false); fetchData(); }}
+        />
       )}
 
       {showImport && (

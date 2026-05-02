@@ -62,10 +62,24 @@ export const MANAGED_ROLES: ManagedRole[] = [
   'Other',
 ];
 
+export type Project = {
+  id: string;
+  user_id: string;
+  client_id: string;
+  name: string;
+  description?: string;
+  status: 'Active' | 'On Hold' | 'Completed' | 'Cancelled';
+  start_date?: string;
+  end_date?: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Service = {
   id: string;
   user_id: string;
   client_id: string;
+  project_id?: string;
   service_type_id: string;
   name: string;
   description?: string;

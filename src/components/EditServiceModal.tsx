@@ -1,20 +1,22 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import { Service, Client, ServiceType, MANAGED_ROLES, ManagedRole, supabase } from '../lib/supabase';
+import { Service, Client, ServiceType, Project, MANAGED_ROLES, ManagedRole, supabase } from '../lib/supabase';
 
 type Props = {
   service: Service;
   clients: Client[];
+  projects: Project[];
   onClose: () => void;
   onSuccess: () => void;
 };
 
 const CLOUD_PROVIDERS = ['AWS', 'Azure', 'GCP', 'DigitalOcean', 'Linode', 'Vultr', 'Hetzner', 'OVH', 'Other'];
 
-export function EditServiceModal({ service, clients, onClose, onSuccess }: Props) {
+export function EditServiceModal({ service, clients, projects, onClose, onSuccess }: Props) {
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [formData, setFormData] = useState({
     client_id: service.client_id,
+    project_id: service.project_id || '',
     service_type_id: service.service_type_id,
     name: service.name,
     description: service.description || '',
@@ -71,6 +73,7 @@ export function EditServiceModal({ service, clients, onClose, onSuccess }: Props
       .from('services')
       .update({
         client_id: formData.client_id,
+        project_id: formData.project_id || null,
         service_type_id: formData.service_type_id,
         name: formData.name,
         description: formData.description || null,
@@ -122,10 +125,20 @@ export function EditServiceModal({ service, clients, onClose, onSuccess }: Props
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Client *</label>
-              <select value={formData.client_id} onChange={e => set('client_id', e.target.value)}
+              <select value={formData.client_id} onChange={e => { set('client_id', e.target.value); set('project_id', ''); }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" required>
                 <option value="">Select a client</option>
                 {clients.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Project</label>
+              <select value={formData.project_id} onChange={e => set('project_id', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+                <option value="">No project</option>
+                {projects.filter(p => p.client_id === formData.client_id).map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
               </select>
             </div>
             <div>
