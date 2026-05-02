@@ -13,7 +13,7 @@ services:
     ports:
       - "${APP_PORT:-3020}:80"
     networks:
-      - npm_proxy
+      - npm_default
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost/healthz"]
       interval: 30s
@@ -21,6 +21,6 @@ services:
       retries: 3
 
 networks:
-  npm_proxy:
+  npm_default:
     external: true
-    name: ${NPM_NETWORK:-npm_proxy}
+    name: ${NPM_NETWORK:-npm_default}
