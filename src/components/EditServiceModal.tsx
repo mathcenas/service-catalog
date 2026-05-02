@@ -44,6 +44,8 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
     includes: (service.includes || []).join('\n'),
     excludes: (service.excludes || []).join('\n'),
     client_responsibilities: (service.client_responsibilities || []).join('\n'),
+    uptime_badge_url: service.uptime_badge_url || '',
+    uptime_status_url: service.uptime_status_url || '',
   });
   const [selectedRoles, setSelectedRoles] = useState<ManagedRole[]>(
     (service.managed_roles as ManagedRole[]) || []
@@ -106,6 +108,8 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
         includes: splitLines(formData.includes),
         excludes: splitLines(formData.excludes),
         client_responsibilities: splitLines(formData.client_responsibilities),
+        uptime_badge_url: formData.uptime_badge_url || null,
+        uptime_status_url: formData.uptime_status_url || null,
       })
       .eq('id', service.id);
 
@@ -349,6 +353,35 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
               </div>
             </div>
           )}
+
+          <div>
+            <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100">
+              Live Uptime (Uptime Kuma)
+            </h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Paste a badge image URL from your Uptime Kuma instance. It will render live on the client portal.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Badge Image URL</label>
+                <input type="url" value={formData.uptime_badge_url} onChange={e => set('uptime_badge_url', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  placeholder="https://status.example.com/api/badge/1/uptime/24" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Public Status Page URL</label>
+                <input type="url" value={formData.uptime_status_url} onChange={e => set('uptime_status_url', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  placeholder="https://status.example.com/status/main" />
+              </div>
+            </div>
+            {formData.uptime_badge_url && (
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-xs text-gray-500">Preview:</span>
+                <img src={formData.uptime_badge_url} alt="Uptime badge preview" className="h-5" />
+              </div>
+            )}
+          </div>
 
           <div>
             <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100">Specifications</h3>

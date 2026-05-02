@@ -105,6 +105,8 @@ export type Service = {
   excludes?: string[];
   client_responsibilities?: string[];
   operational_status?: OperationalStatus;
+  uptime_badge_url?: string;
+  uptime_status_url?: string;
   created_at: string;
   updated_at: string;
 };

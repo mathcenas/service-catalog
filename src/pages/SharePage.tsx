@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Server, Globe, Calendar, Clock, MapPin, Shield, CheckCircle2, AlertTriangle,
   AlertCircle, XCircle, Activity, FolderOpen, History, FileText, Send, Info,
-  Cpu, HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X, Check, MinusCircle, LayoutGrid,
+  Cpu, HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X, Check, MinusCircle, LayoutGrid, ExternalLink,
 } from 'lucide-react';
 import { supabase, Client, Service, ServiceType, Project, ServiceChange, OperationalStatus, ManagedRole } from '../lib/supabase';
 
@@ -244,12 +244,22 @@ function OverviewSection({ services, getTypeName }: { services: Service[]; getTy
         const meta = STATUS_META[st];
         const Icon = meta.icon;
         return (
-          <div key={s.id} className={`bg-white rounded-xl border ${meta.border} shadow-sm px-5 py-4 flex items-center gap-4`}>
+          <div key={s.id} className={`bg-white rounded-xl border ${meta.border} shadow-sm px-5 py-4 flex items-center gap-4 flex-wrap`}>
             <span className={`w-3 h-3 rounded-full ${meta.dot} flex-shrink-0`}></span>
             <div className="flex-1 min-w-0">
               <div className="font-semibold text-gray-900">{s.business_name || s.name}</div>
               <div className="text-xs text-gray-500 mt-0.5">{getTypeName(s.service_type_id)}{s.sla_level ? ` · SLA: ${s.sla_level}` : ''}</div>
             </div>
+            {s.uptime_badge_url && (
+              <img src={s.uptime_badge_url} alt="Live uptime" className="h-5"
+                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+            )}
+            {s.uptime_status_url && (
+              <a href={s.uptime_status_url} target="_blank" rel="noopener noreferrer"
+                className="text-xs text-blue-600 hover:text-blue-700 inline-flex items-center gap-1 font-medium">
+                Live status <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
             <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${meta.bg} ${meta.color}`}>
               <Icon className="w-3.5 h-3.5" />
               {meta.label}
@@ -353,6 +363,20 @@ function ServiceSheet({
                 )}
               </div>
               {desc && <p className="text-sm text-gray-600 mt-2 leading-relaxed">{desc}</p>}
+              {(service.uptime_badge_url || service.uptime_status_url) && (
+                <div className="flex items-center gap-3 mt-3 flex-wrap">
+                  {service.uptime_badge_url && (
+                    <img src={service.uptime_badge_url} alt="Live uptime" className="h-5"
+                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                  )}
+                  {service.uptime_status_url && (
+                    <a href={service.uptime_status_url} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:text-blue-700 inline-flex items-center gap-1 font-medium">
+                      View live status <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${meta.bg} ${meta.color} whitespace-nowrap`}>
