@@ -1,11 +1,26 @@
-version: '3.8'
-
 services:
   client-manager:
-    build: .
+    build:
+      context: .
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+    image: client-manager:latest
     container_name: client-manager
-    ports:
-      - "8080:80"
-    environment:
-      - NODE_ENV=production
     restart: unless-stopped
+    expose:
+      - "80"
+    ports:
+      - "${APP_PORT:-8080}:80"
+    networks:
+      - npm_proxy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  npm_proxy:
+    external: true
+    name: ${NPM_NETWORK:-npm_proxy}
