@@ -8,10 +8,26 @@ type Props = {
   onClose: () => void;
 };
 
-function generateToken(): string {
-  const arr = new Uint8Array(24);
+function slugify(input: string): string {
+  return input
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
+
+function randomSuffix(length = 6): string {
+  const alphabet = 'abcdefghijkmnpqrstuvwxyz23456789';
+  const arr = new Uint8Array(length);
   crypto.getRandomValues(arr);
-  return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(arr, b => alphabet[b % alphabet.length]).join('');
+}
+
+function generateToken(clientName: string): string {
+  const slug = slugify(clientName) || 'client';
+  return `${slug}-${randomSuffix()}`;
 }
 
 export function ShareTokenModal({ client, onClose }: Props) {
@@ -36,13 +52,18 @@ export function ShareTokenModal({ client, onClose }: Props) {
 
   const createToken = async () => {
     setCreating(true);
-    const token = generateToken();
-    await supabase.from('client_share_tokens').insert({
-      user_id: user!.id,
-      client_id: client.id,
-      token,
-      label: newLabel || 'Client Dashboard',
-    });
+    let token = generateToken(client.company_name);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const { error } = await supabase.from('client_share_tokens').insert({
+        user_id: user!.id,
+        client_id: client.id,
+        token,
+        label: newLabel || 'Client Dashboard',
+      });
+      if (!error) break;
+      if (error.code !== '23505') break;
+      token = generateToken(client.company_name);
+    }
     await fetchTokens();
     setCreating(false);
     setNewLabel('Client Dashboard');
