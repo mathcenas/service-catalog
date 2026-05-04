@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { Client, ServiceType, Project, MANAGED_ROLES, ManagedRole, OPERATIONAL_STATUSES, OperationalStatus, supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { DynamicServiceFields } from './DynamicServiceFields';
+import { getFieldsForType, COLUMN_FIELD_KEYS, EXCLUDED_SERVICE_TYPE_NAMES } from '../lib/serviceFields';
 
 type Props = {
   onClose: () => void;
@@ -9,8 +11,6 @@ type Props = {
   clients: Client[];
   projects: Project[];
 };
-
-const CLOUD_PROVIDERS = ['AWS', 'Azure', 'GCP', 'DigitalOcean', 'Linode', 'Vultr', 'Hetzner', 'OVH', 'Other'];
 
 export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props) {
   const { user } = useAuth();
@@ -26,18 +26,7 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
     currency: 'USD',
     billing_cycle: 'Monthly' as 'Monthly' | 'Quarterly' | 'Semi-Annually' | 'Annually' | 'Biennially' | 'One-Time',
     next_renewal_date: '',
-    provider: '',
-    server_ip: '',
-    login_url: '',
-    infrastructure_type: 'Cloud' as 'Cloud' | 'Physical' | 'Managed Service',
-    cloud_provider: '',
-    cloud_account_payer: '',
     confirmed_hours_monthly: '',
-    location: '',
-    cpu: '',
-    ram: '',
-    storage: '',
-    bandwidth: '',
     business_name: '',
     business_description: '',
     sla_level: '',
@@ -48,6 +37,7 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
     uptime_badge_url: '',
     uptime_status_url: '',
   });
+  const [typeValues, setTypeValues] = useState<Record<string, any>>({});
   const [selectedRoles, setSelectedRoles] = useState<ManagedRole[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -55,10 +45,15 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
   useEffect(() => {
     const fetchServiceTypes = async () => {
       const { data } = await supabase.from('service_types').select('*').order('name');
-      setServiceTypes(data || []);
+      setServiceTypes((data || []).filter(t => !EXCLUDED_SERVICE_TYPE_NAMES.has(t.name)));
     };
     fetchServiceTypes();
   }, []);
+
+  const currentTypeName = useMemo(
+    () => serviceTypes.find(t => t.id === formData.service_type_id)?.name,
+    [serviceTypes, formData.service_type_id]
+  );
 
   const toggleRole = (role: ManagedRole) => {
     setSelectedRoles(prev =>
@@ -71,11 +66,19 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
     setError('');
     setLoading(true);
 
+    const fields = getFieldsForType(currentTypeName);
+    const columnUpdates: Record<string, any> = {};
     const specifications: Record<string, any> = {};
-    if (formData.cpu) specifications.cpu = formData.cpu;
-    if (formData.ram) specifications.ram = formData.ram;
-    if (formData.storage) specifications.storage = formData.storage;
-    if (formData.bandwidth) specifications.bandwidth = formData.bandwidth;
+    for (const field of fields) {
+      const raw = typeValues[field.key];
+      if (raw === undefined || raw === '' || raw === null) continue;
+      const value = field.kind === 'number' ? Number(raw) : raw;
+      if (field.storage === 'column' && COLUMN_FIELD_KEYS.has(field.key)) {
+        columnUpdates[field.key] = value;
+      } else {
+        specifications[field.key] = value;
+      }
+    }
 
     const { error: insertError } = await supabase.from('services').insert({
       user_id: user!.id,
@@ -89,15 +92,14 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
       currency: formData.currency,
       billing_cycle: formData.billing_cycle,
       next_renewal_date: formData.next_renewal_date || null,
-      provider: formData.provider || null,
-      server_ip: formData.server_ip || null,
-      login_url: formData.login_url || null,
-      infrastructure_type: formData.infrastructure_type,
-      cloud_provider: formData.cloud_provider || null,
-      cloud_account_payer: formData.cloud_account_payer || null,
       confirmed_hours_monthly: formData.confirmed_hours_monthly ? parseFloat(formData.confirmed_hours_monthly) : null,
-      location: formData.location || null,
-      managed_roles: selectedRoles.length > 0 ? selectedRoles : null,
+      provider: columnUpdates.provider ?? null,
+      server_ip: columnUpdates.server_ip ?? null,
+      login_url: columnUpdates.login_url ?? null,
+      location: columnUpdates.location ?? null,
+      cloud_provider: columnUpdates.cloud_provider ?? null,
+      cloud_account_payer: columnUpdates.cloud_account_payer ?? null,
+      managed_roles: currentTypeName === 'Managed Service' && selectedRoles.length > 0 ? selectedRoles : null,
       specifications: Object.keys(specifications).length > 0 ? specifications : null,
       business_name: formData.business_name || null,
       business_description: formData.business_description || null,
@@ -121,6 +123,7 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
   };
 
   const set = (key: string, value: any) => setFormData(prev => ({ ...prev, [key]: value }));
+  const setType = (key: string, value: any) => setTypeValues(prev => ({ ...prev, [key]: value }));
 
   const splitLines = (text: string): string[] =>
     text.split('\n').map(s => s.trim()).filter(Boolean);
@@ -140,7 +143,6 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
             <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">{error}</div>
           )}
 
-          {/* Core info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Client *</label>
@@ -162,7 +164,7 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Service Type *</label>
-              <select value={formData.service_type_id} onChange={e => set('service_type_id', e.target.value)}
+              <select value={formData.service_type_id} onChange={e => { set('service_type_id', e.target.value); setTypeValues({}); }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" required>
                 <option value="">Select a type</option>
                 {serviceTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -174,25 +176,8 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 placeholder="e.g., Production Web Server" required />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Infrastructure Type *</label>
-              <div className="grid grid-cols-3 gap-2">
-                {(['Cloud', 'Physical', 'Managed Service'] as const).map(type => (
-                  <button key={type} type="button"
-                    onClick={() => set('infrastructure_type', type)}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                      formData.infrastructure_type === type
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'border-gray-300 text-gray-700 hover:border-blue-400'
-                    }`}>
-                    {type}
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
 
-          {/* Business Definition */}
           <div>
             <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100">Client-Facing Service Sheet (ISO 20000)</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-4">
@@ -244,7 +229,6 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
             </div>
           </div>
 
-          {/* Billing */}
           <div>
             <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100">Billing</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -298,58 +282,14 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
             </div>
           </div>
 
-          {/* Infrastructure details */}
           <div>
-            <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100">Infrastructure Details</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Provider / Vendor</label>
-                <input type="text" value={formData.provider} onChange={e => set('provider', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  placeholder="e.g., AWS, Namecheap, Dell" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Location / Datacenter</label>
-                <input type="text" value={formData.location} onChange={e => set('location', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  placeholder="e.g., us-east-1, Server Room A" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">IP Address</label>
-                <input type="text" value={formData.server_ip} onChange={e => set('server_ip', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  placeholder="e.g., 192.168.1.1" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Login URL</label>
-                <input type="url" value={formData.login_url} onChange={e => set('login_url', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  placeholder="https://" />
-              </div>
-
-              {formData.infrastructure_type === 'Cloud' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Cloud Provider</label>
-                    <select value={formData.cloud_provider} onChange={e => set('cloud_provider', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
-                      <option value="">Select provider</option>
-                      {CLOUD_PROVIDERS.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Cloud Account Payer</label>
-                    <input type="text" value={formData.cloud_account_payer} onChange={e => set('cloud_account_payer', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                      placeholder="Who pays the cloud bill?" />
-                  </div>
-                </>
-              )}
-            </div>
+            <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100">
+              {currentTypeName ? `${currentTypeName} Details` : 'Type-Specific Details'}
+            </h3>
+            <DynamicServiceFields typeName={currentTypeName} values={typeValues} onChange={setType} />
           </div>
 
-          {/* Managed roles */}
-          {formData.infrastructure_type === 'Managed Service' && (
+          {currentTypeName === 'Managed Service' && (
             <div>
               <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100">Managed Roles</h3>
               <div className="flex flex-wrap gap-2">
@@ -368,13 +308,12 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
             </div>
           )}
 
-          {/* Uptime Kuma */}
           <div>
             <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100">
               Live Uptime (Uptime Kuma)
             </h3>
             <p className="text-xs text-gray-500 mb-3">
-              Paste the badge image URL from Uptime Kuma (right-click any badge on your monitor page, "Copy image address"). The client portal will render the live badge and, optionally, link to the public status page.
+              Paste the badge image URL from Uptime Kuma. The client portal will render the live badge and, optionally, link to the public status page.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
@@ -396,26 +335,6 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
                 <img src={formData.uptime_badge_url} alt="Uptime badge preview" className="h-5" />
               </div>
             )}
-          </div>
-
-          {/* Specs */}
-          <div>
-            <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100">Specifications</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[
-                { key: 'cpu', label: 'CPU', placeholder: '4 Cores' },
-                { key: 'ram', label: 'RAM', placeholder: '8GB' },
-                { key: 'storage', label: 'Storage', placeholder: '160GB SSD' },
-                { key: 'bandwidth', label: 'Bandwidth', placeholder: '5TB' },
-              ].map(({ key, label, placeholder }) => (
-                <div key={key}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
-                  <input type="text" value={(formData as any)[key]} onChange={e => set(key, e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                    placeholder={placeholder} />
-                </div>
-              ))}
-            </div>
           </div>
 
           <div>

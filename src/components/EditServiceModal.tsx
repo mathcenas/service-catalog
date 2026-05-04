@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { Service, Client, ServiceType, Project, MANAGED_ROLES, ManagedRole, OPERATIONAL_STATUSES, OperationalStatus, supabase } from '../lib/supabase';
+import { DynamicServiceFields } from './DynamicServiceFields';
+import { getFieldsForType, COLUMN_FIELD_KEYS, EXCLUDED_SERVICE_TYPE_NAMES } from '../lib/serviceFields';
 
 type Props = {
   service: Service;
@@ -9,8 +11,6 @@ type Props = {
   onClose: () => void;
   onSuccess: () => void;
 };
-
-const CLOUD_PROVIDERS = ['AWS', 'Azure', 'GCP', 'DigitalOcean', 'Linode', 'Vultr', 'Hetzner', 'OVH', 'Other'];
 
 export function EditServiceModal({ service, clients, projects, onClose, onSuccess }: Props) {
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
@@ -25,18 +25,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
     currency: service.currency,
     billing_cycle: service.billing_cycle,
     next_renewal_date: service.next_renewal_date || '',
-    provider: service.provider || '',
-    server_ip: service.server_ip || '',
-    login_url: service.login_url || '',
-    infrastructure_type: (service.infrastructure_type || 'Cloud') as 'Cloud' | 'Physical' | 'Managed Service',
-    cloud_provider: service.cloud_provider || '',
-    cloud_account_payer: service.cloud_account_payer || '',
     confirmed_hours_monthly: service.confirmed_hours_monthly?.toString() || '',
-    location: service.location || '',
-    cpu: service.specifications?.cpu || '',
-    ram: service.specifications?.ram || '',
-    storage: service.specifications?.storage || '',
-    bandwidth: service.specifications?.bandwidth || '',
     business_name: service.business_name || '',
     business_description: service.business_description || '',
     sla_level: service.sla_level || '',
@@ -47,6 +36,28 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
     uptime_badge_url: service.uptime_badge_url || '',
     uptime_status_url: service.uptime_status_url || '',
   });
+
+  const buildInitialTypeValues = (): Record<string, any> => {
+    const values: Record<string, any> = {};
+    const spec = service.specifications || {};
+    const colVals: Record<string, any> = {
+      provider: service.provider,
+      server_ip: service.server_ip,
+      login_url: service.login_url,
+      location: service.location,
+      cloud_provider: service.cloud_provider,
+      cloud_account_payer: service.cloud_account_payer,
+    };
+    for (const [k, v] of Object.entries(spec)) {
+      if (v !== null && v !== undefined) values[k] = v;
+    }
+    for (const [k, v] of Object.entries(colVals)) {
+      if (v !== null && v !== undefined && v !== '') values[k] = v;
+    }
+    return values;
+  };
+
+  const [typeValues, setTypeValues] = useState<Record<string, any>>(buildInitialTypeValues());
   const [selectedRoles, setSelectedRoles] = useState<ManagedRole[]>(
     (service.managed_roles as ManagedRole[]) || []
   );
@@ -56,10 +67,18 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
   useEffect(() => {
     const fetchServiceTypes = async () => {
       const { data } = await supabase.from('service_types').select('*').order('name');
-      setServiceTypes(data || []);
+      const filtered = (data || []).filter(t =>
+        !EXCLUDED_SERVICE_TYPE_NAMES.has(t.name) || t.id === service.service_type_id
+      );
+      setServiceTypes(filtered);
     };
     fetchServiceTypes();
-  }, []);
+  }, [service.service_type_id]);
+
+  const currentTypeName = useMemo(
+    () => serviceTypes.find(t => t.id === formData.service_type_id)?.name,
+    [serviceTypes, formData.service_type_id]
+  );
 
   const toggleRole = (role: ManagedRole) => {
     setSelectedRoles(prev =>
@@ -72,11 +91,26 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
     setError('');
     setLoading(true);
 
+    const fields = getFieldsForType(currentTypeName);
+    const columnUpdates: Record<string, any> = {
+      provider: null,
+      server_ip: null,
+      login_url: null,
+      location: null,
+      cloud_provider: null,
+      cloud_account_payer: null,
+    };
     const specifications: Record<string, any> = {};
-    if (formData.cpu) specifications.cpu = formData.cpu;
-    if (formData.ram) specifications.ram = formData.ram;
-    if (formData.storage) specifications.storage = formData.storage;
-    if (formData.bandwidth) specifications.bandwidth = formData.bandwidth;
+    for (const field of fields) {
+      const raw = typeValues[field.key];
+      if (raw === undefined || raw === '' || raw === null) continue;
+      const value = field.kind === 'number' ? Number(raw) : raw;
+      if (field.storage === 'column' && COLUMN_FIELD_KEYS.has(field.key)) {
+        columnUpdates[field.key] = value;
+      } else {
+        specifications[field.key] = value;
+      }
+    }
 
     const { error: updateError } = await supabase
       .from('services')
@@ -91,15 +125,14 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
         currency: formData.currency,
         billing_cycle: formData.billing_cycle,
         next_renewal_date: formData.next_renewal_date || null,
-        provider: formData.provider || null,
-        server_ip: formData.server_ip || null,
-        login_url: formData.login_url || null,
-        infrastructure_type: formData.infrastructure_type,
-        cloud_provider: formData.cloud_provider || null,
-        cloud_account_payer: formData.cloud_account_payer || null,
         confirmed_hours_monthly: formData.confirmed_hours_monthly ? parseFloat(formData.confirmed_hours_monthly) : null,
-        location: formData.location || null,
-        managed_roles: selectedRoles.length > 0 ? selectedRoles : null,
+        provider: columnUpdates.provider,
+        server_ip: columnUpdates.server_ip,
+        login_url: columnUpdates.login_url,
+        location: columnUpdates.location,
+        cloud_provider: columnUpdates.cloud_provider,
+        cloud_account_payer: columnUpdates.cloud_account_payer,
+        managed_roles: currentTypeName === 'Managed Service' && selectedRoles.length > 0 ? selectedRoles : null,
         specifications: Object.keys(specifications).length > 0 ? specifications : null,
         business_name: formData.business_name || null,
         business_description: formData.business_description || null,
@@ -124,6 +157,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
   };
 
   const set = (key: string, value: any) => setFormData(prev => ({ ...prev, [key]: value }));
+  const setType = (key: string, value: any) => setTypeValues(prev => ({ ...prev, [key]: value }));
 
   const splitLines = (text: string): string[] =>
     text.split('\n').map(s => s.trim()).filter(Boolean);
@@ -174,22 +208,6 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Service Name *</label>
               <input type="text" value={formData.name} onChange={e => set('name', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Infrastructure Type *</label>
-              <div className="grid grid-cols-3 gap-2">
-                {(['Cloud', 'Physical', 'Managed Service'] as const).map(type => (
-                  <button key={type} type="button"
-                    onClick={() => set('infrastructure_type', type)}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                      formData.infrastructure_type === type
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'border-gray-300 text-gray-700 hover:border-blue-400'
-                    }`}>
-                    {type}
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
 
@@ -293,49 +311,13 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100">Infrastructure Details</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Provider / Vendor</label>
-                <input type="text" value={formData.provider} onChange={e => set('provider', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Location / Datacenter</label>
-                <input type="text" value={formData.location} onChange={e => set('location', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">IP Address</label>
-                <input type="text" value={formData.server_ip} onChange={e => set('server_ip', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Login URL</label>
-                <input type="url" value={formData.login_url} onChange={e => set('login_url', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
-              </div>
-              {formData.infrastructure_type === 'Cloud' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Cloud Provider</label>
-                    <select value={formData.cloud_provider} onChange={e => set('cloud_provider', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
-                      <option value="">Select provider</option>
-                      {CLOUD_PROVIDERS.map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Cloud Account Payer</label>
-                    <input type="text" value={formData.cloud_account_payer} onChange={e => set('cloud_account_payer', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
-                  </div>
-                </>
-              )}
-            </div>
+            <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100">
+              {currentTypeName ? `${currentTypeName} Details` : 'Type-Specific Details'}
+            </h3>
+            <DynamicServiceFields typeName={currentTypeName} values={typeValues} onChange={setType} />
           </div>
 
-          {formData.infrastructure_type === 'Managed Service' && (
+          {currentTypeName === 'Managed Service' && (
             <div>
               <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100">Managed Roles</h3>
               <div className="flex flex-wrap gap-2">
@@ -381,24 +363,6 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
                 <img src={formData.uptime_badge_url} alt="Uptime badge preview" className="h-5" />
               </div>
             )}
-          </div>
-
-          <div>
-            <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100">Specifications</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[
-                { key: 'cpu', label: 'CPU' },
-                { key: 'ram', label: 'RAM' },
-                { key: 'storage', label: 'Storage' },
-                { key: 'bandwidth', label: 'Bandwidth' },
-              ].map(({ key, label }) => (
-                <div key={key}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
-                  <input type="text" value={(formData as any)[key]} onChange={e => set(key, e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
-                </div>
-              ))}
-            </div>
           </div>
 
           <div>
