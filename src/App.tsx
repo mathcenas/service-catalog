@@ -7,7 +7,7 @@ function AppContent() {
   const { user, loading } = useAuth();
 
   const path = window.location.pathname;
-  const shareMatch = path.match(/^\/share\/([a-f0-9]+)$/);
+  const shareMatch = path.match(/^\/share\/([a-z0-9-]+)$/i);
 
   if (shareMatch) {
     return <SharePage token={shareMatch[1]} />;
