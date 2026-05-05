@@ -1,20 +1,21 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Server, Globe, Calendar, Clock, MapPin, Shield, CheckCircle2, AlertTriangle,
-  AlertCircle, XCircle, Activity, FolderOpen, History, FileText, Send, Info,
-  Cpu, HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X, Check, MinusCircle, LayoutGrid, ExternalLink,
+  Server, Globe, Calendar, Clock, MapPin, Shield, CheckCircle2,
+  FolderOpen, History, FileText, Send, Info,
+  Cpu, HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X, Check, MinusCircle, LayoutGrid,
+  Sparkles, Rocket, DollarSign,
 } from 'lucide-react';
-import { supabase, Client, Service, ServiceType, Project, ServiceChange, OperationalStatus, ManagedRole } from '../lib/supabase';
+import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus } from '../lib/supabase';
 
 type Props = { token: string };
 
 type Section = 'overview' | 'catalog' | 'changes' | 'support';
 
-const STATUS_META: Record<OperationalStatus, { color: string; bg: string; border: string; icon: any; label: string; dot: string }> = {
-  Operational:  { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: CheckCircle2, label: 'Operational', dot: 'bg-emerald-500' },
-  Maintenance:  { color: 'text-amber-700',   bg: 'bg-amber-50',   border: 'border-amber-200',   icon: AlertTriangle, label: 'Scheduled Maintenance', dot: 'bg-amber-500' },
-  Degraded:     { color: 'text-orange-700',  bg: 'bg-orange-50',  border: 'border-orange-200',  icon: AlertCircle,   label: 'Degraded Performance', dot: 'bg-orange-500' },
-  Down:         { color: 'text-red-700',     bg: 'bg-red-50',     border: 'border-red-200',     icon: XCircle,       label: 'Service Down', dot: 'bg-red-500' },
+const ROADMAP_META: Record<RoadmapStatus, { color: string; bg: string; border: string; label: string; icon: any }> = {
+  'Next Release':  { color: 'text-blue-700',    bg: 'bg-blue-50',    border: 'border-blue-200',    label: 'Next Release',  icon: Rocket },
+  'In Progress':   { color: 'text-amber-700',   bg: 'bg-amber-50',   border: 'border-amber-200',   label: 'In Progress',   icon: Sparkles },
+  'Planned':       { color: 'text-slate-700',   bg: 'bg-slate-100',  border: 'border-slate-200',   label: 'Planned',       icon: Calendar },
+  'Released':      { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', label: 'Released',      icon: CheckCircle2 },
 };
 
 export function SharePage({ token }: Props) {
@@ -23,6 +24,7 @@ export function SharePage({ token }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [changes, setChanges] = useState<ServiceChange[]>([]);
+  const [roadmap, setRoadmap] = useState<RoadmapItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [section, setSection] = useState<Section>('overview');
@@ -38,11 +40,12 @@ export function SharePage({ token }: Props) {
 
       if (!tokenRow) { setNotFound(true); setLoading(false); return; }
 
-      const [{ data: clientData }, { data: servicesData }, { data: projectsData }, { data: typesData }] = await Promise.all([
+      const [{ data: clientData }, { data: servicesData }, { data: projectsData }, { data: typesData }, { data: roadmapData }] = await Promise.all([
         supabase.from('clients').select('*').eq('id', tokenRow.client_id).maybeSingle(),
         supabase.from('services').select('*').eq('client_id', tokenRow.client_id).order('created_at'),
         supabase.from('projects').select('*').eq('client_id', tokenRow.client_id).order('created_at'),
         supabase.from('service_types').select('*'),
+        supabase.from('roadmap_items').select('*').eq('user_id', tokenRow.user_id).eq('is_public', true).order('sort_order').order('created_at'),
       ]);
 
       if (!clientData) { setNotFound(true); setLoading(false); return; }
@@ -51,6 +54,7 @@ export function SharePage({ token }: Props) {
       setServices(servicesData || []);
       setProjects(projectsData || []);
       setServiceTypes(typesData || []);
+      setRoadmap(roadmapData || []);
 
       const ids = (servicesData || []).map(s => s.id);
       if (ids.length > 0) {
@@ -71,19 +75,29 @@ export function SharePage({ token }: Props) {
   const getProjectName = (id?: string) => id ? projects.find(p => p.id === id)?.name : null;
 
   const activeServices = useMemo(() => services.filter(s => s.status === 'Active'), [services]);
-  const statusCounts = useMemo(() => {
-    const counts: Record<OperationalStatus, number> = { Operational: 0, Maintenance: 0, Degraded: 0, Down: 0 };
-    activeServices.forEach(s => {
-      const st = (s.operational_status || 'Operational') as OperationalStatus;
-      counts[st]++;
-    });
-    return counts;
+
+  const monthlyEquivalent = useMemo(() => {
+    return activeServices.reduce((sum, s) => {
+      const m = s.billing_cycle === 'Monthly' ? 1
+        : s.billing_cycle === 'Quarterly' ? 1 / 3
+        : s.billing_cycle === 'Semi-Annually' ? 1 / 6
+        : s.billing_cycle === 'Annually' ? 1 / 12
+        : s.billing_cycle === 'Biennially' ? 1 / 24
+        : 0;
+      return sum + (s.price * m);
+    }, 0);
   }, [activeServices]);
 
-  const overallStatus: OperationalStatus = statusCounts.Down > 0 ? 'Down'
-    : statusCounts.Degraded > 0 ? 'Degraded'
-    : statusCounts.Maintenance > 0 ? 'Maintenance'
-    : 'Operational';
+  const primaryCurrency = useMemo(() => {
+    const counts = new Map<string, number>();
+    activeServices.forEach(s => counts.set(s.currency, (counts.get(s.currency) || 0) + 1));
+    let best = 'USD';
+    let max = 0;
+    counts.forEach((v, k) => { if (v > max) { max = v; best = k; } });
+    return best;
+  }, [activeServices]);
+
+  const nextRelease = useMemo(() => roadmap.find(r => r.status === 'Next Release'), [roadmap]);
 
   if (loading) {
     return (
@@ -121,15 +135,25 @@ export function SharePage({ token }: Props) {
               <h1 className="text-3xl md:text-4xl font-bold">{client!.company_name}</h1>
               {client!.contact_name && <p className="text-slate-300 mt-1">{client!.contact_name}</p>}
             </div>
-            <OverallStatusBadge status={overallStatus} />
+            <div className="inline-flex items-center gap-3 bg-white/10 backdrop-blur rounded-xl px-5 py-3 border border-white/10">
+              <div className="p-2 rounded-lg bg-emerald-500/20">
+                <DollarSign className="w-5 h-5 text-emerald-300" />
+              </div>
+              <div>
+                <div className="text-xs text-slate-300 uppercase tracking-wider">Monthly Equivalent</div>
+                <div className="text-2xl font-bold">
+                  {primaryCurrency} {monthlyEquivalent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* KPI strip */}
+          {/* Cost strip */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8">
-            <KpiCard label="Active Services" value={activeServices.length} />
-            <KpiCard label="Operational" value={statusCounts.Operational} accent="emerald" />
-            <KpiCard label="Maintenance" value={statusCounts.Maintenance} accent="amber" />
-            <KpiCard label="Incidents" value={statusCounts.Degraded + statusCounts.Down} accent={statusCounts.Degraded + statusCounts.Down > 0 ? 'red' : 'slate'} />
+            <KpiCard label="Active Services" value={activeServices.length.toString()} />
+            <KpiCard label={`Monthly (${primaryCurrency})`} value={monthlyEquivalent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} accent="emerald" />
+            <KpiCard label={`Annual (${primaryCurrency})`} value={(monthlyEquivalent * 12).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} accent="emerald" />
+            <KpiCard label="Upcoming Updates" value={roadmap.filter(r => r.status !== 'Released').length.toString()} accent="amber" />
           </div>
         </div>
       </header>
@@ -137,7 +161,7 @@ export function SharePage({ token }: Props) {
       {/* Nav */}
       <nav className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto">
-          <NavBtn icon={Activity} active={section === 'overview'} onClick={() => setSection('overview')}>Availability</NavBtn>
+          <NavBtn icon={Sparkles} active={section === 'overview'} onClick={() => setSection('overview')}>What's Coming</NavBtn>
           <NavBtn icon={LayoutGrid} active={section === 'catalog'} onClick={() => setSection('catalog')}>Service Catalog</NavBtn>
           <NavBtn icon={History} active={section === 'changes'} onClick={() => setSection('changes')}>Change Log</NavBtn>
           <NavBtn icon={Mail} active={section === 'support'} onClick={() => setSection('support')}>Request Support</NavBtn>
@@ -145,7 +169,7 @@ export function SharePage({ token }: Props) {
       </nav>
 
       <main className="max-w-6xl mx-auto px-4 py-8">
-        {section === 'overview' && <OverviewSection services={activeServices} getTypeName={getTypeName} />}
+        {section === 'overview' && <ComingSoonSection roadmap={roadmap} nextRelease={nextRelease} />}
 
         {section === 'catalog' && (
           <CatalogSection
@@ -176,27 +200,7 @@ export function SharePage({ token }: Props) {
 
 /* ---------- Header bits ---------- */
 
-function OverallStatusBadge({ status }: { status: OperationalStatus }) {
-  const meta = STATUS_META[status];
-  const Icon = meta.icon;
-  return (
-    <div className={`inline-flex items-center gap-3 bg-white/10 backdrop-blur rounded-xl px-5 py-3 border border-white/10`}>
-      <div className="relative">
-        <span className={`block w-3 h-3 rounded-full ${meta.dot}`}></span>
-        <span className={`absolute inset-0 rounded-full ${meta.dot} opacity-50 animate-ping`}></span>
-      </div>
-      <div>
-        <div className="text-xs text-slate-300 uppercase tracking-wider">Overall Status</div>
-        <div className="text-lg font-semibold flex items-center gap-2">
-          <Icon className="w-4 h-4" />
-          {meta.label}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function KpiCard({ label, value, accent = 'slate' }: { label: string; value: number; accent?: string }) {
+function KpiCard({ label, value, accent = 'slate' }: { label: string; value: string; accent?: string }) {
   const bg = accent === 'emerald' ? 'bg-emerald-500/20 text-emerald-200'
     : accent === 'amber' ? 'bg-amber-500/20 text-amber-200'
     : accent === 'red' ? 'bg-red-500/20 text-red-200'
@@ -221,53 +225,92 @@ function NavBtn({ icon: Icon, active, onClick, children }: any) {
   );
 }
 
-/* ---------- Overview (Availability) ---------- */
+/* ---------- Coming Soon (replaces live availability) ---------- */
 
-function OverviewSection({ services, getTypeName }: { services: Service[]; getTypeName: (id: string) => string }) {
-  if (services.length === 0) {
-    return (
-      <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500">
-        No active services configured.
-      </div>
-    );
-  }
+function ComingSoonSection({ roadmap, nextRelease }: { roadmap: RoadmapItem[]; nextRelease: RoadmapItem | undefined }) {
+  const upcoming = roadmap.filter(r => r.status !== 'Released');
+  const released = roadmap.filter(r => r.status === 'Released');
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-          <Activity className="w-5 h-5 text-blue-600" /> Service Availability
-        </h2>
-        <p className="text-xs text-gray-500">Real-time operational status of your services</p>
-      </div>
-      {services.map(s => {
-        const st = (s.operational_status || 'Operational') as OperationalStatus;
-        const meta = STATUS_META[st];
-        const Icon = meta.icon;
-        return (
-          <div key={s.id} className={`bg-white rounded-xl border ${meta.border} shadow-sm px-5 py-4 flex items-center gap-4 flex-wrap`}>
-            <span className={`w-3 h-3 rounded-full ${meta.dot} flex-shrink-0`}></span>
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold text-gray-900">{s.business_name || s.name}</div>
-              <div className="text-xs text-gray-500 mt-0.5">{getTypeName(s.service_type_id)}{s.sla_level ? ` · SLA: ${s.sla_level}` : ''}</div>
-            </div>
-            {s.uptime_badge_url && (
-              <img src={s.uptime_badge_url} alt="Live uptime" className="h-5"
-                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-            )}
-            {s.uptime_status_url && (
-              <a href={s.uptime_status_url} target="_blank" rel="noopener noreferrer"
-                className="text-xs text-blue-600 hover:text-blue-700 inline-flex items-center gap-1 font-medium">
-                Live status <ExternalLink className="w-3 h-3" />
-              </a>
-            )}
-            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${meta.bg} ${meta.color}`}>
-              <Icon className="w-3.5 h-3.5" />
-              {meta.label}
-            </div>
+    <div className="space-y-8">
+      <section className="relative overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-8">
+        <div className="absolute -right-10 -top-10 w-48 h-48 bg-blue-100 rounded-full blur-3xl opacity-60"></div>
+        <div className="relative">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-600 text-white text-xs font-semibold uppercase tracking-wider mb-3">
+            <Sparkles className="w-3.5 h-3.5" /> Coming Soon
           </div>
-        );
-      })}
+          <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Live availability & operational status</h2>
+          <p className="text-gray-700 max-w-2xl">
+            Real-time monitoring of your services — uptime, maintenance windows, and incident reporting — is being prepared. It will be activated once the monitoring agents are fully deployed.
+          </p>
+          {nextRelease && (
+            <div className="mt-6 inline-flex items-center gap-3 bg-white border border-blue-200 rounded-xl px-4 py-3 shadow-sm">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <Rocket className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <div className="text-xs text-blue-700 font-semibold uppercase tracking-wider">Next Release</div>
+                <div className="font-semibold text-gray-900">{nextRelease.title}</div>
+                {nextRelease.eta && <div className="text-xs text-gray-500 mt-0.5">ETA: {nextRelease.eta}</div>}
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section>
+        <div className="flex items-center gap-2 mb-4">
+          <Rocket className="w-5 h-5 text-blue-600" />
+          <h3 className="text-lg font-semibold text-gray-900">Upcoming Updates</h3>
+        </div>
+        {upcoming.length === 0 ? (
+          <div className="bg-white rounded-xl border border-dashed border-gray-300 p-10 text-center">
+            <Sparkles className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+            <p className="text-gray-500 text-sm">The roadmap is being put together. Check back soon.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {upcoming.map(item => <RoadmapCard key={item.id} item={item} />)}
+          </div>
+        )}
+      </section>
+
+      {released.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-4">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+            <h3 className="text-lg font-semibold text-gray-900">Recently Released</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {released.map(item => <RoadmapCard key={item.id} item={item} />)}
+          </div>
+        </section>
+      )}
     </div>
+  );
+}
+
+function RoadmapCard({ item }: { item: RoadmapItem }) {
+  const meta = ROADMAP_META[item.status];
+  const Icon = meta.icon;
+  return (
+    <article className={`bg-white rounded-xl border ${meta.border} shadow-sm p-5 transition-shadow hover:shadow-md`}>
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="flex items-center gap-2">
+          <div className={`p-1.5 rounded-md ${meta.bg}`}>
+            <Icon className={`w-4 h-4 ${meta.color}`} />
+          </div>
+          <span className={`text-xs font-semibold uppercase tracking-wider ${meta.color}`}>{meta.label}</span>
+        </div>
+        {item.eta && (
+          <span className="text-xs text-gray-500 inline-flex items-center gap-1">
+            <Calendar className="w-3 h-3" /> {item.eta}
+          </span>
+        )}
+      </div>
+      <h4 className="font-semibold text-gray-900 mb-1">{item.title}</h4>
+      {item.description && <p className="text-sm text-gray-600 leading-relaxed">{item.description}</p>}
+    </article>
   );
 }
 
@@ -341,18 +384,16 @@ function ServiceSheet({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const st = (service.operational_status || 'Operational') as OperationalStatus;
-  const meta = STATUS_META[st];
   const title = service.business_name || service.name;
   const desc = service.business_description || service.description;
 
   return (
-    <article className={`bg-white rounded-xl border shadow-sm overflow-hidden ${meta.border}`}>
+    <article className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
       <div className="px-6 py-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex items-start gap-3 flex-1 min-w-0">
-            <div className={`p-2 rounded-lg ${meta.bg}`}>
-              <Server className={`w-5 h-5 ${meta.color}`} />
+            <div className="p-2 rounded-lg bg-blue-50">
+              <Server className="w-5 h-5 text-blue-600" />
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-gray-900 text-lg">{title}</h3>
@@ -363,26 +404,9 @@ function ServiceSheet({
                 )}
               </div>
               {desc && <p className="text-sm text-gray-600 mt-2 leading-relaxed">{desc}</p>}
-              {(service.uptime_badge_url || service.uptime_status_url) && (
-                <div className="flex items-center gap-3 mt-3 flex-wrap">
-                  {service.uptime_badge_url && (
-                    <img src={service.uptime_badge_url} alt="Live uptime" className="h-5"
-                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-                  )}
-                  {service.uptime_status_url && (
-                    <a href={service.uptime_status_url} target="_blank" rel="noopener noreferrer"
-                      className="text-xs text-blue-600 hover:text-blue-700 inline-flex items-center gap-1 font-medium">
-                      View live status <ExternalLink className="w-3 h-3" />
-                    </a>
-                  )}
-                </div>
-              )}
             </div>
           </div>
-          <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${meta.bg} ${meta.color} whitespace-nowrap`}>
-            <span className={`w-2 h-2 rounded-full ${meta.dot}`}></span>
-            {meta.label}
-          </div>
+          <PriceTag service={service} />
         </div>
 
         {/* Includes / Excludes / Responsibilities */}
@@ -436,10 +460,6 @@ function TechnicalDetails({ service }: { service: Service }) {
   return (
     <div className="bg-slate-50 border-t border-gray-100 px-6 py-5">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-        <Field icon={Activity} label="Billing" value={`${service.price} ${service.currency} / ${service.billing_cycle}`} />
-        {service.next_renewal_date && (
-          <Field icon={Calendar} label="Next Renewal" value={new Date(service.next_renewal_date).toLocaleDateString()} />
-        )}
         {service.provider && <Field icon={Globe} label="Provider" value={service.provider} />}
         {service.location && <Field icon={MapPin} label="Location" value={service.location} />}
         {service.confirmed_hours_monthly != null && (
@@ -469,6 +489,25 @@ function TechnicalDetails({ service }: { service: Service }) {
               <span key={r} className="text-xs bg-teal-50 text-teal-700 px-2.5 py-1 rounded-full font-medium border border-teal-100">{r}</span>
             ))}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PriceTag({ service }: { service: Service }) {
+  return (
+    <div className="flex flex-col items-end">
+      <div className="inline-flex items-baseline gap-1 bg-gradient-to-br from-emerald-600 to-emerald-700 text-white rounded-xl px-4 py-3 shadow-sm">
+        <span className="text-sm font-semibold opacity-90">{service.currency}</span>
+        <span className="text-2xl md:text-3xl font-bold tracking-tight">
+          {service.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      </div>
+      <div className="text-xs text-gray-500 mt-1 font-medium">per {service.billing_cycle.toLowerCase()}</div>
+      {service.next_renewal_date && (
+        <div className="text-xs text-gray-400 mt-0.5 inline-flex items-center gap-1">
+          <Calendar className="w-3 h-3" /> Renews {new Date(service.next_renewal_date).toLocaleDateString()}
         </div>
       )}
     </div>
