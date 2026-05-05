@@ -3,7 +3,7 @@ import {
   Server, Globe, Calendar, Clock, MapPin, Shield, CheckCircle2,
   FolderOpen, History, FileText, Send, Info,
   Cpu, HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X, Check, MinusCircle, LayoutGrid,
-  Sparkles, Rocket, DollarSign,
+  Sparkles, Rocket, DollarSign, Search,
 } from 'lucide-react';
 import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus } from '../lib/supabase';
 
