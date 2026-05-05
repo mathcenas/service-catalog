@@ -78,12 +78,15 @@ export function Dashboard() {
     const monthlyRevenue = services
       .filter(s => s.status === 'Active')
       .reduce((sum, s) => {
-        const multiplier = s.billing_cycle === 'Monthly' ? 1 :
-                          s.billing_cycle === 'Quarterly' ? 1/3 :
-                          s.billing_cycle === 'Semi-Annually' ? 1/6 :
-                          s.billing_cycle === 'Annually' ? 1/12 :
-                          s.billing_cycle === 'Biennially' ? 1/24 : 0;
-        return sum + (s.price * multiplier);
+        const months = s.billing_cycle === 'Monthly' ? 1 :
+                       s.billing_cycle === 'Quarterly' ? 3 :
+                       s.billing_cycle === 'Semi-Annually' ? 6 :
+                       s.billing_cycle === 'Annually' ? 12 :
+                       s.billing_cycle === 'Biennially' ? 24 : 0;
+        if (months === 0) return sum;
+        const hours = s.confirmed_hours_monthly;
+        const perMonth = (hours && hours > 0) ? s.price * hours : s.price / months;
+        return sum + perMonth;
       }, 0);
 
     const today = new Date();

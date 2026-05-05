@@ -13,13 +13,16 @@ const TABS: { key: PaidBy; label: string; description: string }[] = [
 ];
 
 function monthlyEquivalent(service: Service): number {
-  const m = service.billing_cycle === 'Monthly' ? 1
-    : service.billing_cycle === 'Quarterly' ? 1 / 3
-    : service.billing_cycle === 'Semi-Annually' ? 1 / 6
-    : service.billing_cycle === 'Annually' ? 1 / 12
-    : service.billing_cycle === 'Biennially' ? 1 / 24
+  const months = service.billing_cycle === 'Monthly' ? 1
+    : service.billing_cycle === 'Quarterly' ? 3
+    : service.billing_cycle === 'Semi-Annually' ? 6
+    : service.billing_cycle === 'Annually' ? 12
+    : service.billing_cycle === 'Biennially' ? 24
     : 0;
-  return service.price * m;
+  if (months === 0) return 0;
+  const hours = service.confirmed_hours_monthly;
+  if (hours && hours > 0) return service.price * hours;
+  return service.price / months;
 }
 
 export function PaymentsView({ services, clients }: Props) {

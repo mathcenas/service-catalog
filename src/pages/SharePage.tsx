@@ -11,6 +11,32 @@ type Props = { token: string };
 
 type Section = 'overview' | 'catalog' | 'changes' | 'support';
 
+function billingCycleMonths(cycle: string): number {
+  return cycle === 'Monthly' ? 1
+    : cycle === 'Quarterly' ? 3
+    : cycle === 'Semi-Annually' ? 6
+    : cycle === 'Annually' ? 12
+    : cycle === 'Biennially' ? 24
+    : 0;
+}
+
+function servicePeriodTotal(service: Service): number {
+  const hours = service.confirmed_hours_monthly;
+  if (hours && hours > 0) {
+    const months = billingCycleMonths(service.billing_cycle);
+    if (months > 0) return service.price * hours * months;
+  }
+  return service.price;
+}
+
+function serviceMonthlyTotal(service: Service): number {
+  const months = billingCycleMonths(service.billing_cycle);
+  if (months === 0) return 0;
+  const hours = service.confirmed_hours_monthly;
+  if (hours && hours > 0) return service.price * hours;
+  return service.price / months;
+}
+
 const ROADMAP_META: Record<RoadmapStatus, { color: string; bg: string; border: string; label: string; icon: any }> = {
   'Next Release':  { color: 'text-blue-700',    bg: 'bg-blue-50',    border: 'border-blue-200',    label: 'Next Release',  icon: Rocket },
   'In Progress':   { color: 'text-amber-700',   bg: 'bg-amber-50',   border: 'border-amber-200',   label: 'In Progress',   icon: Sparkles },
@@ -76,17 +102,10 @@ export function SharePage({ token }: Props) {
 
   const activeServices = useMemo(() => services.filter(s => s.status === 'Active'), [services]);
 
-  const monthlyEquivalent = useMemo(() => {
-    return activeServices.reduce((sum, s) => {
-      const m = s.billing_cycle === 'Monthly' ? 1
-        : s.billing_cycle === 'Quarterly' ? 1 / 3
-        : s.billing_cycle === 'Semi-Annually' ? 1 / 6
-        : s.billing_cycle === 'Annually' ? 1 / 12
-        : s.billing_cycle === 'Biennially' ? 1 / 24
-        : 0;
-      return sum + (s.price * m);
-    }, 0);
-  }, [activeServices]);
+  const monthlyEquivalent = useMemo(
+    () => activeServices.reduce((sum, s) => sum + serviceMonthlyTotal(s), 0),
+    [activeServices]
+  );
 
   const primaryCurrency = useMemo(() => {
     const counts = new Map<string, number>();
@@ -496,15 +515,22 @@ function TechnicalDetails({ service }: { service: Service }) {
 }
 
 function PriceTag({ service }: { service: Service }) {
+  const hours = service.confirmed_hours_monthly;
+  const isHourly = !!(hours && hours > 0);
+  const total = servicePeriodTotal(service);
+  const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return (
     <div className="flex flex-col items-end">
       <div className="inline-flex items-baseline gap-1 bg-gradient-to-br from-emerald-600 to-emerald-700 text-white rounded-xl px-4 py-3 shadow-sm">
         <span className="text-sm font-semibold opacity-90">{service.currency}</span>
-        <span className="text-2xl md:text-3xl font-bold tracking-tight">
-          {service.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </span>
+        <span className="text-2xl md:text-3xl font-bold tracking-tight">{fmt(total)}</span>
       </div>
       <div className="text-xs text-gray-500 mt-1 font-medium">per {service.billing_cycle.toLowerCase()}</div>
+      {isHourly && (
+        <div className="text-xs text-gray-500 mt-0.5">
+          {hours}h / month &middot; {service.currency} {fmt(service.price)}/hr
+        </div>
+      )}
       {service.next_renewal_date && (
         <div className="text-xs text-gray-400 mt-0.5 inline-flex items-center gap-1">
           <Calendar className="w-3 h-3" /> Renews {new Date(service.next_renewal_date).toLocaleDateString()}
