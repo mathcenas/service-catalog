@@ -107,9 +107,15 @@ export type Service = {
   operational_status?: OperationalStatus;
   uptime_badge_url?: string;
   uptime_status_url?: string;
+  paid_by?: PaidBy;
+  payment_card_last4?: string;
   created_at: string;
   updated_at: string;
 };
+
+export type PaidBy = 'Me' | 'Client';
+
+export const PAID_BY_OPTIONS: PaidBy[] = ['Me', 'Client'];
 
 export type OperationalStatus = 'Operational' | 'Maintenance' | 'Degraded' | 'Down';
 

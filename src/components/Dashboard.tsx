@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen } from 'lucide-react';
+import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard } from 'lucide-react';
 import { supabase, Client, Service, Project, ServiceType } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { ClientList } from './ClientList';
@@ -9,6 +9,7 @@ import { AddClientModal } from './AddClientModal';
 import { AddServiceModal } from './AddServiceModal';
 import { AddProjectModal } from './AddProjectModal';
 import { ImportModal } from './ImportModal';
+import { PaymentsView } from './PaymentsView';
 
 type Stats = {
   totalClients: number;
@@ -21,7 +22,7 @@ type Stats = {
 
 export function Dashboard() {
   const { signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'projects' | 'services'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'projects' | 'services' | 'payments'>('dashboard');
   const [stats, setStats] = useState<Stats>({
     totalClients: 0,
     activeClients: 0,
@@ -181,6 +182,17 @@ export function Dashboard() {
             }`}
           >
             Services
+          </button>
+          <button
+            onClick={() => setActiveTab('payments')}
+            className={`flex items-center gap-1.5 px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === 'payments'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <CreditCard className="w-4 h-4" />
+            Payments
           </button>
         </div>
 
@@ -369,6 +381,10 @@ export function Dashboard() {
             </div>
             <ServiceList services={services} clients={clients} projects={projects} onUpdate={fetchData} />
           </div>
+        )}
+
+        {activeTab === 'payments' && (
+          <PaymentsView services={services} clients={clients} />
         )}
       </div>
 

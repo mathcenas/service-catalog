@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
-import { Service, Client, ServiceType, Project, MANAGED_ROLES, ManagedRole, OPERATIONAL_STATUSES, OperationalStatus, supabase } from '../lib/supabase';
+import { Service, Client, ServiceType, Project, MANAGED_ROLES, ManagedRole, OPERATIONAL_STATUSES, OperationalStatus, PAID_BY_OPTIONS, PaidBy, supabase } from '../lib/supabase';
 import { DynamicServiceFields } from './DynamicServiceFields';
 import { getFieldsForType, COLUMN_FIELD_KEYS, EXCLUDED_SERVICE_TYPE_NAMES } from '../lib/serviceFields';
 
@@ -35,6 +35,8 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
     client_responsibilities: (service.client_responsibilities || []).join('\n'),
     uptime_badge_url: service.uptime_badge_url || '',
     uptime_status_url: service.uptime_status_url || '',
+    paid_by: (service.paid_by || '') as '' | PaidBy,
+    payment_card_last4: service.payment_card_last4 || '',
   });
 
   const buildInitialTypeValues = (): Record<string, any> => {
@@ -143,6 +145,8 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
         client_responsibilities: splitLines(formData.client_responsibilities),
         uptime_badge_url: formData.uptime_badge_url || null,
         uptime_status_url: formData.uptime_status_url || null,
+        paid_by: formData.paid_by || null,
+        payment_card_last4: formData.payment_card_last4 ? formData.payment_card_last4.slice(-4) : null,
       })
       .eq('id', service.id);
 
@@ -306,6 +310,22 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Confirmed Hours / Month</label>
                 <input type="number" step="0.5" value={formData.confirmed_hours_monthly} onChange={e => set('confirmed_hours_monthly', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Paid By</label>
+                <select value={formData.paid_by} onChange={e => set('paid_by', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+                  <option value="">Not set</option>
+                  {PAID_BY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Card Last 4 Digits</label>
+                <input type="text" inputMode="numeric" maxLength={4} pattern="[0-9]{4}"
+                  value={formData.payment_card_last4}
+                  onChange={e => set('payment_card_last4', e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none font-mono"
+                  placeholder="1234" />
               </div>
             </div>
           </div>
