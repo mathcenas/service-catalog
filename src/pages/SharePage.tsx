@@ -335,6 +335,9 @@ function RoadmapCard({ item }: { item: RoadmapItem }) {
 
 /* ---------- Catalog (ISO 20000 service sheets) ---------- */
 
+type GroupMode = 'project' | 'type';
+type Group = { key: string; title: string; subtitle?: string; status?: string; items: Service[] };
+
 function CatalogSection({
   services, projects, getTypeName, getProjectName, expandedService, setExpandedService,
 }: {
@@ -345,51 +348,134 @@ function CatalogSection({
   expandedService: string | null;
   setExpandedService: (id: string | null) => void;
 }) {
-  const grouped = useMemo(() => {
-    const byProject = new Map<string, { project: Project | null; items: Service[] }>();
-    byProject.set('__none__', { project: null, items: [] });
-    projects.forEach(p => byProject.set(p.id, { project: p, items: [] }));
-    services.forEach(s => {
-      const key = s.project_id && byProject.has(s.project_id) ? s.project_id : '__none__';
-      byProject.get(key)!.items.push(s);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Other'>('all');
+  const [groupBy, setGroupBy] = useState<GroupMode>('project');
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return services.filter(s => {
+      if (statusFilter === 'Active' && s.status !== 'Active') return false;
+      if (statusFilter === 'Other' && s.status === 'Active') return false;
+      if (!q) return true;
+      const hay = [
+        s.business_name, s.name, s.description, s.business_description,
+        getTypeName(s.service_type_id), s.provider, s.location, s.sla_level,
+      ].filter(Boolean).join(' ').toLowerCase();
+      return hay.includes(q);
     });
-    return Array.from(byProject.values()).filter(g => g.items.length > 0);
-  }, [services, projects]);
+  }, [services, query, statusFilter, getTypeName]);
+
+  const groups: Group[] = useMemo(() => {
+    if (groupBy === 'project') {
+      const map = new Map<string, Group>();
+      map.set('__none__', { key: '__none__', title: 'Standalone Services', items: [] });
+      projects.forEach(p => map.set(p.id, { key: p.id, title: p.name, subtitle: p.description, status: p.status, items: [] }));
+      filtered.forEach(s => {
+        const k = s.project_id && map.has(s.project_id) ? s.project_id : '__none__';
+        map.get(k)!.items.push(s);
+      });
+      return Array.from(map.values()).filter(g => g.items.length > 0);
+    }
+    const map = new Map<string, Group>();
+    filtered.forEach(s => {
+      const name = getTypeName(s.service_type_id);
+      if (!map.has(name)) map.set(name, { key: name, title: name, items: [] });
+      map.get(name)!.items.push(s);
+    });
+    return Array.from(map.values()).sort((a, b) => a.title.localeCompare(b.title));
+  }, [filtered, projects, groupBy, getTypeName]);
 
   if (services.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500">
-        No services in your catalog.
+      <div className="bg-white rounded-xl border border-dashed border-gray-300 p-12 text-center">
+        <LayoutGrid className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+        <p className="text-gray-500 text-sm">No services in your catalog yet.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-10">
-      {grouped.map(({ project, items }) => (
-        <section key={project?.id || 'none'}>
-          <div className="flex items-center gap-2 mb-4">
-            <FolderOpen className="w-4 h-4 text-blue-600" />
-            <h2 className="text-base font-semibold text-gray-900">{project?.name || 'Standalone Services'}</h2>
-            {project?.status && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">{project.status}</span>
-            )}
-          </div>
-          {project?.description && <p className="text-sm text-gray-600 mb-4 -mt-2">{project.description}</p>}
-          <div className="space-y-4">
-            {items.map(s => (
-              <ServiceSheet
-                key={s.id}
-                service={s}
-                typeName={getTypeName(s.service_type_id)}
-                projectName={getProjectName(s.project_id)}
-                expanded={expandedService === s.id}
-                onToggle={() => setExpandedService(expandedService === s.id ? null : s.id)}
-              />
-            ))}
-          </div>
-        </section>
-      ))}
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col md:flex-row gap-3 md:items-center">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="Search services, providers, locations..."
+            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          />
+        </div>
+        <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 text-xs font-medium">
+          {(['all', 'Active', 'Other'] as const).map(key => (
+            <button key={key} onClick={() => setStatusFilter(key)}
+              className={`px-3 py-1.5 rounded-md transition-colors ${statusFilter === key ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+              {key === 'all' ? 'All' : key === 'Active' ? 'Active' : 'Other'}
+            </button>
+          ))}
+        </div>
+        <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 text-xs font-medium">
+          <button onClick={() => setGroupBy('project')}
+            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-md transition-colors ${groupBy === 'project' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+            <FolderOpen className="w-3.5 h-3.5" /> By project
+          </button>
+          <button onClick={() => setGroupBy('type')}
+            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-md transition-colors ${groupBy === 'type' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+            <LayoutGrid className="w-3.5 h-3.5" /> By type
+          </button>
+        </div>
+        <div className="text-xs text-gray-500 whitespace-nowrap">{filtered.length} of {services.length}</div>
+      </div>
+
+      {groups.length === 0 ? (
+        <div className="bg-white rounded-xl border border-dashed border-gray-300 p-10 text-center">
+          <Search className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+          <p className="text-sm text-gray-500">No services match your filters.</p>
+        </div>
+      ) : groups.map(g => {
+        const subtotal = g.items.reduce((sum, s) => sum + (s.status === 'Active' ? serviceMonthlyTotal(s) : 0), 0);
+        const subtotalCurrency = g.items.find(s => s.status === 'Active')?.currency;
+        const HeaderIcon = groupBy === 'project' ? FolderOpen : LayoutGrid;
+        return (
+          <section key={g.key} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <header className="px-6 py-4 bg-gradient-to-r from-slate-50 to-white border-b border-gray-200 flex items-center gap-3 flex-wrap">
+              <HeaderIcon className="w-4 h-4 text-blue-600" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-base font-semibold text-gray-900">{g.title}</h2>
+                  {g.status && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">{g.status}</span>
+                  )}
+                </div>
+                {g.subtitle && <p className="text-xs text-gray-600 mt-0.5">{g.subtitle}</p>}
+              </div>
+              {subtotal > 0 && subtotalCurrency && (
+                <div className="text-right">
+                  <div className="text-[10px] uppercase tracking-wider text-gray-500">Monthly Subtotal</div>
+                  <div className="text-sm font-bold text-emerald-700">
+                    {subtotalCurrency} {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+              )}
+              <span className="text-xs text-gray-500">{g.items.length} {g.items.length === 1 ? 'service' : 'services'}</span>
+            </header>
+            <div className="divide-y divide-gray-100">
+              {g.items.map(s => (
+                <ServiceSheet
+                  key={s.id}
+                  service={s}
+                  typeName={getTypeName(s.service_type_id)}
+                  projectName={getProjectName(s.project_id)}
+                  expanded={expandedService === s.id}
+                  onToggle={() => setExpandedService(expandedService === s.id ? null : s.id)}
+                />
+              ))}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -405,46 +491,57 @@ function ServiceSheet({
 }) {
   const title = service.business_name || service.name;
   const desc = service.business_description || service.description;
+  const isActive = service.status === 'Active';
+  const statusStyle =
+    service.status === 'Suspended' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+    service.status === 'Cancelled' ? 'bg-red-50 text-red-700 border-red-200' :
+    service.status === 'Pending' ? 'bg-slate-50 text-slate-700 border-slate-200' :
+    'bg-emerald-50 text-emerald-700 border-emerald-200';
 
   return (
-    <article className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-      <div className="px-6 py-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="flex items-start gap-3 flex-1 min-w-0">
-            <div className="p-2 rounded-lg bg-blue-50">
-              <Server className="w-5 h-5 text-blue-600" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-gray-900 text-lg">{title}</h3>
-              <div className="flex items-center gap-2 flex-wrap mt-1">
-                <span className="text-xs text-gray-500">{typeName}</span>
-                {service.sla_level && (
-                  <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full font-medium">SLA: {service.sla_level}</span>
-                )}
-              </div>
-              {desc && <p className="text-sm text-gray-600 mt-2 leading-relaxed">{desc}</p>}
-            </div>
+    <article className={`px-6 py-5 transition-colors ${isActive ? 'hover:bg-slate-50' : 'bg-gray-50/60'}`}>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-3 flex-1 min-w-0">
+          <div className={`p-2 rounded-lg ${isActive ? 'bg-blue-50' : 'bg-gray-100'}`}>
+            <Server className={`w-5 h-5 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} />
           </div>
-          <PriceTag service={service} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className={`font-semibold text-lg ${isActive ? 'text-gray-900' : 'text-gray-600'}`}>{title}</h3>
+              {!isActive && (
+                <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full border font-semibold ${statusStyle}`}>
+                  {service.status}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap mt-1">
+              <span className="text-xs text-gray-500">{typeName}</span>
+            </div>
+            {desc && <p className="text-sm text-gray-600 mt-2 leading-relaxed">{desc}</p>}
+          </div>
         </div>
-
-        {/* Includes / Excludes / Responsibilities */}
-        {(service.includes?.length || service.excludes?.length || service.client_responsibilities?.length) ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
-            <ListCard title="Includes" icon={Check} color="emerald" items={service.includes || []} />
-            <ListCard title="Not Included" icon={MinusCircle} color="slate" items={service.excludes || []} />
-            <ListCard title="Client Responsibilities" icon={Info} color="blue" items={service.client_responsibilities || []} />
-          </div>
-        ) : null}
-
-        <button onClick={onToggle}
-          className="mt-5 inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium">
-          {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          Technical details
-        </button>
+        <PriceTag service={service} />
       </div>
 
-      {expanded && <TechnicalDetails service={service} />}
+      {(service.includes?.length || service.excludes?.length || service.client_responsibilities?.length) ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
+          <ListCard title="Includes" icon={Check} color="emerald" items={service.includes || []} />
+          <ListCard title="Not Included" icon={MinusCircle} color="slate" items={service.excludes || []} />
+          <ListCard title="Client Responsibilities" icon={Info} color="blue" items={service.client_responsibilities || []} />
+        </div>
+      ) : null}
+
+      <button onClick={onToggle}
+        className="mt-5 inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium">
+        {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        Technical details
+      </button>
+
+      {expanded && (
+        <div className="mt-4 -mx-6 -mb-5">
+          <TechnicalDetails service={service} />
+        </div>
+      )}
     </article>
   );
 }
@@ -476,40 +573,47 @@ function ListCard({ title, icon: Icon, color, items }: { title: string; icon: an
 
 function TechnicalDetails({ service }: { service: Service }) {
   const specs = service.specifications || {};
+  const hasSpecs = !!(specs.cpu || specs.ram || specs.storage || specs.bandwidth);
+  const renewal = service.next_renewal_date ? new Date(service.next_renewal_date).toLocaleDateString() : '--';
   return (
     <div className="bg-slate-50 border-t border-gray-100 px-6 py-5">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-        {service.provider && <Field icon={Globe} label="Provider" value={service.provider} />}
-        {service.location && <Field icon={MapPin} label="Location" value={service.location} />}
-        {service.confirmed_hours_monthly != null && (
-          <Field icon={Clock} label="Monthly Hours" value={`${service.confirmed_hours_monthly}h`} />
-        )}
-        {service.infrastructure_type && (
-          <Field icon={Shield} label="Infrastructure" value={service.infrastructure_type} />
-        )}
-        {service.cloud_provider && <Field icon={Globe} label="Cloud" value={service.cloud_provider} />}
-        {service.cloud_account_payer && <Field icon={FileText} label="Cloud Payer" value={service.cloud_account_payer} />}
+        <Field icon={Shield} label="SLA" value={service.sla_level || '--'} />
+        <Field icon={Globe} label="Provider" value={service.provider || '--'} />
+        <Field icon={MapPin} label="Location" value={service.location || '--'} />
+        <Field icon={Shield} label="Infrastructure" value={service.infrastructure_type || '--'} />
+        <Field icon={Globe} label="Cloud" value={service.cloud_provider || '--'} />
+        <Field icon={Clock} label="Monthly Hours" value={service.confirmed_hours_monthly != null ? `${service.confirmed_hours_monthly}h` : '--'} />
+        <Field icon={Calendar} label="Next Renewal" value={renewal} />
+        <Field icon={FileText} label="Billing" value={`${service.price} ${service.currency} / ${service.billing_cycle}`} />
       </div>
 
-      {(specs.cpu || specs.ram || specs.storage || specs.bandwidth) && (
-        <div className="mt-4 pt-4 border-t border-gray-200 flex flex-wrap gap-2">
-          {specs.cpu && <Spec icon={Cpu} label={specs.cpu} />}
-          {specs.ram && <Spec icon={Server} label={`${specs.ram} RAM`} />}
-          {specs.storage && <Spec icon={HardDrive} label={specs.storage} />}
-          {specs.bandwidth && <Spec icon={Wifi} label={specs.bandwidth} />}
-        </div>
-      )}
+      <div className="mt-4 pt-4 border-t border-gray-200">
+        <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Specifications</div>
+        {hasSpecs ? (
+          <div className="flex flex-wrap gap-2">
+            {specs.cpu && <Spec icon={Cpu} label={specs.cpu} />}
+            {specs.ram && <Spec icon={Server} label={`${specs.ram} RAM`} />}
+            {specs.storage && <Spec icon={HardDrive} label={specs.storage} />}
+            {specs.bandwidth && <Spec icon={Wifi} label={specs.bandwidth} />}
+          </div>
+        ) : (
+          <span className="text-sm text-gray-400">--</span>
+        )}
+      </div>
 
-      {service.managed_roles && service.managed_roles.length > 0 && (
-        <div className="mt-4 pt-4 border-t border-gray-200">
-          <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Managed Roles</div>
+      <div className="mt-4 pt-4 border-t border-gray-200">
+        <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Managed Roles</div>
+        {service.managed_roles && service.managed_roles.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {(service.managed_roles as ManagedRole[]).map(r => (
               <span key={r} className="text-xs bg-teal-50 text-teal-700 px-2.5 py-1 rounded-full font-medium border border-teal-100">{r}</span>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <span className="text-sm text-gray-400">--</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -517,15 +621,17 @@ function TechnicalDetails({ service }: { service: Service }) {
 function PriceTag({ service }: { service: Service }) {
   const hours = service.confirmed_hours_monthly;
   const isHourly = !!(hours && hours > 0);
-  const total = servicePeriodTotal(service);
+  const monthly = serviceMonthlyTotal(service);
+  const annual = monthly * 12;
   const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return (
     <div className="flex flex-col items-end">
       <div className="inline-flex items-baseline gap-1 bg-gradient-to-br from-emerald-600 to-emerald-700 text-white rounded-xl px-4 py-3 shadow-sm">
         <span className="text-sm font-semibold opacity-90">{service.currency}</span>
-        <span className="text-2xl md:text-3xl font-bold tracking-tight">{fmt(total)}</span>
+        <span className="text-2xl md:text-3xl font-bold tracking-tight">{fmt(monthly)}</span>
       </div>
-      <div className="text-xs text-gray-500 mt-1 font-medium">per {service.billing_cycle.toLowerCase()}</div>
+      <div className="text-xs text-gray-500 mt-1 font-medium">per month</div>
+      <div className="text-xs text-gray-400 mt-0.5">{service.currency} {fmt(annual)} / year</div>
       {isHourly && (
         <div className="text-xs text-gray-500 mt-0.5">
           {hours}h / month &middot; {service.currency} {fmt(service.price)}/hr
