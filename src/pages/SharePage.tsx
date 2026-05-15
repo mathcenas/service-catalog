@@ -527,7 +527,7 @@ function ServiceSheet({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
           <ListCard title="Includes" icon={Check} color="emerald" items={service.includes || []} />
           <ListCard title="Not Included" icon={MinusCircle} color="slate" items={service.excludes || []} />
-          <ListCard title="Client Responsibilities" icon={Info} color="blue" items={service.client_responsibilities || []} />
+          <ListCard title="What You Manage" icon={Info} color="blue" items={service.client_responsibilities || []} />
         </div>
       ) : null}
 
@@ -586,6 +586,24 @@ function TechnicalDetails({ service }: { service: Service }) {
         <Field icon={Clock} label="Monthly Hours" value={service.confirmed_hours_monthly != null ? `${service.confirmed_hours_monthly}h` : '--'} />
         <Field icon={Calendar} label="Next Renewal" value={renewal} />
         <Field icon={FileText} label="Billing" value={`${service.price} ${service.currency} / ${service.billing_cycle}`} />
+      </div>
+
+      <div className="mt-4 pt-4 border-t border-gray-200">
+        <div className="text-xs uppercase tracking-wider text-gray-500 mb-3">Recovery & Maintenance</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="bg-white rounded-lg border border-gray-200 p-3">
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">RTO (Recovery Time)</div>
+            <div className="text-sm font-medium text-gray-900">{service.rto || '--'}</div>
+          </div>
+          <div className="bg-white rounded-lg border border-gray-200 p-3">
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">RPO (Data Recovery)</div>
+            <div className="text-sm font-medium text-gray-900">{service.rpo || '--'}</div>
+          </div>
+          <div className="bg-white rounded-lg border border-gray-200 p-3">
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Maintenance Window</div>
+            <div className="text-sm font-medium text-gray-900">{service.maintenance_window || '--'}</div>
+          </div>
+        </div>
       </div>
 
       <div className="mt-4 pt-4 border-t border-gray-200">
@@ -709,6 +727,41 @@ function ChangesSection({ changes, services }: { changes: ServiceChange[]; servi
 
 /* ---------- Support / Incident form (UI only, not wired) ---------- */
 
+function StatusOverview({ services }: { services: Service[] }) {
+  const monitored = services.filter(s => s.status === 'Active' && s.uptime_badge_url);
+  if (monitored.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 shadow-sm">
+      <div className="flex items-center gap-2 mb-4">
+        <Shield className="w-4 h-4 text-emerald-600" />
+        <h3 className="text-sm font-semibold text-gray-900">System Status</h3>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {monitored.map(s => (
+          <div key={s.id} className="flex items-center gap-3 bg-slate-50 rounded-lg border border-gray-100 px-3 py-2.5">
+            <img
+              src={s.uptime_badge_url}
+              alt={`${s.business_name || s.name} status`}
+              className="h-5"
+              loading="lazy"
+            />
+            <div className="flex-1 min-w-0">
+              <span className="text-xs font-medium text-gray-800 truncate block">{s.business_name || s.name}</span>
+            </div>
+            {s.uptime_status_url && (
+              <a href={s.uptime_status_url} target="_blank" rel="noopener noreferrer"
+                className="text-[10px] text-blue-600 hover:text-blue-700 font-medium whitespace-nowrap">
+                Live status
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SupportSection({ clientName, services }: { clientName: string; services: Service[] }) {
   const [serviceId, setServiceId] = useState('');
   const [priority, setPriority] = useState<'Low' | 'Medium' | 'High' | 'Critical'>('Medium');
@@ -726,6 +779,7 @@ function SupportSection({ clientName, services }: { clientName: string; services
 
   return (
     <section className="max-w-2xl">
+      <StatusOverview services={services} />
       <div className="flex items-center gap-2 mb-2">
         <Mail className="w-5 h-5 text-blue-600" />
         <h2 className="text-lg font-semibold text-gray-900">Request Support</h2>

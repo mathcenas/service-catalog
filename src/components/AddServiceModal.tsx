@@ -36,6 +36,9 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
     client_responsibilities: '',
     uptime_badge_url: '',
     uptime_status_url: '',
+    rto: '',
+    rpo: '',
+    maintenance_window: '',
     paid_by: '' as '' | PaidBy,
     payment_card_last4: '',
   });
@@ -112,6 +115,9 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
       client_responsibilities: splitLines(formData.client_responsibilities),
       uptime_badge_url: formData.uptime_badge_url || null,
       uptime_status_url: formData.uptime_status_url || null,
+      rto: formData.rto || null,
+      rpo: formData.rpo || null,
+      maintenance_window: formData.maintenance_window || null,
       paid_by: formData.paid_by || null,
       payment_card_last4: formData.payment_card_last4 ? formData.payment_card_last4.slice(-4) : null,
     });
@@ -209,6 +215,24 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
                   {OPERATIONAL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">RTO (Recovery Time)</label>
+                <input type="text" value={formData.rto} onChange={e => set('rto', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  placeholder="e.g., 4 hours" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">RPO (Data Recovery)</label>
+                <input type="text" value={formData.rpo} onChange={e => set('rpo', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  placeholder="e.g., 24 hours" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Maintenance Window</label>
+                <input type="text" value={formData.maintenance_window} onChange={e => set('maintenance_window', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  placeholder="e.g., Sundays 02:00-04:00 UTC" />
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

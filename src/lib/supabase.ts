@@ -107,6 +107,9 @@ export type Service = {
   operational_status?: OperationalStatus;
   uptime_badge_url?: string;
   uptime_status_url?: string;
+  rto?: string;
+  rpo?: string;
+  maintenance_window?: string;
   paid_by?: PaidBy;
   payment_card_last4?: string;
   created_at: string;
