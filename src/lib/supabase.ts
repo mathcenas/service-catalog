@@ -112,6 +112,9 @@ export type Service = {
   rpo?: string;
   maintenance_window?: string;
   last_backup_at?: string;
+  storage_used_pct?: number;
+  ram_used_pct?: number;
+  resource_updated_at?: string;
   paid_by?: PaidBy;
   payment_card_last4?: string;
   created_at: string;

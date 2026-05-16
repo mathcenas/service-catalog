@@ -649,6 +649,25 @@ function TechnicalDetails({ service }: { service: Service }) {
         </div>
       </div>
 
+      {(service.storage_used_pct != null || service.ram_used_pct != null) && (
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-xs uppercase tracking-wider text-gray-500">Resource Usage</div>
+            {service.resource_updated_at && (
+              <div className="text-[10px] text-gray-400">Updated {formatTimeAgo(service.resource_updated_at)}</div>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {service.storage_used_pct != null && (
+              <ResourceBar label="Storage" pct={service.storage_used_pct} icon={HardDrive} />
+            )}
+            {service.ram_used_pct != null && (
+              <ResourceBar label="RAM" pct={service.ram_used_pct} icon={Server} />
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="mt-4 pt-4 border-t border-gray-200">
         <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Specifications</div>
         {hasSpecs ? (
@@ -714,6 +733,26 @@ function Field({ icon: Icon, label, value }: { icon: any; label: string; value: 
         <Icon className="w-3 h-3" /> {label}
       </div>
       <div className="font-medium text-gray-900">{value}</div>
+    </div>
+  );
+}
+
+function ResourceBar({ label, pct, icon: Icon }: { label: string; pct: number; icon: any }) {
+  const clamped = Math.max(0, Math.min(100, pct));
+  const barColor = clamped >= 90 ? 'bg-red-500' : clamped >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
+  const textColor = clamped >= 90 ? 'text-red-700' : clamped >= 80 ? 'text-amber-700' : 'text-gray-700';
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5">
+          <Icon className="w-3.5 h-3.5 text-gray-500" />
+          <span className="text-xs font-medium text-gray-600">{label}</span>
+        </div>
+        <span className={`text-xs font-semibold ${textColor}`}>{Math.round(clamped)}%</span>
+      </div>
+      <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${clamped}%` }} />
+      </div>
     </div>
   );
 }
