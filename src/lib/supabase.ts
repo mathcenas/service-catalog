@@ -28,6 +28,7 @@ export type ServiceType = {
   name: string;
   description?: string;
   icon?: string;
+  is_revenue: boolean;
   created_at: string;
 };
 
@@ -138,6 +139,15 @@ export type RoadmapStatus = 'Planned' | 'In Progress' | 'Next Release' | 'Releas
 
 export const ROADMAP_STATUSES: RoadmapStatus[] = ['Planned', 'In Progress', 'Next Release', 'Released'];
 
+export type RoadmapCategory = 'idea' | 'payment' | 'backup' | 'visit';
+
+export const ROADMAP_CATEGORIES: { value: RoadmapCategory; label: string }[] = [
+  { value: 'idea', label: 'New Service / Idea' },
+  { value: 'payment', label: 'Pending Payment' },
+  { value: 'backup', label: 'Backup Integration' },
+  { value: 'visit', label: 'Visit / Coordination' },
+];
+
 export type RoadmapItem = {
   id: string;
   user_id: string;
@@ -145,6 +155,10 @@ export type RoadmapItem = {
   description?: string;
   eta?: string;
   status: RoadmapStatus;
+  category: RoadmapCategory;
+  requested_by?: string;
+  service_id?: string;
+  amount?: number;
   sort_order: number;
   is_public: boolean;
   created_at: string;

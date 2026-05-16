@@ -75,8 +75,9 @@ export function Dashboard() {
     const activeClients = clients.filter(c => c.status === 'Active').length;
     const activeServices = services.filter(s => s.status === 'Active').length;
 
+    const revenueTypeIds = new Set((typesData || []).filter(t => t.is_revenue).map(t => t.id));
     const monthlyRevenue = services
-      .filter(s => s.status === 'Active')
+      .filter(s => s.status === 'Active' && revenueTypeIds.has(s.service_type_id))
       .reduce((sum, s) => {
         const months = s.billing_cycle === 'Monthly' ? 1 :
                        s.billing_cycle === 'Quarterly' ? 3 :

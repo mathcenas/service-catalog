@@ -5,7 +5,7 @@ import {
   Cpu, HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X, Check, MinusCircle, LayoutGrid,
   Sparkles, Rocket, DollarSign, Search,
 } from 'lucide-react';
-import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus } from '../lib/supabase';
+import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapCategory } from '../lib/supabase';
 
 type Props = { token: string };
 
@@ -309,6 +309,13 @@ function ComingSoonSection({ roadmap, nextRelease }: { roadmap: RoadmapItem[]; n
   );
 }
 
+const CATEGORY_LABELS: Record<RoadmapCategory, string> = {
+  idea: 'New Service',
+  payment: 'Pending Payment',
+  backup: 'Backup Integration',
+  visit: 'Visit / Coordination',
+};
+
 function RoadmapCard({ item }: { item: RoadmapItem }) {
   const meta = ROADMAP_META[item.status];
   const Icon = meta.icon;
@@ -320,6 +327,11 @@ function RoadmapCard({ item }: { item: RoadmapItem }) {
             <Icon className={`w-4 h-4 ${meta.color}`} />
           </div>
           <span className={`text-xs font-semibold uppercase tracking-wider ${meta.color}`}>{meta.label}</span>
+          {item.category && item.category !== 'idea' && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">
+              {CATEGORY_LABELS[item.category]}
+            </span>
+          )}
         </div>
         {item.eta && (
           <span className="text-xs text-gray-500 inline-flex items-center gap-1">
@@ -329,6 +341,9 @@ function RoadmapCard({ item }: { item: RoadmapItem }) {
       </div>
       <h4 className="font-semibold text-gray-900 mb-1">{item.title}</h4>
       {item.description && <p className="text-sm text-gray-600 leading-relaxed">{item.description}</p>}
+      {item.requested_by && (
+        <div className="text-xs text-gray-500 mt-2">Requested by {item.requested_by}</div>
+      )}
     </article>
   );
 }
