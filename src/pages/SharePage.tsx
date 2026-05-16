@@ -3,7 +3,7 @@ import {
   Server, Globe, Calendar, Clock, MapPin, Shield, CheckCircle2,
   FolderOpen, History, FileText, Send, Info,
   Cpu, HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X, Check, MinusCircle, LayoutGrid,
-  Sparkles, Rocket, DollarSign, Search,
+  Sparkles, Rocket, DollarSign, Search, Cloud, Wrench,
 } from 'lucide-react';
 import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapCategory, ClientLicense } from '../lib/supabase';
 
@@ -704,6 +704,13 @@ function PriceTag({ service }: { service: Service }) {
   const monthly = serviceMonthlyTotal(service);
   const annual = monthly * 12;
   const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const infraCost = service.infrastructure_cost || 0;
+  const allocHours = service.allocated_hours || 0;
+  const extraRate = service.extra_hour_rate || 0;
+  const hasBreakdown = infraCost > 0 || allocHours > 0;
+  const maintenanceCost = hasBreakdown ? (monthly - infraCost) : 0;
+
   return (
     <div className="flex flex-col items-end">
       <div className="inline-flex items-baseline gap-1 bg-gradient-to-br from-emerald-600 to-emerald-700 text-white rounded-xl px-4 py-3 shadow-sm">
@@ -711,12 +718,38 @@ function PriceTag({ service }: { service: Service }) {
         <span className="text-2xl md:text-3xl font-bold tracking-tight">{fmt(monthly)}</span>
       </div>
       <div className="text-xs text-gray-500 mt-1 font-medium">per month</div>
-      <div className="text-xs text-gray-400 mt-0.5">{service.currency} {fmt(annual)} / year</div>
-      {isHourly && (
+
+      {hasBreakdown && (
+        <div className="mt-2 text-right space-y-0.5 border-t border-gray-100 pt-2">
+          {infraCost > 0 && (
+            <div className="text-xs text-gray-500 flex items-center justify-end gap-1.5">
+              <Cloud className="w-3 h-3" />
+              <span>Infra: {service.currency} {fmt(infraCost)}</span>
+            </div>
+          )}
+          {allocHours > 0 && (
+            <div className="text-xs text-gray-500 flex items-center justify-end gap-1.5">
+              <Wrench className="w-3 h-3" />
+              <span>Maint. ({allocHours}h): {service.currency} {fmt(maintenanceCost)}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="text-xs text-gray-400 mt-1.5">{service.currency} {fmt(annual)} / year</div>
+
+      {extraRate > 0 && (
+        <div className="text-xs text-gray-500 mt-0.5">
+          Extra hr: {service.currency} {fmt(extraRate)}/hr
+        </div>
+      )}
+
+      {!hasBreakdown && isHourly && (
         <div className="text-xs text-gray-500 mt-0.5">
           {hours}h / month &middot; {service.currency} {fmt(service.price)}/hr
         </div>
       )}
+
       {service.next_renewal_date && (
         <div className="text-xs text-gray-400 mt-0.5 inline-flex items-center gap-1">
           <Calendar className="w-3 h-3" /> Renews {new Date(service.next_renewal_date).toLocaleDateString()}

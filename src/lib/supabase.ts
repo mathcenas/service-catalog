@@ -115,6 +115,9 @@ export type Service = {
   storage_used_pct?: number;
   ram_used_pct?: number;
   resource_updated_at?: string;
+  infrastructure_cost?: number;
+  allocated_hours?: number;
+  extra_hour_rate?: number;
   paid_by?: PaidBy;
   payment_card_last4?: string;
   created_at: string;
