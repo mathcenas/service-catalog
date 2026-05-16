@@ -166,6 +166,23 @@ export type RoadmapItem = {
   updated_at: string;
 };
 
+export type ClientLicense = {
+  id: string;
+  user_id: string;
+  client_id: string;
+  service_id?: string;
+  software_name: string;
+  license_key?: string;
+  quantity: number;
+  quantity_label: string;
+  expiration_date?: string;
+  billing_cycle: string;
+  cost?: number;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ShareToken = {
   id: string;
   user_id: string;

@@ -5,11 +5,11 @@ import {
   Cpu, HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X, Check, MinusCircle, LayoutGrid,
   Sparkles, Rocket, DollarSign, Search,
 } from 'lucide-react';
-import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapCategory } from '../lib/supabase';
+import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapCategory, ClientLicense } from '../lib/supabase';
 
 type Props = { token: string };
 
-type Section = 'overview' | 'catalog' | 'changes' | 'support';
+type Section = 'overview' | 'catalog' | 'licenses' | 'changes' | 'support';
 
 function billingCycleMonths(cycle: string): number {
   return cycle === 'Monthly' ? 1
@@ -62,6 +62,7 @@ export function SharePage({ token }: Props) {
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [changes, setChanges] = useState<ServiceChange[]>([]);
   const [roadmap, setRoadmap] = useState<RoadmapItem[]>([]);
+  const [licenses, setLicenses] = useState<ClientLicense[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [section, setSection] = useState<Section>('overview');
@@ -102,6 +103,13 @@ export function SharePage({ token }: Props) {
           .order('change_date', { ascending: false });
         setChanges(changesData || []);
       }
+
+      const { data: licensesData } = await supabase
+        .from('client_licenses')
+        .select('id, client_id, service_id, software_name, quantity, quantity_label, expiration_date, billing_cycle, created_at, updated_at')
+        .eq('client_id', tokenRow.client_id)
+        .order('expiration_date', { ascending: true, nullsFirst: false });
+      setLicenses(licensesData || []);
 
       setLoading(false);
     };
@@ -193,6 +201,7 @@ export function SharePage({ token }: Props) {
         <div className="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto">
           <NavBtn icon={Sparkles} active={section === 'overview'} onClick={() => setSection('overview')}>What's Coming</NavBtn>
           <NavBtn icon={LayoutGrid} active={section === 'catalog'} onClick={() => setSection('catalog')}>Service Catalog</NavBtn>
+          <NavBtn icon={Shield} active={section === 'licenses'} onClick={() => setSection('licenses')}>Licenses</NavBtn>
           <NavBtn icon={History} active={section === 'changes'} onClick={() => setSection('changes')}>Change Log</NavBtn>
           <NavBtn icon={Mail} active={section === 'support'} onClick={() => setSection('support')}>Request Support</NavBtn>
         </div>
@@ -211,6 +220,8 @@ export function SharePage({ token }: Props) {
             setExpandedService={setExpandedService}
           />
         )}
+
+        {section === 'licenses' && <LicensesSection licenses={licenses} services={services} />}
 
         {section === 'changes' && <ChangesSection changes={changes} services={services} />}
 
@@ -712,6 +723,85 @@ function Spec({ icon: Icon, label }: { icon: any; label: string }) {
     <div className="flex items-center gap-1.5 text-sm bg-white border border-gray-200 px-3 py-1.5 rounded-lg">
       <Icon className="w-3.5 h-3.5 text-gray-500" />
       <span className="text-gray-700">{label}</span>
+    </div>
+  );
+}
+
+/* ---------- Licenses & Subscriptions ---------- */
+
+function LicensesSection({ licenses, services }: { licenses: ClientLicense[]; services: Service[] }) {
+  const getServiceName = (id?: string) => id ? services.find(s => s.id === id)?.business_name || services.find(s => s.id === id)?.name : null;
+
+  const daysUntilExpiry = (date?: string) => {
+    if (!date) return null;
+    return Math.ceil((new Date(date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  };
+
+  if (licenses.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-dashed border-gray-300 p-10 text-center">
+        <Shield className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+        <p className="text-sm text-gray-500">No active licenses or subscriptions.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 mb-2">
+        <Shield className="w-5 h-5 text-blue-600" />
+        <h2 className="text-lg font-semibold text-gray-900">Active Licenses & Subscriptions</h2>
+      </div>
+      <p className="text-sm text-gray-600 mb-4">
+        Software and subscriptions managed as part of your service agreement.
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {licenses.map(lic => {
+          const days = daysUntilExpiry(lic.expiration_date);
+          const isExpiring = days !== null && days >= 0 && days <= 30;
+          const isExpired = days !== null && days < 0;
+          const borderColor = isExpired ? 'border-red-200' : isExpiring ? 'border-amber-200' : 'border-gray-200';
+          const linkedService = getServiceName(lic.service_id);
+
+          return (
+            <div key={lic.id} className={`bg-white rounded-xl border ${borderColor} p-5 shadow-sm transition-shadow hover:shadow-md`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-semibold text-gray-900">{lic.software_name}</h4>
+                  {linkedService && (
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      Linked to: {linkedService}
+                    </div>
+                  )}
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-sm font-medium text-gray-900">
+                    {lic.quantity} {lic.quantity_label}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
+                <div className="text-xs text-gray-500">
+                  {lic.billing_cycle === 'Perpetual' ? 'Perpetual license' : `Billed ${lic.billing_cycle.toLowerCase()}`}
+                </div>
+                {days === null ? (
+                  <span className="text-xs text-gray-500 font-medium">No expiry</span>
+                ) : isExpired ? (
+                  <span className="text-xs font-semibold text-red-700 bg-red-50 px-2.5 py-1 rounded-full">Expired</span>
+                ) : isExpiring ? (
+                  <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full flex items-center gap-1">
+                    <Calendar className="w-3 h-3" /> Renews in {days}d
+                  </span>
+                ) : (
+                  <span className="text-xs text-gray-600 flex items-center gap-1">
+                    <Calendar className="w-3 h-3" /> {new Date(lic.expiration_date!).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
