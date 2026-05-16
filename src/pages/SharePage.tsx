@@ -20,6 +20,17 @@ function billingCycleMonths(cycle: string): number {
     : 0;
 }
 
+function formatTimeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 function servicePeriodTotal(service: Service): number {
   const hours = service.confirmed_hours_monthly;
   if (hours && hours > 0) {
@@ -618,6 +629,12 @@ function TechnicalDetails({ service }: { service: Service }) {
             <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Maintenance Window</div>
             <div className="text-sm font-medium text-gray-900">{service.maintenance_window || '--'}</div>
           </div>
+          {service.last_backup_at && (
+            <div className="bg-white rounded-lg border border-emerald-200 p-3">
+              <div className="text-[10px] uppercase tracking-wider text-emerald-600 mb-1">Last Backup</div>
+              <div className="text-sm font-medium text-gray-900">{formatTimeAgo(service.last_backup_at)}</div>
+            </div>
+          )}
         </div>
       </div>
 

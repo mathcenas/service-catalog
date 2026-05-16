@@ -111,6 +111,7 @@ export type Service = {
   rto?: string;
   rpo?: string;
   maintenance_window?: string;
+  last_backup_at?: string;
   paid_by?: PaidBy;
   payment_card_last4?: string;
   created_at: string;
