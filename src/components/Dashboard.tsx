@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText } from 'lucide-react';
+import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database } from 'lucide-react';
 import { supabase, Client, Service, Project, ServiceType } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { ClientList } from './ClientList';
@@ -12,6 +12,8 @@ import { ImportModal } from './ImportModal';
 import { PaymentsView } from './PaymentsView';
 import { RoadmapManager } from './RoadmapManager';
 import { LicenseManager } from './LicenseManager';
+import { TelemetryDashboard } from './TelemetryDashboard';
+import { DataExportImport } from './DataExportImport';
 
 type Stats = {
   totalClients: number;
@@ -24,7 +26,7 @@ type Stats = {
 
 export function Dashboard() {
   const { signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'projects' | 'services' | 'payments' | 'licenses' | 'roadmap'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'projects' | 'services' | 'payments' | 'licenses' | 'roadmap' | 'telemetry' | 'data'>('dashboard');
   const [stats, setStats] = useState<Stats>({
     totalClients: 0,
     activeClients: 0,
@@ -148,7 +150,7 @@ export function Dashboard() {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex gap-4 mb-8 border-b border-gray-200">
+        <div className="flex gap-4 mb-8 border-b border-gray-200 overflow-x-auto scrollbar-hide">
           <button
             onClick={() => setActiveTab('dashboard')}
             className={`px-4 py-2 font-medium border-b-2 transition-colors ${
@@ -221,6 +223,28 @@ export function Dashboard() {
           >
             <Rocket className="w-4 h-4" />
             Roadmap
+          </button>
+          <button
+            onClick={() => setActiveTab('telemetry')}
+            className={`flex items-center gap-1.5 px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === 'telemetry'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Activity className="w-4 h-4" />
+            Telemetry
+          </button>
+          <button
+            onClick={() => setActiveTab('data')}
+            className={`flex items-center gap-1.5 px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === 'data'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Database className="w-4 h-4" />
+            Data
           </button>
         </div>
 
@@ -421,6 +445,14 @@ export function Dashboard() {
 
         {activeTab === 'roadmap' && (
           <RoadmapManager />
+        )}
+
+        {activeTab === 'telemetry' && (
+          <TelemetryDashboard services={services} clients={clients} />
+        )}
+
+        {activeTab === 'data' && (
+          <DataExportImport clients={clients} services={services} onRefresh={fetchData} />
         )}
       </div>
 

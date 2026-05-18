@@ -189,6 +189,17 @@ export type ClientLicense = {
   updated_at: string;
 };
 
+export type ServiceHeartbeat = {
+  id: string;
+  user_id: string;
+  service_id: string;
+  source: string;
+  payload: Record<string, unknown>;
+  status: 'ok' | 'warning' | 'error';
+  message?: string;
+  received_at: string;
+};
+
 export type ShareToken = {
   id: string;
   user_id: string;

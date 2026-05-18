@@ -98,7 +98,7 @@ export function LicenseManager({ clients, services }: Props) {
     setLicenses(prev => prev.filter(l => l.id !== id));
   };
 
-  const getClientName = (id: string) => clients.find(c => c.id === id)?.name || '--';
+  const getClientName = (id: string) => clients.find(c => c.id === id)?.company_name || '--';
   const getServiceName = (id?: string) => id ? services.find(s => s.id === id)?.business_name || services.find(s => s.id === id)?.name || '--' : null;
 
   const clientServices = useMemo(
@@ -152,7 +152,7 @@ export function LicenseManager({ clients, services }: Props) {
         <select value={filterClient} onChange={e => setFilterClient(e.target.value)}
           className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
           <option value="all">All Clients</option>
-          {clients.filter(c => c.status === 'Active').map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {clients.filter(c => c.status === 'Active').map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
         </select>
       </div>
 
@@ -170,7 +170,7 @@ export function LicenseManager({ clients, services }: Props) {
                   <select value={form.client_id} onChange={e => setForm({ ...form, client_id: e.target.value, service_id: '' })} required
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                     <option value="">Select client...</option>
-                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {clients.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
                   </select>
                 </div>
                 <div>
