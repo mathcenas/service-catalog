@@ -14,6 +14,7 @@ const COLUMN_KEYS = new Set([
   'provider',
   'server_ip',
   'login_url',
+  'reverse_proxy_domain',
   'location',
   'cloud_provider',
   'cloud_account_payer',
@@ -26,6 +27,7 @@ export const SERVICE_TYPE_FIELDS: Record<string, SpecField[]> = {
     { key: 'provider', label: 'Provider', kind: 'text', storage: 'column', placeholder: 'e.g., DigitalOcean, Hetzner' },
     { key: 'location', label: 'Region', kind: 'text', storage: 'column', placeholder: 'e.g., nyc1, eu-central' },
     { key: 'server_ip', label: 'IP Address', kind: 'text', storage: 'column', placeholder: 'e.g., 192.0.2.10' },
+    { key: 'reverse_proxy_domain', label: 'Domain / Reverse Proxy', kind: 'text', storage: 'column', placeholder: 'e.g., app.client.com' },
     { key: 'os', label: 'Operating System', kind: 'text', storage: 'spec', placeholder: 'e.g., Ubuntu 22.04 LTS' },
     { key: 'cpu', label: 'vCPU', kind: 'text', storage: 'spec', placeholder: 'e.g., 2 cores' },
     { key: 'ram', label: 'RAM', kind: 'text', storage: 'spec', placeholder: 'e.g., 4 GB' },
@@ -36,6 +38,7 @@ export const SERVICE_TYPE_FIELDS: Record<string, SpecField[]> = {
     { key: 'provider', label: 'Provider', kind: 'text', storage: 'column', placeholder: 'e.g., Hetzner, OVH' },
     { key: 'location', label: 'Datacenter / Rack', kind: 'text', storage: 'column', placeholder: 'e.g., FSN1 / Rack A12' },
     { key: 'server_ip', label: 'IP Address', kind: 'text', storage: 'column' },
+    { key: 'reverse_proxy_domain', label: 'Domain / Reverse Proxy', kind: 'text', storage: 'column', placeholder: 'e.g., erp.client.com' },
     { key: 'cpu_model', label: 'CPU Model', kind: 'text', storage: 'spec', placeholder: 'e.g., Xeon E-2236' },
     { key: 'ram', label: 'RAM', kind: 'text', storage: 'spec', placeholder: 'e.g., 64 GB ECC' },
     { key: 'storage', label: 'Storage', kind: 'text', storage: 'spec', placeholder: 'e.g., 2x 1TB NVMe RAID1' },
@@ -59,6 +62,8 @@ export const SERVICE_TYPE_FIELDS: Record<string, SpecField[]> = {
   ],
   'Web Hosting': [
     { key: 'provider', label: 'Provider', kind: 'text', storage: 'column', placeholder: 'e.g., SiteGround, Hostinger' },
+    { key: 'server_ip', label: 'IP Address', kind: 'text', storage: 'column', placeholder: 'e.g., 203.0.113.5' },
+    { key: 'reverse_proxy_domain', label: 'Domain / Reverse Proxy', kind: 'text', storage: 'column', placeholder: 'e.g., www.client.com' },
     { key: 'control_panel', label: 'Control Panel', kind: 'select', options: ['cPanel', 'Plesk', 'DirectAdmin', 'CyberPanel', 'Custom', 'None'], storage: 'spec' },
     { key: 'disk_space', label: 'Disk Space', kind: 'text', storage: 'spec', placeholder: 'e.g., 50 GB' },
     { key: 'bandwidth', label: 'Bandwidth', kind: 'text', storage: 'spec', placeholder: 'e.g., Unlimited' },
@@ -104,6 +109,8 @@ export const SERVICE_TYPE_FIELDS: Record<string, SpecField[]> = {
   'Managed Service': [
     { key: 'provider', label: 'Provider / Team', kind: 'text', storage: 'column' },
     { key: 'location', label: 'Location / Environment', kind: 'text', storage: 'column' },
+    { key: 'server_ip', label: 'IP Address', kind: 'text', storage: 'column', placeholder: 'e.g., 192.168.1.10' },
+    { key: 'reverse_proxy_domain', label: 'Domain / Reverse Proxy', kind: 'text', storage: 'column', placeholder: 'e.g., portal.client.com' },
   ],
 };
 

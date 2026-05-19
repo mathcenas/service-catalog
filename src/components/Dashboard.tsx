@@ -373,6 +373,62 @@ export function Dashboard() {
                 )}
               </div>
             </div>
+
+            {services.filter(s => s.status === 'Active').length > 0 && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100">
+                  <h3 className="text-lg font-semibold text-gray-900">Infrastructure Overview</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Quick reference for IPs, providers, and domains across active services.</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="text-left px-4 py-2.5 font-medium text-gray-600">Service</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-gray-600">Client</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-gray-600">IP</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-gray-600">Provider</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-gray-600">Domain / Proxy</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-gray-600">Type</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {services.filter(s => s.status === 'Active').map(svc => {
+                        const client = clients.find(c => c.id === svc.client_id);
+                        return (
+                          <tr key={svc.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-2.5">
+                              <div className="font-medium text-gray-900">{svc.business_name || svc.name}</div>
+                            </td>
+                            <td className="px-4 py-2.5 text-gray-600">{client?.company_name || '--'}</td>
+                            <td className="px-4 py-2.5">
+                              {svc.server_ip ? (
+                                <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono text-gray-800">{svc.server_ip}</code>
+                              ) : <span className="text-gray-400">--</span>}
+                            </td>
+                            <td className="px-4 py-2.5 text-gray-600">{svc.provider || svc.cloud_provider || '--'}</td>
+                            <td className="px-4 py-2.5">
+                              {svc.reverse_proxy_domain ? (
+                                <code className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-mono">{svc.reverse_proxy_domain}</code>
+                              ) : <span className="text-gray-400">--</span>}
+                            </td>
+                            <td className="px-4 py-2.5">
+                              {svc.infrastructure_type ? (
+                                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                                  svc.infrastructure_type === 'Cloud' ? 'bg-sky-50 text-sky-700' :
+                                  svc.infrastructure_type === 'Physical' ? 'bg-orange-50 text-orange-700' :
+                                  'bg-teal-50 text-teal-700'
+                                }`}>{svc.infrastructure_type}</span>
+                              ) : <span className="text-gray-400">--</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

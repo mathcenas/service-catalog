@@ -115,6 +115,7 @@ export type Service = {
   storage_used_pct?: number;
   ram_used_pct?: number;
   resource_updated_at?: string;
+  reverse_proxy_domain?: string;
   infrastructure_cost?: number;
   allocated_hours?: number;
   extra_hour_rate?: number;

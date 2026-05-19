@@ -101,6 +101,7 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
       provider: columnUpdates.provider ?? null,
       server_ip: columnUpdates.server_ip ?? null,
       login_url: columnUpdates.login_url ?? null,
+      reverse_proxy_domain: columnUpdates.reverse_proxy_domain ?? null,
       location: columnUpdates.location ?? null,
       cloud_provider: columnUpdates.cloud_provider ?? null,
       cloud_account_payer: columnUpdates.cloud_account_payer ?? null,

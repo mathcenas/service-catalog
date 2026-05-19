@@ -620,6 +620,7 @@ function TechnicalDetails({ service }: { service: Service }) {
         <Field icon={MapPin} label="Location" value={service.location || '--'} />
         <Field icon={Shield} label="Infrastructure" value={service.infrastructure_type || '--'} />
         <Field icon={Globe} label="Cloud" value={service.cloud_provider || '--'} />
+        <Field icon={Server} label="IP" value={service.server_ip || '--'} />
         <Field icon={Clock} label="Monthly Hours" value={service.confirmed_hours_monthly != null ? `${service.confirmed_hours_monthly}h` : '--'} />
         <Field icon={Calendar} label="Next Renewal" value={renewal} />
         <Field icon={FileText} label="Billing" value={`${service.price} ${service.currency} / ${service.billing_cycle}`} />
