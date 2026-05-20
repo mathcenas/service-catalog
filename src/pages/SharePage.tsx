@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Server, Globe, Calendar, Clock, MapPin, Shield, CheckCircle2,
   FolderOpen, History, FileText, Send, Info,
-  Cpu, HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X, Check, MinusCircle, LayoutGrid,
+  Cpu, HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X, Check, LayoutGrid,
   Sparkles, Rocket, DollarSign, Search, Cloud, Wrench,
 } from 'lucide-react';
 import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapCategory, ClientLicense } from '../lib/supabase';
@@ -174,23 +174,31 @@ export function SharePage({ token }: Props) {
               {client!.contact_name && <p className="text-slate-300 mt-1">{client!.contact_name}</p>}
             </div>
             <div className="inline-flex items-center gap-3 bg-white/10 backdrop-blur rounded-xl px-5 py-3 border border-white/10">
-              <div className="p-2 rounded-lg bg-emerald-500/20">
-                <DollarSign className="w-5 h-5 text-emerald-300" />
+              <div className="p-2 rounded-lg bg-blue-500/20">
+                <Shield className="w-5 h-5 text-blue-300" />
               </div>
               <div>
-                <div className="text-xs text-slate-300 uppercase tracking-wider">Monthly Equivalent</div>
+                <div className="text-xs text-slate-300 uppercase tracking-wider">Service Agreement</div>
                 <div className="text-2xl font-bold">
                   {primaryCurrency} {monthlyEquivalent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <span className="text-sm font-normal text-slate-400 ml-1">/mo</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Cost strip */}
+          {/* KPI strip */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8">
             <KpiCard label="Active Services" value={activeServices.length.toString()} />
             <KpiCard label={`Monthly (${primaryCurrency})`} value={monthlyEquivalent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} accent="emerald" />
-            <KpiCard label={`Annual (${primaryCurrency})`} value={(monthlyEquivalent * 12).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} accent="emerald" />
+            <KpiCard label="System Health" value={
+              activeServices.every(s => s.operational_status === 'Operational' || !s.operational_status) ? 'All Operational' :
+              activeServices.some(s => s.operational_status === 'Down') ? 'Degraded' :
+              activeServices.some(s => s.operational_status === 'Degraded') ? 'Partial' : 'Maintenance'
+            } accent={
+              activeServices.every(s => s.operational_status === 'Operational' || !s.operational_status) ? 'emerald' :
+              activeServices.some(s => s.operational_status === 'Down') ? 'red' : 'amber'
+            } />
             <KpiCard label="Upcoming Updates" value={roadmap.filter(r => r.status !== 'Released').length.toString()} accent="amber" />
           </div>
         </div>
@@ -544,7 +552,7 @@ function ServiceSheet({
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className={`font-semibold text-lg ${isActive ? 'text-gray-900' : 'text-gray-600'}`}>{title}</h3>
+              <h3 className={`font-bold text-xl ${isActive ? 'text-gray-900' : 'text-gray-600'}`}>{title}</h3>
               {!isActive && (
                 <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full border font-semibold ${statusStyle}`}>
                   {service.status}
@@ -562,16 +570,16 @@ function ServiceSheet({
 
       {(service.includes?.length || service.excludes?.length || service.client_responsibilities?.length) ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
-          <ListCard title="Includes" icon={Check} color="emerald" items={service.includes || []} />
-          <ListCard title="Not Included" icon={MinusCircle} color="slate" items={service.excludes || []} />
-          <ListCard title="What You Manage" icon={Info} color="blue" items={service.client_responsibilities || []} />
+          <ListCard title="What's Included" icon={Check} color="emerald" items={service.includes || []} />
+          <ListCard title="Ownership & Requirements" icon={FileText} color="slate" items={service.excludes || []} />
+          <ListCard title="Your Role" icon={Send} color="blue" items={service.client_responsibilities || []} />
         </div>
       ) : null}
 
       <button onClick={onToggle}
-        className="mt-5 inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium">
+        className="mt-5 inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium">
         {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-        Technical details
+        Service Scope &amp; Specs
       </button>
 
       {expanded && (
@@ -714,11 +722,11 @@ function PriceTag({ service }: { service: Service }) {
 
   return (
     <div className="flex flex-col items-end">
-      <div className="inline-flex items-baseline gap-1 bg-gradient-to-br from-emerald-600 to-emerald-700 text-white rounded-xl px-4 py-3 shadow-sm">
-        <span className="text-sm font-semibold opacity-90">{service.currency}</span>
-        <span className="text-2xl md:text-3xl font-bold tracking-tight">{fmt(monthly)}</span>
+      <div className="inline-flex items-baseline gap-1 bg-slate-800 text-white rounded-xl px-4 py-2.5 shadow-sm">
+        <span className="text-xs font-medium opacity-75">{service.currency}</span>
+        <span className="text-xl md:text-2xl font-bold tracking-tight">{fmt(monthly)}</span>
       </div>
-      <div className="text-xs text-gray-500 mt-1 font-medium">per month</div>
+      <div className="text-[11px] text-gray-500 mt-1 font-medium">per month</div>
 
       {hasBreakdown && (
         <div className="mt-2 text-right space-y-0.5 border-t border-gray-100 pt-2">
