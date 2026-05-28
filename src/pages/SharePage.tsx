@@ -3,7 +3,7 @@ import {
   Server, Globe, Calendar, Clock, MapPin, Shield, CheckCircle2,
   FolderOpen, History, FileText, Send, Info,
   Cpu, HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X, Check, LayoutGrid,
-  Sparkles, Rocket, DollarSign, Search, Cloud, Wrench,
+  Sparkles, Rocket, Search, Cloud, Wrench,
 } from 'lucide-react';
 import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapCategory, ClientLicense } from '../lib/supabase';
 
@@ -168,38 +168,47 @@ export function SharePage({ token }: Props) {
                 <div className="bg-blue-600 p-2 rounded-lg">
                   <Shield className="w-5 h-5 text-white" />
                 </div>
-                <span className="text-slate-300 text-xs font-semibold uppercase tracking-widest">IT Services Portal · ISO/IEC 20000</span>
+                <span className="text-slate-300 text-xs font-semibold uppercase tracking-widest">IT Services Portal</span>
               </div>
               <h1 className="text-3xl md:text-4xl font-bold">{client!.company_name}</h1>
               {client!.contact_name && <p className="text-slate-300 mt-1">{client!.contact_name}</p>}
             </div>
+            {/* Lead with status, not cost */}
             <div className="inline-flex items-center gap-3 bg-white/10 backdrop-blur rounded-xl px-5 py-3 border border-white/10">
-              <div className="p-2 rounded-lg bg-blue-500/20">
-                <Shield className="w-5 h-5 text-blue-300" />
+              <div className={`p-2 rounded-lg ${
+                activeServices.every(s => s.operational_status === 'Operational' || !s.operational_status)
+                  ? 'bg-emerald-500/20' : 'bg-amber-500/20'
+              }`}>
+                <CheckCircle2 className={`w-5 h-5 ${
+                  activeServices.every(s => s.operational_status === 'Operational' || !s.operational_status)
+                    ? 'text-emerald-300' : 'text-amber-300'
+                }`} />
               </div>
               <div>
-                <div className="text-xs text-slate-300 uppercase tracking-wider">Service Agreement</div>
-                <div className="text-2xl font-bold">
-                  {primaryCurrency} {monthlyEquivalent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  <span className="text-sm font-normal text-slate-400 ml-1">/mo</span>
+                <div className="text-xs text-slate-300 uppercase tracking-wider">Systems Status</div>
+                <div className="text-xl font-bold">
+                  {activeServices.every(s => s.operational_status === 'Operational' || !s.operational_status)
+                    ? 'All Systems Operational'
+                    : activeServices.some(s => s.operational_status === 'Down') ? 'Service Disruption'
+                    : 'Partial Maintenance'}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* KPI strip */}
+          {/* KPI strip: status first, cost last */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8">
-            <KpiCard label="Active Services" value={activeServices.length.toString()} />
-            <KpiCard label={`Monthly (${primaryCurrency})`} value={monthlyEquivalent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} accent="emerald" />
             <KpiCard label="System Health" value={
-              activeServices.every(s => s.operational_status === 'Operational' || !s.operational_status) ? 'All Operational' :
-              activeServices.some(s => s.operational_status === 'Down') ? 'Degraded' :
-              activeServices.some(s => s.operational_status === 'Degraded') ? 'Partial' : 'Maintenance'
+              activeServices.every(s => s.operational_status === 'Operational' || !s.operational_status) ? '100% Up' :
+              activeServices.some(s => s.operational_status === 'Down') ? 'Disruption' :
+              activeServices.some(s => s.operational_status === 'Degraded') ? 'Degraded' : 'Maintenance'
             } accent={
               activeServices.every(s => s.operational_status === 'Operational' || !s.operational_status) ? 'emerald' :
               activeServices.some(s => s.operational_status === 'Down') ? 'red' : 'amber'
             } />
+            <KpiCard label="Active Services" value={activeServices.length.toString()} />
             <KpiCard label="Upcoming Updates" value={roadmap.filter(r => r.status !== 'Released').length.toString()} accent="amber" />
+            <KpiCard label={`Investment (${primaryCurrency}/mo)`} value={monthlyEquivalent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} />
           </div>
         </div>
       </header>
@@ -211,7 +220,7 @@ export function SharePage({ token }: Props) {
           <NavBtn icon={LayoutGrid} active={section === 'catalog'} onClick={() => setSection('catalog')}>Service Catalog</NavBtn>
           <NavBtn icon={Shield} active={section === 'licenses'} onClick={() => setSection('licenses')}>Licenses</NavBtn>
           <NavBtn icon={History} active={section === 'changes'} onClick={() => setSection('changes')}>Change Log</NavBtn>
-          <NavBtn icon={Mail} active={section === 'support'} onClick={() => setSection('support')}>Request Support</NavBtn>
+          <NavBtn icon={Mail} active={section === 'support'} onClick={() => setSection('support')}>Contact Manager</NavBtn>
         </div>
       </nav>
 
@@ -253,11 +262,12 @@ function KpiCard({ label, value, accent = 'slate' }: { label: string; value: str
   const bg = accent === 'emerald' ? 'bg-emerald-500/20 text-emerald-200'
     : accent === 'amber' ? 'bg-amber-500/20 text-amber-200'
     : accent === 'red' ? 'bg-red-500/20 text-red-200'
-    : 'bg-slate-700/40 text-slate-200';
+    : 'bg-slate-700/30 text-slate-300';
+  const valueSize = accent === 'emerald' || accent === 'red' ? 'text-2xl font-bold' : 'text-xl font-semibold';
   return (
     <div className={`rounded-lg p-4 ${bg}`}>
       <div className="text-xs uppercase tracking-wider opacity-80 mb-1">{label}</div>
-      <div className="text-2xl font-bold text-white">{value}</div>
+      <div className={`${valueSize} text-white`}>{value}</div>
     </div>
   );
 }
@@ -498,9 +508,9 @@ function CatalogSection({
               </div>
               {subtotal > 0 && subtotalCurrency && (
                 <div className="text-right">
-                  <div className="text-[10px] uppercase tracking-wider text-gray-500">Monthly Subtotal</div>
-                  <div className="text-sm font-bold text-emerald-700">
-                    {subtotalCurrency} {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <div className="text-[10px] uppercase tracking-wider text-gray-400">Subtotal</div>
+                  <div className="text-sm font-medium text-gray-600">
+                    {subtotalCurrency} {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo
                   </div>
                 </div>
               )}
