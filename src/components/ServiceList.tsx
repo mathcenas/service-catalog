@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Server, CreditCard as Edit2, Trash2, Calendar, DollarSign, ExternalLink, History } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Server, CreditCard as Edit2, Trash2, Calendar, DollarSign, ExternalLink, History, Filter } from 'lucide-react';
 import { Service, Client, ServiceType, Project, supabase } from '../lib/supabase';
 import { EditServiceModal } from './EditServiceModal';
 import { ServiceChangesModal } from './ServiceChangesModal';
@@ -16,6 +16,12 @@ export function ServiceList({ services, clients, projects, onUpdate }: Props) {
   const [changesService, setChangesService] = useState<Service | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
+  const [filterClientId, setFilterClientId] = useState<string>('all');
+
+  const filteredServices = useMemo(() => {
+    if (filterClientId === 'all') return services;
+    return services.filter(s => s.client_id === filterClientId);
+  }, [services, filterClientId]);
 
   useEffect(() => {
     const fetchServiceTypes = async () => {
@@ -72,6 +78,29 @@ export function ServiceList({ services, clients, projects, onUpdate }: Props) {
   return (
     <>
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-6 py-3 border-b border-gray-100 bg-gray-50/50 flex items-center gap-3">
+          <Filter className="w-4 h-4 text-gray-500" />
+          <select
+            value={filterClientId}
+            onChange={e => setFilterClientId(e.target.value)}
+            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          >
+            <option value="all">All Clients ({services.length})</option>
+            {clients.filter(c => services.some(s => s.client_id === c.id)).map(c => (
+              <option key={c.id} value={c.id}>
+                {c.company_name} ({services.filter(s => s.client_id === c.id).length})
+              </option>
+            ))}
+          </select>
+          {filterClientId !== 'all' && (
+            <button
+              onClick={() => setFilterClientId('all')}
+              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+            >
+              Clear filter
+            </button>
+          )}
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -86,7 +115,7 @@ export function ServiceList({ services, clients, projects, onUpdate }: Props) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {services.map(service => (
+              {filteredServices.map(service => (
                 <tr key={service.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">

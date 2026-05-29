@@ -15,10 +15,20 @@ export type Client = {
   company_name: string;
   contact_name: string;
   email: string;
+  alt_email?: string;
   phone?: string;
   address?: string;
   status: 'Active' | 'Inactive' | 'Pending';
   notes?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UserSettings = {
+  id: string;
+  user_id: string;
+  logo_url?: string;
+  company_name?: string;
   created_at: string;
   updated_at: string;
 };

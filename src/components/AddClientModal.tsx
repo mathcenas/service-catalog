@@ -14,6 +14,7 @@ export function AddClientModal({ onClose, onSuccess }: Props) {
     company_name: '',
     contact_name: '',
     email: '',
+    alt_email: '',
     phone: '',
     address: '',
     status: 'Active' as 'Active' | 'Inactive' | 'Pending',
@@ -29,6 +30,7 @@ export function AddClientModal({ onClose, onSuccess }: Props) {
 
     const { error: insertError } = await supabase.from('clients').insert({
       ...formData,
+      alt_email: formData.alt_email.trim() || null,
       user_id: user!.id,
     });
 
@@ -99,6 +101,19 @@ export function AddClientModal({ onClose, onSuccess }: Props) {
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Alternative Email
+              </label>
+              <input
+                type="email"
+                value={formData.alt_email}
+                onChange={(e) => setFormData({ ...formData, alt_email: e.target.value })}
+                placeholder="Second contact email"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
               />
             </div>
 

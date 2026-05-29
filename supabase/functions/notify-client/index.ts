@@ -10,6 +10,7 @@ const corsHeaders = {
 
 interface NotifyPayload {
   client_email: string;
+  alt_email?: string;
   client_name: string;
   subject: string;
   title: string;
@@ -17,6 +18,7 @@ interface NotifyPayload {
   scheduled_date?: string;
   share_url?: string;
   sender_name?: string;
+  logo_url?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -50,6 +52,7 @@ Deno.serve(async (req: Request) => {
     const payload: NotifyPayload = await req.json();
     const {
       client_email,
+      alt_email,
       client_name,
       subject,
       title,
@@ -57,6 +60,7 @@ Deno.serve(async (req: Request) => {
       scheduled_date,
       share_url,
       sender_name,
+      logo_url,
     } = payload;
 
     if (!client_email || !subject || !title) {
@@ -83,9 +87,14 @@ Deno.serve(async (req: Request) => {
         })
       : null;
 
+    const logoHtml = logo_url
+      ? `<img src="${logo_url}" alt="Logo" style="max-height: 40px; max-width: 160px; margin-bottom: 16px;" />`
+      : "";
+
     const htmlBody = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 24px;">
         <div style="border-bottom: 2px solid #2563eb; padding-bottom: 16px; margin-bottom: 24px;">
+          ${logoHtml}
           <h2 style="color: #1e293b; margin: 0; font-size: 20px;">Planned Service Action</h2>
           ${sender_name ? `<p style="color: #64748b; margin: 4px 0 0; font-size: 13px;">From ${sender_name}</p>` : ""}
         </div>
@@ -114,6 +123,11 @@ Deno.serve(async (req: Request) => {
       </div>
     `;
 
+    const recipients = [client_email];
+    if (alt_email && alt_email !== client_email) {
+      recipients.push(alt_email);
+    }
+
     const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -122,7 +136,7 @@ Deno.serve(async (req: Request) => {
       },
       body: JSON.stringify({
         from: Deno.env.get("RESEND_FROM_EMAIL") || "notifications@resend.dev",
-        to: [client_email],
+        to: recipients,
         subject,
         html: htmlBody,
       }),

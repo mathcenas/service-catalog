@@ -27,6 +27,7 @@ export function RoadmapManager({ clients, services }: Props) {
   const [saving, setSaving] = useState(false);
   const [filterCategory, setFilterCategory] = useState<RoadmapCategory | 'all'>('all');
   const [notifying, setNotifying] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | undefined>();
 
   const load = async () => {
     setLoading(true);
@@ -39,7 +40,11 @@ export function RoadmapManager({ clients, services }: Props) {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    supabase.from('user_settings').select('logo_url').eq('user_id', user!.id).maybeSingle()
+      .then(({ data }) => { if (data?.logo_url) setLogoUrl(data.logo_url); });
+  }, []);
 
   const filtered = useMemo(() => {
     if (filterCategory === 'all') return items;
@@ -123,6 +128,7 @@ export function RoadmapManager({ clients, services }: Props) {
       },
       body: JSON.stringify({
         client_email: client.email,
+        alt_email: client.alt_email || undefined,
         client_name: client.contact_name || client.company_name,
         subject: `Planned: ${item.title}`,
         title: item.title,
@@ -130,6 +136,7 @@ export function RoadmapManager({ clients, services }: Props) {
         scheduled_date: item.scheduled_date,
         share_url: shareUrl,
         sender_name: user?.email,
+        logo_url: logoUrl,
       }),
     });
 

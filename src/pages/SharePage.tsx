@@ -5,7 +5,7 @@ import {
   Cpu, HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X, Check, LayoutGrid,
   Sparkles, Rocket, Search, Cloud, Wrench,
 } from 'lucide-react';
-import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapCategory, ClientLicense } from '../lib/supabase';
+import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapCategory, ClientLicense, UserSettings } from '../lib/supabase';
 
 type Props = { token: string };
 
@@ -55,6 +55,7 @@ export function SharePage({ token }: Props) {
   const [changes, setChanges] = useState<ServiceChange[]>([]);
   const [roadmap, setRoadmap] = useState<RoadmapItem[]>([]);
   const [licenses, setLicenses] = useState<ClientLicense[]>([]);
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [section, setSection] = useState<Section>('overview');
@@ -70,12 +71,13 @@ export function SharePage({ token }: Props) {
 
       if (!tokenRow) { setNotFound(true); setLoading(false); return; }
 
-      const [{ data: clientData }, { data: servicesData }, { data: projectsData }, { data: typesData }, { data: roadmapData }] = await Promise.all([
+      const [{ data: clientData }, { data: servicesData }, { data: projectsData }, { data: typesData }, { data: roadmapData }, { data: settingsData }] = await Promise.all([
         supabase.from('clients').select('*').eq('id', tokenRow.client_id).maybeSingle(),
         supabase.from('services').select('*').eq('client_id', tokenRow.client_id).order('created_at'),
         supabase.from('projects').select('*').eq('client_id', tokenRow.client_id).order('created_at'),
         supabase.from('service_types').select('*'),
         supabase.from('roadmap_items').select('*').eq('user_id', tokenRow.user_id).eq('is_public', true).order('sort_order').order('created_at'),
+        supabase.from('user_settings').select('*').eq('user_id', tokenRow.user_id).maybeSingle(),
       ]);
 
       if (!clientData) { setNotFound(true); setLoading(false); return; }
@@ -85,6 +87,7 @@ export function SharePage({ token }: Props) {
       setProjects(projectsData || []);
       setServiceTypes(typesData || []);
       setRoadmap(roadmapData || []);
+      if (settingsData) setUserSettings(settingsData);
 
       const ids = (servicesData || []).map(s => s.id);
       if (ids.length > 0) {
@@ -157,10 +160,16 @@ export function SharePage({ token }: Props) {
           <div className="flex items-start justify-between gap-6 flex-wrap">
             <div>
               <div className="flex items-center gap-3 mb-3">
-                <div className="bg-blue-600 p-2 rounded-lg">
-                  <Shield className="w-5 h-5 text-white" />
-                </div>
-                <span className="text-slate-300 text-xs font-semibold uppercase tracking-widest">IT Services Portal</span>
+                {userSettings?.logo_url ? (
+                  <img src={userSettings.logo_url} alt="Logo" className="h-9 max-w-[140px] object-contain" />
+                ) : (
+                  <div className="bg-blue-600 p-2 rounded-lg">
+                    <Shield className="w-5 h-5 text-white" />
+                  </div>
+                )}
+                <span className="text-slate-300 text-xs font-semibold uppercase tracking-widest">
+                  {userSettings?.company_name || 'IT Services Portal'}
+                </span>
               </div>
               <h1 className="text-3xl md:text-4xl font-bold">{client!.company_name}</h1>
               {client!.contact_name && <p className="text-slate-300 mt-1">{client!.contact_name}</p>}
@@ -864,8 +873,15 @@ function LicensesSection({ licenses, services }: { licenses: ClientLicense[]; se
                 </div>
               </div>
               <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
-                <div className="text-xs text-gray-500">
-                  {lic.billing_cycle === 'Perpetual' ? 'Perpetual license' : `Billed ${lic.billing_cycle.toLowerCase()}`}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">
+                    {lic.billing_cycle === 'Perpetual' ? 'Perpetual license' : `Billed ${lic.billing_cycle.toLowerCase()}`}
+                  </span>
+                  {lic.paid_by === 'Client' && (
+                    <span className="text-[10px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                      Paid by you
+                    </span>
+                  )}
                 </div>
                 {days === null ? (
                   <span className="text-xs text-gray-500 font-medium">No expiry</span>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database } from 'lucide-react';
+import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings } from 'lucide-react';
 import { supabase, Client, Service, Project, ServiceType } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { ClientList } from './ClientList';
@@ -14,6 +14,7 @@ import { RoadmapManager } from './RoadmapManager';
 import { LicenseManager } from './LicenseManager';
 import { TelemetryDashboard } from './TelemetryDashboard';
 import { DataExportImport } from './DataExportImport';
+import { SettingsPanel } from './SettingsPanel';
 
 type Stats = {
   totalClients: number;
@@ -26,7 +27,7 @@ type Stats = {
 
 export function Dashboard() {
   const { signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'projects' | 'services' | 'payments' | 'licenses' | 'roadmap' | 'telemetry' | 'data'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'projects' | 'services' | 'payments' | 'licenses' | 'roadmap' | 'telemetry' | 'data' | 'settings'>('dashboard');
   const [stats, setStats] = useState<Stats>({
     totalClients: 0,
     activeClients: 0,
@@ -245,6 +246,17 @@ export function Dashboard() {
           >
             <Database className="w-4 h-4" />
             Data
+          </button>
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`flex items-center gap-1.5 px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === 'settings'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            Settings
           </button>
         </div>
 
@@ -509,6 +521,10 @@ export function Dashboard() {
 
         {activeTab === 'data' && (
           <DataExportImport clients={clients} services={services} onRefresh={fetchData} />
+        )}
+
+        {activeTab === 'settings' && (
+          <SettingsPanel />
         )}
       </div>
 
