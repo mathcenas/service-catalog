@@ -166,7 +166,11 @@ export type RoadmapItem = {
   category: RoadmapCategory;
   requested_by?: string;
   service_id?: string;
+  client_id?: string;
   amount?: number;
+  scheduled_date?: string;
+  notified_at?: string;
+  publish_to_changelog: boolean;
   sort_order: number;
   is_public: boolean;
   created_at: string;

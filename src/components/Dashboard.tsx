@@ -500,7 +500,7 @@ export function Dashboard() {
         )}
 
         {activeTab === 'roadmap' && (
-          <RoadmapManager />
+          <RoadmapManager clients={clients} services={services} />
         )}
 
         {activeTab === 'telemetry' && (

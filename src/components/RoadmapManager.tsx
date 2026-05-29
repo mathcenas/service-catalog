@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Plus, Trash2, Eye, EyeOff, Save, Rocket, Sparkles, Database, CreditCard, Lightbulb, MapPin, User } from 'lucide-react';
-import { supabase, RoadmapItem, ROADMAP_STATUSES, RoadmapStatus, ROADMAP_CATEGORIES, RoadmapCategory } from '../lib/supabase';
+import { Plus, Trash2, Eye, EyeOff, Save, Rocket, Sparkles, Database, CreditCard, Lightbulb, MapPin, User, Send, CalendarClock, BookOpen, Check } from 'lucide-react';
+import { supabase, Client, Service, RoadmapItem, ROADMAP_STATUSES, RoadmapStatus, ROADMAP_CATEGORIES, RoadmapCategory } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 const CATEGORY_META: Record<RoadmapCategory, { icon: typeof Rocket; color: string }> = {
@@ -10,16 +10,23 @@ const CATEGORY_META: Record<RoadmapCategory, { icon: typeof Rocket; color: strin
   visit: { icon: MapPin, color: 'text-rose-600 bg-rose-50' },
 };
 
-export function RoadmapManager() {
+type Props = {
+  clients: Client[];
+  services: Service[];
+};
+
+export function RoadmapManager({ clients, services }: Props) {
   const { user } = useAuth();
   const [items, setItems] = useState<RoadmapItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState({
     title: '', description: '', eta: '', status: 'Planned' as RoadmapStatus,
     category: 'idea' as RoadmapCategory, requested_by: '', amount: '',
+    scheduled_date: '', client_id: '', service_id: '', publish_to_changelog: false,
   });
   const [saving, setSaving] = useState(false);
   const [filterCategory, setFilterCategory] = useState<RoadmapCategory | 'all'>('all');
+  const [notifying, setNotifying] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -51,10 +58,14 @@ export function RoadmapManager() {
       category: draft.category,
       requested_by: draft.requested_by.trim() || null,
       amount: draft.amount ? parseFloat(draft.amount) : null,
+      scheduled_date: draft.scheduled_date || null,
+      client_id: draft.client_id || null,
+      service_id: draft.service_id || null,
+      publish_to_changelog: draft.publish_to_changelog,
       sort_order: items.length,
       is_public: draft.category === 'idea',
     });
-    setDraft({ title: '', description: '', eta: '', status: 'Planned', category: 'idea', requested_by: '', amount: '' });
+    setDraft({ title: '', description: '', eta: '', status: 'Planned', category: 'idea', requested_by: '', amount: '', scheduled_date: '', client_id: '', service_id: '', publish_to_changelog: false });
     setSaving(false);
     load();
   };
@@ -70,12 +81,80 @@ export function RoadmapManager() {
     setItems(prev => prev.filter(i => i.id !== id));
   };
 
+  const markReleased = async (item: RoadmapItem) => {
+    await updateItem(item.id, { status: 'Released' });
+
+    if (item.publish_to_changelog && item.service_id) {
+      await supabase.from('service_changes').insert({
+        user_id: user!.id,
+        service_id: item.service_id,
+        change_date: new Date().toISOString().split('T')[0],
+        summary: item.title,
+        details: item.description || null,
+      });
+    }
+  };
+
+  const notifyClient = async (item: RoadmapItem) => {
+    if (!item.client_id) return;
+    const client = clients.find(c => c.id === item.client_id);
+    if (!client?.email) return;
+
+    setNotifying(item.id);
+
+    const { data: tokens } = await supabase
+      .from('client_share_tokens')
+      .select('token')
+      .eq('client_id', client.id)
+      .limit(1);
+
+    const shareUrl = tokens && tokens.length > 0
+      ? `${window.location.origin}/share/${tokens[0].token}`
+      : undefined;
+
+    const { data: session } = await supabase.auth.getSession();
+    const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-client`;
+
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session?.session?.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        client_email: client.email,
+        client_name: client.contact_name || client.company_name,
+        subject: `Planned: ${item.title}`,
+        title: item.title,
+        description: item.description,
+        scheduled_date: item.scheduled_date,
+        share_url: shareUrl,
+        sender_name: user?.email,
+      }),
+    });
+
+    if (res.ok) {
+      await updateItem(item.id, { notified_at: new Date().toISOString() });
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Failed to send: ${err.error || 'Unknown error'}`);
+    }
+
+    setNotifying(null);
+  };
+
+  const getClientName = (id?: string) => id ? clients.find(c => c.id === id)?.company_name || '--' : null;
+  const getServiceName = (id?: string) => id ? services.find(s => s.id === id)?.name || '--' : null;
+
+  const clientServices = (clientId?: string) =>
+    clientId ? services.filter(s => s.client_id === clientId) : services;
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-gray-900">Roadmap & Pipeline</h2>
         <p className="text-sm text-gray-600 mt-1">
-          Track upcoming work: new services, pending payments, backup integrations, and scheduled visits. Public items appear on the client portal.
+          Track upcoming work, schedule service actions, and notify clients. Public items appear on the client portal.
         </p>
       </div>
 
@@ -90,7 +169,7 @@ export function RoadmapManager() {
               type="text"
               value={draft.title}
               onChange={e => setDraft({ ...draft, title: e.target.value })}
-              placeholder="e.g., Veeam backup for file server"
+              placeholder="e.g., Upgrade firewall firmware"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
             />
           </div>
@@ -105,14 +184,15 @@ export function RoadmapManager() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Requested By</label>
-            <input
-              type="text"
-              value={draft.requested_by}
-              onChange={e => setDraft({ ...draft, requested_by: e.target.value })}
-              placeholder="Client or person name"
+            <label className="block text-xs font-medium text-gray-600 mb-1">Client</label>
+            <select
+              value={draft.client_id}
+              onChange={e => setDraft({ ...draft, client_id: e.target.value, service_id: '' })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            />
+            >
+              <option value="">None</option>
+              {clients.filter(c => c.status === 'Active').map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
+            </select>
           </div>
           <div className="md:col-span-2">
             <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
@@ -120,8 +200,29 @@ export function RoadmapManager() {
               value={draft.description}
               onChange={e => setDraft({ ...draft, description: e.target.value })}
               rows={2}
-              placeholder="Details, notes, coordination info..."
+              placeholder="Details about the planned action..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Service</label>
+            <select
+              value={draft.service_id}
+              onChange={e => setDraft({ ...draft, service_id: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            >
+              <option value="">None</option>
+              {clientServices(draft.client_id).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Requested By</label>
+            <input
+              type="text"
+              value={draft.requested_by}
+              onChange={e => setDraft({ ...draft, requested_by: e.target.value })}
+              placeholder="Client or person name"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
             />
           </div>
           <div>
@@ -133,6 +234,15 @@ export function RoadmapManager() {
             >
               {ROADMAP_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Scheduled Date</label>
+            <input
+              type="date"
+              value={draft.scheduled_date}
+              onChange={e => setDraft({ ...draft, scheduled_date: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -157,7 +267,17 @@ export function RoadmapManager() {
             </div>
           </div>
         </div>
-        <div className="flex justify-end mt-4">
+        <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={draft.publish_to_changelog}
+              onChange={e => setDraft({ ...draft, publish_to_changelog: e.target.checked })}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <BookOpen className="w-3.5 h-3.5 text-gray-500" />
+            Publish to changelog when released
+          </label>
           <button
             onClick={addItem}
             disabled={saving || !draft.title.trim()}
@@ -198,104 +318,178 @@ export function RoadmapManager() {
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {filtered.map(item => {
-              const meta = CATEGORY_META[item.category] || CATEGORY_META.idea;
-              const CatIcon = meta.icon;
-              return (
-                <div key={item.id} className="p-5 hover:bg-gray-50">
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
-                    <div className="md:col-span-5">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`p-1 rounded ${meta.color}`}><CatIcon className="w-3.5 h-3.5" /></span>
-                        <input
-                          type="text"
-                          value={item.title}
-                          onChange={e => updateItem(item.id, { title: e.target.value })}
-                          className="flex-1 px-2 py-1 border border-transparent hover:border-gray-200 focus:border-blue-300 rounded-md text-sm font-medium text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                        />
-                      </div>
-                      <textarea
-                        value={item.description || ''}
-                        onChange={e => updateItem(item.id, { description: e.target.value })}
-                        placeholder="Description..."
-                        rows={2}
-                        className="w-full px-2 py-1 border border-transparent hover:border-gray-200 focus:border-blue-300 rounded-md text-xs text-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
-                      />
-                      {item.requested_by && (
-                        <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
-                          <User className="w-3 h-3" /> {item.requested_by}
-                        </div>
-                      )}
-                    </div>
-                    <div className="md:col-span-2">
-                      <select
-                        value={item.category}
-                        onChange={e => updateItem(item.id, { category: e.target.value as RoadmapCategory })}
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                      >
-                        {ROADMAP_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                      </select>
-                      <input
-                        type="text"
-                        value={item.requested_by || ''}
-                        onChange={e => updateItem(item.id, { requested_by: e.target.value })}
-                        placeholder="Requested by"
-                        className="w-full mt-1 px-2 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <select
-                        value={item.status}
-                        onChange={e => updateItem(item.id, { status: e.target.value as RoadmapStatus })}
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                      >
-                        {ROADMAP_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                      <input
-                        type="text"
-                        value={item.eta || ''}
-                        onChange={e => updateItem(item.id, { eta: e.target.value })}
-                        placeholder="ETA"
-                        className="w-full mt-1 px-2 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                      />
-                    </div>
-                    <div className="md:col-span-1">
-                      <input
-                        type="number"
-                        value={item.sort_order}
-                        onChange={e => updateItem(item.id, { sort_order: parseInt(e.target.value) || 0 })}
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                        title="Sort order (lower = higher)"
-                      />
-                      {item.amount != null && item.amount > 0 && (
-                        <div className="text-xs text-emerald-700 font-medium mt-1 px-1">
-                          ${item.amount.toLocaleString()}
-                        </div>
-                      )}
-                    </div>
-                    <div className="md:col-span-2 flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => updateItem(item.id, { is_public: !item.is_public })}
-                        className={`p-2 rounded-md transition-colors ${
-                          item.is_public ? 'text-emerald-600 hover:bg-emerald-50' : 'text-gray-400 hover:bg-gray-100'
-                        }`}
-                        title={item.is_public ? 'Visible on client portal' : 'Hidden from clients'}
-                      >
-                        {item.is_public ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                      </button>
-                      <button
-                        onClick={() => deleteItem(item.id)}
-                        className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {filtered.map(item => <RoadmapRow
+              key={item.id}
+              item={item}
+              clients={clients}
+              services={services}
+              notifying={notifying === item.id}
+              getClientName={getClientName}
+              getServiceName={getServiceName}
+              clientServices={clientServices}
+              onUpdate={updateItem}
+              onDelete={deleteItem}
+              onNotify={notifyClient}
+              onMarkReleased={markReleased}
+            />)}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function RoadmapRow({ item, clients, notifying, clientServices, onUpdate, onDelete, onNotify, onMarkReleased }: {
+  item: RoadmapItem;
+  clients: Client[];
+  services: Service[];
+  notifying: boolean;
+  getClientName: (id?: string) => string | null;
+  getServiceName: (id?: string) => string | null;
+  clientServices: (clientId?: string) => Service[];
+  onUpdate: (id: string, patch: Partial<RoadmapItem>) => void;
+  onDelete: (id: string) => void;
+  onNotify: (item: RoadmapItem) => void;
+  onMarkReleased: (item: RoadmapItem) => void;
+}) {
+  const meta = CATEGORY_META[item.category] || CATEGORY_META.idea;
+  const CatIcon = meta.icon;
+  const canNotify = !!item.client_id && !notifying;
+  const client = clients.find(c => c.id === item.client_id);
+
+  return (
+    <div className="p-5 hover:bg-gray-50">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
+        <div className="md:col-span-4">
+          <div className="flex items-center gap-2 mb-1">
+            <span className={`p-1 rounded ${meta.color}`}><CatIcon className="w-3.5 h-3.5" /></span>
+            <input
+              type="text"
+              value={item.title}
+              onChange={e => onUpdate(item.id, { title: e.target.value })}
+              className="flex-1 px-2 py-1 border border-transparent hover:border-gray-200 focus:border-blue-300 rounded-md text-sm font-medium text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            />
+          </div>
+          <textarea
+            value={item.description || ''}
+            onChange={e => onUpdate(item.id, { description: e.target.value })}
+            placeholder="Description..."
+            rows={2}
+            className="w-full px-2 py-1 border border-transparent hover:border-gray-200 focus:border-blue-300 rounded-md text-xs text-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+          />
+          {item.requested_by && (
+            <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
+              <User className="w-3 h-3" /> {item.requested_by}
+            </div>
+          )}
+        </div>
+        <div className="md:col-span-2">
+          <select
+            value={item.client_id || ''}
+            onChange={e => onUpdate(item.id, { client_id: e.target.value || undefined, service_id: undefined })}
+            className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          >
+            <option value="">No client</option>
+            {clients.filter(c => c.status === 'Active').map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
+          </select>
+          <select
+            value={item.service_id || ''}
+            onChange={e => onUpdate(item.id, { service_id: e.target.value || undefined })}
+            className="w-full mt-1 px-2 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          >
+            <option value="">No service</option>
+            {clientServices(item.client_id).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        <div className="md:col-span-2">
+          <select
+            value={item.status}
+            onChange={e => {
+              const newStatus = e.target.value as RoadmapStatus;
+              if (newStatus === 'Released' && item.status !== 'Released') {
+                onMarkReleased(item);
+              } else {
+                onUpdate(item.id, { status: newStatus });
+              }
+            }}
+            className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          >
+            {ROADMAP_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <input
+            type="date"
+            value={item.scheduled_date || ''}
+            onChange={e => onUpdate(item.id, { scheduled_date: e.target.value || undefined })}
+            className="w-full mt-1 px-2 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            title="Scheduled date"
+          />
+        </div>
+        <div className="md:col-span-1">
+          <input
+            type="number"
+            value={item.sort_order}
+            onChange={e => onUpdate(item.id, { sort_order: parseInt(e.target.value) || 0 })}
+            className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            title="Sort order (lower = higher)"
+          />
+          {item.amount != null && item.amount > 0 && (
+            <div className="text-xs text-emerald-700 font-medium mt-1 px-1">
+              ${item.amount.toLocaleString()}
+            </div>
+          )}
+          {item.scheduled_date && (
+            <div className="flex items-center gap-1 mt-1 text-xs text-blue-600">
+              <CalendarClock className="w-3 h-3" />
+              {new Date(item.scheduled_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            </div>
+          )}
+        </div>
+        <div className="md:col-span-3 flex items-center justify-end gap-1.5 flex-wrap">
+          <label className="inline-flex items-center gap-1 text-[10px] text-gray-500 cursor-pointer select-none" title="Publish to changelog when released">
+            <input
+              type="checkbox"
+              checked={item.publish_to_changelog}
+              onChange={e => onUpdate(item.id, { publish_to_changelog: e.target.checked })}
+              className="w-3 h-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <BookOpen className="w-3 h-3" />
+          </label>
+          {canNotify && (
+            <button
+              onClick={() => onNotify(item)}
+              disabled={notifying}
+              className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                item.notified_at
+                  ? 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                  : 'text-blue-700 bg-blue-50 hover:bg-blue-100'
+              }`}
+              title={item.notified_at ? `Last notified: ${new Date(item.notified_at).toLocaleString()}` : `Send notification to ${client?.email}`}
+            >
+              {notifying ? (
+                <span className="animate-pulse">Sending...</span>
+              ) : item.notified_at ? (
+                <><Check className="w-3 h-3" /> Sent</>
+              ) : (
+                <><Send className="w-3 h-3" /> Notify</>
+              )}
+            </button>
+          )}
+          <button
+            onClick={() => onUpdate(item.id, { is_public: !item.is_public })}
+            className={`p-1.5 rounded-md transition-colors ${
+              item.is_public ? 'text-emerald-600 hover:bg-emerald-50' : 'text-gray-400 hover:bg-gray-100'
+            }`}
+            title={item.is_public ? 'Visible on client portal' : 'Hidden from clients'}
+          >
+            {item.is_public ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={() => onDelete(item.id)}
+            className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   );
