@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Server, Globe, Calendar, Clock, MapPin, Shield, CheckCircle2,
-  FolderOpen, History, FileText, Send, Info,
+  FolderOpen, History, FileText, Send,
   Cpu, HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X, Check, LayoutGrid,
   Sparkles, Rocket, Search, Cloud, Wrench,
 } from 'lucide-react';
@@ -31,14 +31,6 @@ function formatTimeAgo(iso: string): string {
   return `${days}d ago`;
 }
 
-function servicePeriodTotal(service: Service): number {
-  const hours = service.confirmed_hours_monthly;
-  if (hours && hours > 0) {
-    const months = billingCycleMonths(service.billing_cycle);
-    if (months > 0) return service.price * hours * months;
-  }
-  return service.price;
-}
 
 function serviceMonthlyTotal(service: Service): number {
   const months = billingCycleMonths(service.billing_cycle);
@@ -106,7 +98,7 @@ export function SharePage({ token }: Props) {
 
       const { data: licensesData } = await supabase
         .from('client_licenses')
-        .select('id, client_id, service_id, software_name, quantity, quantity_label, expiration_date, billing_cycle, created_at, updated_at')
+        .select('*')
         .eq('client_id', tokenRow.client_id)
         .order('expiration_date', { ascending: true, nullsFirst: false });
       setLicenses(licensesData || []);
@@ -117,7 +109,7 @@ export function SharePage({ token }: Props) {
   }, [token]);
 
   const getTypeName = (id: string) => serviceTypes.find(t => t.id === id)?.name || 'Service';
-  const getProjectName = (id?: string) => id ? projects.find(p => p.id === id)?.name : null;
+  const getProjectName = (id?: string): string | null => id ? projects.find(p => p.id === id)?.name || null : null;
 
   const activeServices = useMemo(() => services.filter(s => s.status === 'Active'), [services]);
 

@@ -185,6 +185,9 @@ export type ClientLicense = {
   expiration_date?: string;
   billing_cycle: string;
   cost?: number;
+  currency: string;
+  paid_by?: PaidBy;
+  payment_card_last4?: string;
   notes?: string;
   created_at: string;
   updated_at: string;

@@ -39,7 +39,7 @@ export function Dashboard() {
   const [services, setServices] = useState<Service[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [showAddClient, setShowAddClient] = useState(false);
   const [showAddService, setShowAddService] = useState(false);
   const [showAddProject, setShowAddProject] = useState(false);

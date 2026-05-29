@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Plus, Trash2, CreditCard as Edit3, X, Save, Shield, AlertTriangle, Calendar } from 'lucide-react';
-import { supabase, Client, Service, ClientLicense } from '../lib/supabase';
+import { supabase, Client, Service, ClientLicense, PAID_BY_OPTIONS } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 const BILLING_CYCLES = ['Monthly', 'Quarterly', 'Annually', 'Biennially', 'Perpetual'];
@@ -22,7 +22,8 @@ export function LicenseManager({ clients, services }: Props) {
   const [form, setForm] = useState({
     client_id: '', service_id: '', software_name: '', license_key: '',
     quantity: '1', quantity_label: 'Licenses', expiration_date: '',
-    billing_cycle: 'Annually', cost: '', notes: '',
+    billing_cycle: 'Annually', cost: '', currency: 'USD',
+    paid_by: '' as string, payment_card_last4: '', notes: '',
   });
 
   const load = async () => {
@@ -43,7 +44,7 @@ export function LicenseManager({ clients, services }: Props) {
   }, [licenses, filterClient]);
 
   const resetForm = () => {
-    setForm({ client_id: '', service_id: '', software_name: '', license_key: '', quantity: '1', quantity_label: 'Licenses', expiration_date: '', billing_cycle: 'Annually', cost: '', notes: '' });
+    setForm({ client_id: '', service_id: '', software_name: '', license_key: '', quantity: '1', quantity_label: 'Licenses', expiration_date: '', billing_cycle: 'Annually', cost: '', currency: 'USD', paid_by: '', payment_card_last4: '', notes: '' });
     setEditing(null);
     setShowForm(false);
   };
@@ -59,6 +60,9 @@ export function LicenseManager({ clients, services }: Props) {
       expiration_date: lic.expiration_date || '',
       billing_cycle: lic.billing_cycle,
       cost: lic.cost != null ? String(lic.cost) : '',
+      currency: lic.currency || 'USD',
+      paid_by: lic.paid_by || '',
+      payment_card_last4: lic.payment_card_last4 || '',
       notes: lic.notes || '',
     });
     setEditing(lic);
@@ -80,6 +84,9 @@ export function LicenseManager({ clients, services }: Props) {
       expiration_date: form.expiration_date || null,
       billing_cycle: form.billing_cycle,
       cost: form.cost ? parseFloat(form.cost) : null,
+      currency: form.currency || 'USD',
+      paid_by: form.paid_by || null,
+      payment_card_last4: form.payment_card_last4.trim() || null,
       notes: form.notes.trim() || null,
     };
 
@@ -116,7 +123,7 @@ export function LicenseManager({ clients, services }: Props) {
     if (days === null) return <span className="text-xs text-gray-500">Perpetual</span>;
     if (days < 0) return <span className="text-xs font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full">Expired</span>;
     if (days <= 30) return <span className="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">Expires in {days}d</span>;
-    return <span className="text-xs text-gray-600">{new Date(date).toLocaleDateString()}</span>;
+    return <span className="text-xs text-gray-600">{new Date(date!).toLocaleDateString()}</span>;
   };
 
   const stats = useMemo(() => {
@@ -214,6 +221,28 @@ export function LicenseManager({ clients, services }: Props) {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
               </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
+                  <input type="text" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value.toUpperCase() })}
+                    placeholder="USD" maxLength={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Paid By</label>
+                  <select value={form.paid_by} onChange={e => setForm({ ...form, paid_by: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="">Not set</option>
+                    {PAID_BY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Card Last 4</label>
+                  <input type="text" value={form.payment_card_last4} onChange={e => setForm({ ...form, payment_card_last4: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                    placeholder="1234" maxLength={4}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono" />
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Expiration Date</label>
@@ -266,6 +295,7 @@ export function LicenseManager({ clients, services }: Props) {
                   <th className="text-left px-4 py-3 font-medium text-gray-700">Qty</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-700">Cycle</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-700">Expires</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-700">Paid By</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-700">Cost</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-700"></th>
                 </tr>
@@ -282,7 +312,14 @@ export function LicenseManager({ clients, services }: Props) {
                     <td className="px-4 py-3 text-gray-700">{lic.quantity} {lic.quantity_label}</td>
                     <td className="px-4 py-3 text-gray-600">{lic.billing_cycle}</td>
                     <td className="px-4 py-3">{expiryBadge(lic.expiration_date)}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{lic.cost != null ? `$${lic.cost.toLocaleString()}` : '--'}</td>
+                    <td className="px-4 py-3">
+                      {lic.paid_by ? (
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          lic.paid_by === 'Me' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-700'
+                        }`}>{lic.paid_by}</span>
+                      ) : <span className="text-xs text-gray-400">--</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-700">{lic.cost != null ? `${lic.currency || '$'}${lic.cost.toLocaleString()}` : '--'}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex gap-1">
                         <button onClick={() => openEdit(lic)} className="p-1.5 hover:bg-blue-50 text-gray-500 hover:text-blue-600 rounded-md">

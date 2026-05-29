@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
-import { CreditCard, Calendar, AlertCircle, Filter } from 'lucide-react';
-import { Service, Client, PaidBy } from '../lib/supabase';
+import { useMemo, useState, useEffect } from 'react';
+import { CreditCard, Calendar, AlertCircle, Filter, Shield } from 'lucide-react';
+import { supabase, Service, Client, ClientLicense, PaidBy } from '../lib/supabase';
 
 type Props = {
   services: Service[];
@@ -12,36 +12,92 @@ const TABS: { key: PaidBy; label: string; description: string }[] = [
   { key: 'Client', label: 'Paid by Client', description: 'Services billed directly to the client — confirm their card is current.' },
 ];
 
-function monthlyEquivalent(service: Service): number {
-  const months = service.billing_cycle === 'Monthly' ? 1
-    : service.billing_cycle === 'Quarterly' ? 3
-    : service.billing_cycle === 'Semi-Annually' ? 6
-    : service.billing_cycle === 'Annually' ? 12
-    : service.billing_cycle === 'Biennially' ? 24
+type PaymentItem = {
+  id: string;
+  kind: 'service' | 'license';
+  name: string;
+  subtitle?: string;
+  client_id: string;
+  paid_by?: PaidBy;
+  payment_card_last4?: string;
+  price: number;
+  currency: string;
+  billing_cycle: string;
+  next_renewal_date?: string;
+  status: string;
+};
+
+function billingCycleMonths(cycle: string): number {
+  return cycle === 'Monthly' ? 1
+    : cycle === 'Quarterly' ? 3
+    : cycle === 'Semi-Annually' ? 6
+    : cycle === 'Annually' ? 12
+    : cycle === 'Biennially' ? 24
     : 0;
+}
+
+function itemMonthlyEquivalent(item: PaymentItem): number {
+  const months = billingCycleMonths(item.billing_cycle);
   if (months === 0) return 0;
-  const hours = service.confirmed_hours_monthly;
-  if (hours && hours > 0) return service.price * hours;
-  return service.price / months;
+  return item.price / months;
 }
 
 export function PaymentsView({ services, clients }: Props) {
   const [tab, setTab] = useState<PaidBy>('Me');
   const [cardFilter, setCardFilter] = useState<string>('');
+  const [licenses, setLicenses] = useState<ClientLicense[]>([]);
+
+  useEffect(() => {
+    supabase.from('client_licenses').select('*').then(({ data }) => {
+      setLicenses(data || []);
+    });
+  }, []);
+
+  const allItems: PaymentItem[] = useMemo(() => {
+    const fromServices: PaymentItem[] = services.map(s => ({
+      id: s.id,
+      kind: 'service',
+      name: s.name,
+      subtitle: s.provider || undefined,
+      client_id: s.client_id,
+      paid_by: s.paid_by,
+      payment_card_last4: s.payment_card_last4,
+      price: s.price * (s.confirmed_hours_monthly && s.confirmed_hours_monthly > 0 ? s.confirmed_hours_monthly : 1),
+      currency: s.currency,
+      billing_cycle: s.billing_cycle,
+      next_renewal_date: s.next_renewal_date,
+      status: s.status,
+    }));
+    const fromLicenses: PaymentItem[] = licenses.filter(l => l.cost != null && l.cost > 0).map(l => ({
+      id: l.id,
+      kind: 'license',
+      name: l.software_name,
+      subtitle: `${l.quantity} ${l.quantity_label}`,
+      client_id: l.client_id,
+      paid_by: l.paid_by,
+      payment_card_last4: l.payment_card_last4,
+      price: l.cost!,
+      currency: l.currency || 'USD',
+      billing_cycle: l.billing_cycle,
+      next_renewal_date: l.expiration_date,
+      status: l.expiration_date && new Date(l.expiration_date) < new Date() ? 'Expired' : 'Active',
+    }));
+    return [...fromServices, ...fromLicenses];
+  }, [services, licenses]);
 
   const { list, totalMonthly, unassignedCount, cards } = useMemo(() => {
-    const filtered = services.filter(s => s.paid_by === tab);
-    const cards = Array.from(new Set(filtered.map(s => s.payment_card_last4).filter((c): c is string => !!c))).sort();
-    const list = cardFilter ? filtered.filter(s => s.payment_card_last4 === cardFilter) : filtered;
+    const filtered = allItems.filter(i => i.paid_by === tab);
+    const cards = Array.from(new Set(filtered.map(i => i.payment_card_last4).filter((c): c is string => !!c))).sort();
+    const list = cardFilter ? filtered.filter(i => i.payment_card_last4 === cardFilter) : filtered;
     const sorted = [...list].sort((a, b) => {
       const ad = a.next_renewal_date ? new Date(a.next_renewal_date).getTime() : Infinity;
       const bd = b.next_renewal_date ? new Date(b.next_renewal_date).getTime() : Infinity;
       return ad - bd;
     });
-    const totalMonthly = list.reduce((sum, s) => sum + (s.status === 'Active' ? monthlyEquivalent(s) : 0), 0);
-    const unassignedCount = services.filter(s => !s.paid_by).length;
+    const totalMonthly = list.reduce((sum, i) => sum + (i.status === 'Active' ? itemMonthlyEquivalent(i) : 0), 0);
+    const unassignedCount = allItems.filter(i => !i.paid_by).length;
     return { list: sorted, totalMonthly, unassignedCount, cards };
-  }, [services, tab, cardFilter]);
+  }, [allItems, tab, cardFilter]);
 
   const clientName = (id: string) => clients.find(c => c.id === id)?.company_name || 'Unknown';
 
@@ -123,15 +179,15 @@ export function PaymentsView({ services, clients }: Props) {
           {list.length === 0 ? (
             <div className="text-center py-10 border-2 border-dashed border-gray-200 rounded-lg">
               <CreditCard className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">No services match this view yet.</p>
-              <p className="text-xs text-gray-400 mt-1">Set "Paid By" on a service in the Services tab to populate this page.</p>
+              <p className="text-sm text-gray-500">No items match this view yet.</p>
+              <p className="text-xs text-gray-400 mt-1">Set "Paid By" on a service or license to populate this page.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50 border-y border-gray-200">
                   <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Service</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Item</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Client</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Card</th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Billing</th>
@@ -140,38 +196,47 @@ export function PaymentsView({ services, clients }: Props) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {list.map(s => (
-                    <tr key={s.id} className="hover:bg-gray-50">
+                  {list.map(item => (
+                    <tr key={item.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
-                        <div className="font-medium text-gray-900 text-sm">{s.name}</div>
-                        {s.provider && <div className="text-xs text-gray-500">{s.provider}</div>}
+                        <div className="flex items-center gap-2">
+                          {item.kind === 'license' && <Shield className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />}
+                          <div>
+                            <div className="font-medium text-gray-900 text-sm">{item.name}</div>
+                            {item.subtitle && <div className="text-xs text-gray-500">{item.subtitle}</div>}
+                          </div>
+                          {item.kind === 'license' && (
+                            <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-semibold">License</span>
+                          )}
+                        </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{clientName(s.client_id)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{clientName(item.client_id)}</td>
                       <td className="px-4 py-3">
-                        {s.payment_card_last4 ? (
+                        {item.payment_card_last4 ? (
                           <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-gray-100 font-mono text-xs text-gray-800">
                             <CreditCard className="w-3 h-3" />
-                            &bull;&bull;&bull;&bull; {s.payment_card_last4}
+                            &bull;&bull;&bull;&bull; {item.payment_card_last4}
                           </span>
                         ) : (
                           <span className="text-xs text-gray-400 italic">not set</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
-                        <div className="font-medium">${s.price} {s.currency}</div>
-                        <div className="text-xs text-gray-500">{s.billing_cycle}</div>
+                        <div className="font-medium">{item.currency} {item.price}</div>
+                        <div className="text-xs text-gray-500">{item.billing_cycle}</div>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
-                        {s.next_renewal_date ? new Date(s.next_renewal_date).toLocaleDateString() : <span className="text-gray-400">-</span>}
+                        {item.next_renewal_date ? new Date(item.next_renewal_date).toLocaleDateString() : <span className="text-gray-400">-</span>}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                          s.status === 'Active' ? 'bg-green-100 text-green-800' :
-                          s.status === 'Suspended' ? 'bg-red-100 text-red-800' :
-                          s.status === 'Cancelled' ? 'bg-gray-100 text-gray-800' :
+                          item.status === 'Active' ? 'bg-green-100 text-green-800' :
+                          item.status === 'Expired' ? 'bg-red-100 text-red-800' :
+                          item.status === 'Suspended' ? 'bg-red-100 text-red-800' :
+                          item.status === 'Cancelled' ? 'bg-gray-100 text-gray-800' :
                           'bg-yellow-100 text-yellow-800'
                         }`}>
-                          {s.status}
+                          {item.status}
                         </span>
                       </td>
                     </tr>
