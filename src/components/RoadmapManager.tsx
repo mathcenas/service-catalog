@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { Plus, Trash2, Eye, EyeOff, Save, Rocket, Sparkles, Database, CreditCard, Lightbulb, MapPin, User, Send, CalendarClock, BookOpen, Check } from 'lucide-react';
+import { Plus, Trash2, Eye, EyeOff, Save, Rocket, Sparkles, Database, CreditCard, Lightbulb, MapPin, User, Send, CalendarClock, BookOpen, Check, CheckCheck } from 'lucide-react';
 import { supabase, Client, Service, RoadmapItem, ROADMAP_STATUSES, RoadmapStatus, ROADMAP_CATEGORIES, RoadmapCategory } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -28,6 +28,7 @@ export function RoadmapManager({ clients, services }: Props) {
   const [filterCategory, setFilterCategory] = useState<RoadmapCategory | 'all'>('all');
   const [notifying, setNotifying] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | undefined>();
+  const [emailOpens, setEmailOpens] = useState<Record<string, { opened_at: string | null; open_count: number }>>({});
 
   const load = async () => {
     setLoading(true);
@@ -44,6 +45,20 @@ export function RoadmapManager({ clients, services }: Props) {
     load();
     supabase.from('user_settings').select('logo_url').eq('user_id', user!.id).maybeSingle()
       .then(({ data }) => { if (data?.logo_url) setLogoUrl(data.logo_url); });
+    supabase.from('email_opens').select('roadmap_item_id, opened_at, open_count')
+      .not('roadmap_item_id', 'is', null)
+      .then(({ data }) => {
+        if (data) {
+          const map: Record<string, { opened_at: string | null; open_count: number }> = {};
+          for (const row of data) {
+            const existing = map[row.roadmap_item_id!];
+            if (!existing || (row.opened_at && (!existing.opened_at || row.opened_at > existing.opened_at))) {
+              map[row.roadmap_item_id!] = { opened_at: row.opened_at, open_count: row.open_count };
+            }
+          }
+          setEmailOpens(map);
+        }
+      });
   }, []);
 
   const filtered = useMemo(() => {
@@ -147,6 +162,7 @@ export function RoadmapManager({ clients, services }: Props) {
           share_url: shareUrl,
           sender_name: user?.email,
           logo_url: logoUrl,
+          roadmap_item_id: item.id,
         }),
       });
 
@@ -355,6 +371,7 @@ export function RoadmapManager({ clients, services }: Props) {
               clients={clients}
               services={services}
               notifying={notifying === item.id}
+              emailOpen={emailOpens[item.id]}
               getClientName={getClientName}
               getServiceName={getServiceName}
               clientServices={clientServices}
@@ -370,11 +387,12 @@ export function RoadmapManager({ clients, services }: Props) {
   );
 }
 
-function RoadmapRow({ item, clients, notifying, clientServices, onUpdate, onDelete, onNotify, onMarkReleased }: {
+function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpdate, onDelete, onNotify, onMarkReleased }: {
   item: RoadmapItem;
   clients: Client[];
   services: Service[];
   notifying: boolean;
+  emailOpen?: { opened_at: string | null; open_count: number };
   getClientName: (id?: string) => string | null;
   getServiceName: (id?: string) => string | null;
   clientServices: (clientId?: string) => Service[];
@@ -524,6 +542,14 @@ function RoadmapRow({ item, clients, notifying, clientServices, onUpdate, onDele
                 <><Send className="w-3 h-3" /> Notify</>
               )}
             </button>
+          )}
+          {emailOpen?.opened_at && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200"
+              title={`Read at: ${new Date(emailOpen.opened_at).toLocaleString()} (${emailOpen.open_count} open${emailOpen.open_count > 1 ? 's' : ''})`}
+            >
+              <CheckCheck className="w-3.5 h-3.5" /> Read
+            </span>
           )}
           <button
             onClick={() => onUpdate(item.id, { is_public: !item.is_public })}

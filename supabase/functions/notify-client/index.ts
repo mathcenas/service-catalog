@@ -19,6 +19,7 @@ interface NotifyPayload {
   share_url?: string;
   sender_name?: string;
   logo_url?: string;
+  roadmap_item_id?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -61,6 +62,7 @@ Deno.serve(async (req: Request) => {
       share_url,
       sender_name,
       logo_url,
+      roadmap_item_id,
     } = payload;
 
     if (!client_email || !subject || !title) {
@@ -87,6 +89,16 @@ Deno.serve(async (req: Request) => {
         })
       : null;
 
+    const nowTime = new Date().toLocaleString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZoneName: "short",
+    });
+
     const logoHtml = logo_url
       ? `<img src="${logo_url}" alt="Logo" style="max-height: 40px; max-width: 160px; margin-bottom: 16px;" />`
       : "";
@@ -109,6 +121,10 @@ Deno.serve(async (req: Request) => {
           ${formattedDate ? `<p style="color: #2563eb; margin: 0; font-size: 14px; font-weight: 600;">Scheduled: ${formattedDate}</p>` : ""}
         </div>
 
+        <p style="color: #64748b; font-size: 12px; margin: 8px 0 0;">
+          Sent: ${nowTime}
+        </p>
+
         ${share_url ? `
           <p style="margin: 24px 0;">
             <a href="${share_url}" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;">
@@ -120,8 +136,34 @@ Deno.serve(async (req: Request) => {
         <p style="color: #64748b; font-size: 13px; margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
           If you have questions about this planned action, please reply to this email.
         </p>
+
+        <p style="color: #94a3b8; font-size: 11px; font-style: italic; margin-top: 16px;">
+          Este es un mensaje automatizado.
+        </p>
       </div>
     `;
+
+    // Create tracking record for read receipt
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    const { data: trackRecord } = await supabaseAdmin
+      .from("email_opens")
+      .insert({
+        user_id: user.id,
+        roadmap_item_id: roadmap_item_id || null,
+        client_email,
+      })
+      .select("tracking_id")
+      .single();
+
+    let finalHtml = htmlBody;
+    if (trackRecord?.tracking_id) {
+      const pixelUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/track-open?t=${trackRecord.tracking_id}`;
+      finalHtml += `<img src="${pixelUrl}" width="1" height="1" style="display:none;" alt="" />`;
+    }
 
     const recipients = [client_email];
     if (alt_email && alt_email !== client_email) {
@@ -137,12 +179,12 @@ Deno.serve(async (req: Request) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: Deno.env.get("RESEND_FROM_EMAIL") || "notifications@resend.dev",
+        from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Notifications <no-reply@updates.cenas.uy>",
         reply_to: adminEmail,
         to: [adminEmail],
         cc: recipients,
         subject,
-        html: htmlBody,
+        html: finalHtml,
       }),
     });
 
