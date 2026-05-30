@@ -179,7 +179,7 @@ Deno.serve(async (req: Request) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Notifications <no-reply@updates.cenas.uy>",
+        from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Notifications <notificaciones@updates.cenas.uy>",
         reply_to: adminEmail,
         to: [adminEmail],
         cc: recipients,

@@ -52,7 +52,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "notifications@resend.dev";
+    const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Notifications <notificaciones@updates.cenas.uy>";
     const replyTo = Deno.env.get("RESEND_REPLY_TO") || "mathias@cenas.uy";
     let sent = 0;
     const errors: string[] = [];
