@@ -181,8 +181,7 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Notifications <notificaciones@updates.cenas.uy>",
         reply_to: adminEmail,
-        to: [adminEmail],
-        cc: recipients,
+        to: recipients,
         subject,
         html: finalHtml,
       }),
