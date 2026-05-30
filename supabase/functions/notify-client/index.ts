@@ -134,11 +134,20 @@ Deno.serve(async (req: Request) => {
         ` : ""}
 
         <p style="color: #64748b; font-size: 13px; margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
-          If you have questions about this planned action, please reply to this email.
+          Si tiene consultas sobre esta accion planificada, responda a este correo.
         </p>
 
-        <p style="color: #94a3b8; font-size: 11px; font-style: italic; margin-top: 16px;">
-          Este es un mensaje automatizado.
+        <div style="margin-top: 32px; padding: 16px 20px; background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%); border-radius: 8px; text-align: center;">
+          <p style="color: #94a3b8; font-size: 11px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 1px;">Proximamente</p>
+          <p style="color: #ffffff; font-size: 13px; margin: 0 0 8px; font-weight: 600;">Su Portal de Servicios estara disponible en breve</p>
+          <p style="color: #cbd5e1; font-size: 11px; margin: 0; line-height: 1.5;">
+            Servicios gestionados &bull; Soporte &bull; Backups &bull; Informacion IT
+          </p>
+          ${share_url ? `<a href="${share_url}" style="color: #60a5fa; font-size: 11px; text-decoration: none; display: inline-block; margin-top: 8px;">${share_url}</a>` : ""}
+        </div>
+
+        <p style="color: #94a3b8; font-size: 10px; font-style: italic; margin-top: 12px; text-align: center;">
+          Cenas-Support &mdash; Mensaje automatizado
         </p>
       </div>
     `;
