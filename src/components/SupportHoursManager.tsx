@@ -108,7 +108,7 @@ export function SupportHoursManager({ clients, services }: Props) {
 
   const getAllocatedHours = (clientId: string) => {
     const clientSvcs = services.filter(s => s.client_id === clientId && s.status === 'Active');
-    return clientSvcs.reduce((sum, s) => sum + (s.allocated_hours || 0), 0);
+    return clientSvcs.reduce((sum, s) => sum + (s.confirmed_hours_monthly || 0), 0);
   };
 
   return (

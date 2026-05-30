@@ -1135,7 +1135,7 @@ function SupportHoursSection({ hours, services }: { hours: SupportHour[]; servic
   const totalHoursUsed = filteredHours.reduce((sum, h) => sum + Number(h.hours), 0);
   const totalAllocated = services
     .filter(s => s.status === 'Active')
-    .reduce((sum, s) => sum + (s.allocated_hours || 0), 0);
+    .reduce((sum, s) => sum + (s.confirmed_hours_monthly || 0), 0);
   const extraRate = services.find(s => s.extra_hour_rate && s.extra_hour_rate > 0)?.extra_hour_rate || 0;
   const primaryCurrency = services.find(s => s.currency)?.currency || 'USD';
   const pctUsed = totalAllocated > 0 ? (totalHoursUsed / totalAllocated) * 100 : 0;
@@ -1219,6 +1219,26 @@ function SupportHoursSection({ hours, services }: { hours: SupportHour[]; servic
           )}
         </div>
       </div>
+
+      {/* Per-service allocation breakdown */}
+      {totalAllocated > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-200 p-6">
+          <h4 className="font-semibold text-gray-900 mb-4">Hours Allocation by Service</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {services
+              .filter(s => s.status === 'Active' && s.confirmed_hours_monthly && s.confirmed_hours_monthly > 0)
+              .map(s => (
+                <div key={s.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3 border border-gray-100">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Server className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                    <span className="text-sm font-medium text-gray-800 truncate">{s.business_name || s.name}</span>
+                  </div>
+                  <span className="text-sm font-semibold text-gray-900 whitespace-nowrap ml-3">{s.confirmed_hours_monthly}h/mo</span>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
 
       {/* Activity log */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
