@@ -227,3 +227,14 @@ export type ShareToken = {
   expires_at?: string;
   created_at: string;
 };
+
+export type SupportHour = {
+  id: string;
+  user_id: string;
+  client_id: string;
+  service_id?: string;
+  work_date: string;
+  hours: number;
+  description: string;
+  created_at: string;
+};

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings } from 'lucide-react';
+import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings, Clock } from 'lucide-react';
 import { supabase, Client, Service, Project, ServiceType } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { ClientList } from './ClientList';
@@ -15,6 +15,7 @@ import { LicenseManager } from './LicenseManager';
 import { TelemetryDashboard } from './TelemetryDashboard';
 import { DataExportImport } from './DataExportImport';
 import { SettingsPanel } from './SettingsPanel';
+import { SupportHoursManager } from './SupportHoursManager';
 
 type Stats = {
   totalClients: number;
@@ -27,7 +28,7 @@ type Stats = {
 
 export function Dashboard() {
   const { signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'projects' | 'services' | 'payments' | 'licenses' | 'roadmap' | 'telemetry' | 'data' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'projects' | 'services' | 'payments' | 'licenses' | 'roadmap' | 'hours' | 'telemetry' | 'data' | 'settings'>('dashboard');
   const [stats, setStats] = useState<Stats>({
     totalClients: 0,
     activeClients: 0,
@@ -224,6 +225,17 @@ export function Dashboard() {
           >
             <Rocket className="w-4 h-4" />
             Roadmap
+          </button>
+          <button
+            onClick={() => setActiveTab('hours')}
+            className={`flex items-center gap-1.5 px-4 py-2 font-medium border-b-2 transition-colors ${
+              activeTab === 'hours'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Clock className="w-4 h-4" />
+            Hours
           </button>
           <button
             onClick={() => setActiveTab('telemetry')}
@@ -513,6 +525,10 @@ export function Dashboard() {
 
         {activeTab === 'roadmap' && (
           <RoadmapManager clients={clients} services={services} />
+        )}
+
+        {activeTab === 'hours' && (
+          <SupportHoursManager clients={clients} services={services} />
         )}
 
         {activeTab === 'telemetry' && (

@@ -5,11 +5,11 @@ import {
   Cpu, HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X, Check, LayoutGrid,
   Sparkles, Rocket, Search, Cloud, Wrench,
 } from 'lucide-react';
-import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapCategory, ClientLicense, UserSettings } from '../lib/supabase';
+import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapCategory, ClientLicense, UserSettings, SupportHour } from '../lib/supabase';
 
 type Props = { token: string };
 
-type Section = 'overview' | 'catalog' | 'licenses' | 'changes' | 'support';
+type Section = 'overview' | 'catalog' | 'licenses' | 'changes' | 'hours' | 'support';
 
 function billingCycleMonths(cycle: string): number {
   return cycle === 'Monthly' ? 1
@@ -55,6 +55,7 @@ export function SharePage({ token }: Props) {
   const [changes, setChanges] = useState<ServiceChange[]>([]);
   const [roadmap, setRoadmap] = useState<RoadmapItem[]>([]);
   const [licenses, setLicenses] = useState<ClientLicense[]>([]);
+  const [supportHours, setSupportHours] = useState<SupportHour[]>([]);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -105,6 +106,13 @@ export function SharePage({ token }: Props) {
         .eq('client_id', tokenRow.client_id)
         .order('expiration_date', { ascending: true, nullsFirst: false });
       setLicenses(licensesData || []);
+
+      const { data: hoursData } = await supabase
+        .from('support_hours')
+        .select('*')
+        .eq('client_id', tokenRow.client_id)
+        .order('work_date', { ascending: false });
+      setSupportHours(hoursData || []);
 
       setLoading(false);
     };
@@ -221,6 +229,7 @@ export function SharePage({ token }: Props) {
           <NavBtn icon={LayoutGrid} active={section === 'catalog'} onClick={() => setSection('catalog')}>Service Catalog</NavBtn>
           <NavBtn icon={Shield} active={section === 'licenses'} onClick={() => setSection('licenses')}>Licenses</NavBtn>
           <NavBtn icon={History} active={section === 'changes'} onClick={() => setSection('changes')}>Change Log</NavBtn>
+          <NavBtn icon={Clock} active={section === 'hours'} onClick={() => setSection('hours')}>Support Hours</NavBtn>
           <NavBtn icon={Mail} active={section === 'support'} onClick={() => setSection('support')}>Contact Manager</NavBtn>
         </div>
       </nav>
@@ -242,6 +251,8 @@ export function SharePage({ token }: Props) {
         {section === 'licenses' && <LicensesSection licenses={licenses} services={services} />}
 
         {section === 'changes' && <ChangesSection changes={changes} services={services} />}
+
+        {section === 'hours' && <SupportHoursSection hours={supportHours} services={services} />}
 
         {section === 'support' && <SupportSection clientName={client!.company_name} services={services} />}
       </main>
@@ -1101,5 +1112,153 @@ function SupportSection({ clientName, services }: { clientName: string; services
         </button>
       </form>
     </section>
+  );
+}
+
+/* ---------- Support Hours Section ---------- */
+
+function SupportHoursSection({ hours, services }: { hours: SupportHour[]; services: Service[] }) {
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+
+  const filteredHours = useMemo(() => {
+    if (!selectedMonth) return hours;
+    const [year, month] = selectedMonth.split('-');
+    const start = `${year}-${month}-01`;
+    const endDate = new Date(parseInt(year), parseInt(month), 0);
+    const end = `${year}-${month}-${String(endDate.getDate()).padStart(2, '0')}`;
+    return hours.filter(h => h.work_date >= start && h.work_date <= end);
+  }, [hours, selectedMonth]);
+
+  const totalHoursUsed = filteredHours.reduce((sum, h) => sum + Number(h.hours), 0);
+  const totalAllocated = services
+    .filter(s => s.status === 'Active')
+    .reduce((sum, s) => sum + (s.allocated_hours || 0), 0);
+  const extraRate = services.find(s => s.extra_hour_rate && s.extra_hour_rate > 0)?.extra_hour_rate || 0;
+  const primaryCurrency = services.find(s => s.currency)?.currency || 'USD';
+  const pctUsed = totalAllocated > 0 ? (totalHoursUsed / totalAllocated) * 100 : 0;
+
+  const getServiceName = (id?: string) => {
+    if (!id) return null;
+    const svc = services.find(s => s.id === id);
+    return svc?.business_name || svc?.name || null;
+  };
+
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    hours.forEach(h => {
+      const [y, m] = h.work_date.split('-');
+      months.add(`${y}-${m}`);
+    });
+    const now = new Date();
+    months.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+    return Array.from(months).sort().reverse();
+  }, [hours]);
+
+  return (
+    <div className="space-y-6">
+      {/* Summary */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Support Hours Usage</h3>
+            <p className="text-sm text-gray-500 mt-0.5">Time spent on your managed services and infrastructure</p>
+          </div>
+          <select
+            value={selectedMonth}
+            onChange={e => setSelectedMonth(e.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
+          >
+            {availableMonths.map(m => {
+              const [y, mo] = m.split('-');
+              const label = new Date(parseInt(y), parseInt(mo) - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+              return <option key={m} value={m}>{label}</option>;
+            })}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-slate-50 rounded-xl p-4">
+            <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Hours Used</div>
+            <div className="text-2xl font-bold text-gray-900">{totalHoursUsed.toFixed(1)}h</div>
+            {totalAllocated > 0 && (
+              <div className="text-sm text-gray-500">of {totalAllocated}h included</div>
+            )}
+          </div>
+          {totalAllocated > 0 && (
+            <div className="bg-slate-50 rounded-xl p-4">
+              <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Plan Usage</div>
+              <div className="mt-2">
+                <div className="flex items-baseline gap-2">
+                  <span className={`text-2xl font-bold ${pctUsed > 90 ? 'text-red-600' : pctUsed > 70 ? 'text-amber-600' : 'text-gray-900'}`}>
+                    {pctUsed.toFixed(0)}%
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                  <div
+                    className={`h-2 rounded-full transition-all ${pctUsed > 90 ? 'bg-red-500' : pctUsed > 70 ? 'bg-amber-500' : 'bg-blue-500'}`}
+                    style={{ width: `${Math.min(pctUsed, 100)}%` }}
+                  />
+                </div>
+                {totalHoursUsed > totalAllocated && (
+                  <div className="text-xs text-red-600 font-medium mt-1">
+                    {(totalHoursUsed - totalAllocated).toFixed(1)}h over plan
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          {extraRate > 0 && (
+            <div className="bg-slate-50 rounded-xl p-4">
+              <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Extra Hour Rate</div>
+              <div className="text-2xl font-bold text-gray-900">{primaryCurrency} {extraRate.toFixed(2)}</div>
+              <div className="text-sm text-gray-500">per additional hour</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Activity log */}
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h4 className="font-semibold text-gray-900">Activity Log</h4>
+        </div>
+        {filteredHours.length === 0 ? (
+          <div className="p-10 text-center">
+            <Clock className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+            <p className="text-gray-500 text-sm">No support hours logged for this period</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {filteredHours.map(entry => (
+              <div key={entry.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-1">
+                      <span className="text-sm font-medium text-gray-900">
+                        {new Date(entry.work_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      </span>
+                      {getServiceName(entry.service_id) && (
+                        <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                          {getServiceName(entry.service_id)}
+                        </span>
+                      )}
+                    </div>
+                    {entry.description && (
+                      <p className="text-sm text-gray-600 mt-0.5">{entry.description}</p>
+                    )}
+                  </div>
+                  <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full text-sm font-semibold whitespace-nowrap">
+                    <Clock className="w-3.5 h-3.5" />{Number(entry.hours).toFixed(1)}h
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
