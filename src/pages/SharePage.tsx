@@ -360,6 +360,32 @@ const CATEGORY_LABELS: Record<RoadmapCategory, string> = {
 function RoadmapCard({ item }: { item: RoadmapItem }) {
   const meta = ROADMAP_META[item.status];
   const Icon = meta.icon;
+
+  const handleAddToCalendar = () => {
+    const date = item.scheduled_date!;
+    const dtStart = date.replace(/-/g, '');
+    const dtEnd = dtStart;
+    const ics = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//ClientManager//EN',
+      'BEGIN:VEVENT',
+      `DTSTART;VALUE=DATE:${dtStart}`,
+      `DTEND;VALUE=DATE:${dtEnd}`,
+      `SUMMARY:${item.title}`,
+      `DESCRIPTION:${(item.description || '').replace(/\n/g, '\\n')}`,
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${item.title.replace(/[^a-zA-Z0-9]/g, '_')}.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <article className={`bg-white rounded-xl border ${meta.border} shadow-sm p-5 transition-shadow hover:shadow-md`}>
       <div className="flex items-start justify-between gap-3 mb-2">
@@ -384,6 +410,21 @@ function RoadmapCard({ item }: { item: RoadmapItem }) {
       {item.description && <p className="text-sm text-gray-600 leading-relaxed">{item.description}</p>}
       {item.requested_by && (
         <div className="text-xs text-gray-500 mt-2">Requested by {item.requested_by}</div>
+      )}
+      {item.scheduled_date && item.status !== 'Released' && (
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+          <span className="text-xs text-blue-700 font-medium flex items-center gap-1">
+            <Calendar className="w-3 h-3" />
+            {new Date(item.scheduled_date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+          </span>
+          <button
+            onClick={handleAddToCalendar}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+          >
+            <Calendar className="w-3 h-3" />
+            Add to Calendar
+          </button>
+        </div>
       )}
     </article>
   );

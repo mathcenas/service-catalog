@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { Plus, Trash2, Eye, EyeOff, Save, Rocket, Sparkles, Database, CreditCard, Lightbulb, MapPin, User, Send, CalendarClock, BookOpen, Check } from 'lucide-react';
 import { supabase, Client, Service, RoadmapItem, ROADMAP_STATUSES, RoadmapStatus, ROADMAP_CATEGORIES, RoadmapCategory } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -388,6 +388,26 @@ function RoadmapRow({ item, clients, notifying, clientServices, onUpdate, onDele
   const canNotify = !!item.client_id && !notifying;
   const client = clients.find(c => c.id === item.client_id);
 
+  const [localTitle, setLocalTitle] = useState(item.title);
+  const [localDesc, setLocalDesc] = useState(item.description || '');
+  const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const descTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => { setLocalTitle(item.title); }, [item.title]);
+  useEffect(() => { setLocalDesc(item.description || ''); }, [item.description]);
+
+  const handleTitleChange = useCallback((val: string) => {
+    setLocalTitle(val);
+    if (titleTimer.current) clearTimeout(titleTimer.current);
+    titleTimer.current = setTimeout(() => onUpdate(item.id, { title: val }), 600);
+  }, [item.id, onUpdate]);
+
+  const handleDescChange = useCallback((val: string) => {
+    setLocalDesc(val);
+    if (descTimer.current) clearTimeout(descTimer.current);
+    descTimer.current = setTimeout(() => onUpdate(item.id, { description: val }), 600);
+  }, [item.id, onUpdate]);
+
   return (
     <div className="p-5 hover:bg-gray-50">
       <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
@@ -396,14 +416,14 @@ function RoadmapRow({ item, clients, notifying, clientServices, onUpdate, onDele
             <span className={`p-1 rounded ${meta.color}`}><CatIcon className="w-3.5 h-3.5" /></span>
             <input
               type="text"
-              value={item.title}
-              onChange={e => onUpdate(item.id, { title: e.target.value })}
+              value={localTitle}
+              onChange={e => handleTitleChange(e.target.value)}
               className="flex-1 px-2 py-1 border border-transparent hover:border-gray-200 focus:border-blue-300 rounded-md text-sm font-medium text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
             />
           </div>
           <textarea
-            value={item.description || ''}
-            onChange={e => onUpdate(item.id, { description: e.target.value })}
+            value={localDesc}
+            onChange={e => handleDescChange(e.target.value)}
             placeholder="Description..."
             rows={2}
             className="w-full px-2 py-1 border border-transparent hover:border-gray-200 focus:border-blue-300 rounded-md text-xs text-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"

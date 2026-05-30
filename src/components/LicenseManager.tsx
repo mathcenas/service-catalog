@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Plus, Trash2, CreditCard as Edit3, X, Save, Shield, AlertTriangle, Calendar } from 'lucide-react';
+import { Plus, Trash2, CreditCard as Edit3, X, Save, Shield, AlertTriangle, Calendar, Bell } from 'lucide-react';
 import { supabase, Client, Service, ClientLicense, PAID_BY_OPTIONS } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -18,6 +18,7 @@ export function LicenseManager({ clients, services }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ClientLicense | null>(null);
   const [filterClient, setFilterClient] = useState<string>('all');
+  const [sendingReminders, setSendingReminders] = useState(false);
 
   const [form, setForm] = useState({
     client_id: '', service_id: '', software_name: '', license_key: '',
@@ -105,6 +106,26 @@ export function LicenseManager({ clients, services }: Props) {
     setLicenses(prev => prev.filter(l => l.id !== id));
   };
 
+  const sendReminders = async () => {
+    setSendingReminders(true);
+    try {
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/license-reminder`;
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`Sent ${data.sent} reminder(s) for licenses expiring within 30 days.`);
+      } else {
+        alert(`Error: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      alert(`Network error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    setSendingReminders(false);
+  };
+
   const getClientName = (id: string) => clients.find(c => c.id === id)?.company_name || '--';
   const getServiceName = (id?: string) => id ? services.find(s => s.id === id)?.business_name || services.find(s => s.id === id)?.name || '--' : null;
 
@@ -141,10 +162,16 @@ export function LicenseManager({ clients, services }: Props) {
           <h2 className="text-2xl font-bold text-gray-900">Licenses & Subscriptions</h2>
           <p className="text-sm text-gray-600 mt-1">Track software licenses, subscriptions, and renewal dates across your clients.</p>
         </div>
-        <button onClick={() => { resetForm(); setShowForm(true); }}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-          <Plus className="w-4 h-4" /> Add License
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={sendReminders} disabled={sendingReminders}
+            className="flex items-center gap-2 border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+            <Bell className="w-4 h-4" /> {sendingReminders ? 'Sending...' : 'Send Reminders'}
+          </button>
+          <button onClick={() => { resetForm(); setShowForm(true); }}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            <Plus className="w-4 h-4" /> Add License
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
