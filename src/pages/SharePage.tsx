@@ -915,9 +915,16 @@ function LicensesSection({ licenses, services }: { licenses: ClientLicense[]; se
               </div>
               <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">
-                    {lic.billing_cycle === 'Perpetual' ? 'Perpetual license' : `Billed ${lic.billing_cycle.toLowerCase()}`}
-                  </span>
+                  {lic.paid_by !== 'Me' && (
+                    <span className="text-xs text-gray-500">
+                      {lic.billing_cycle === 'Perpetual' ? 'Perpetual license' : `Billed ${lic.billing_cycle.toLowerCase()}`}
+                    </span>
+                  )}
+                  {lic.paid_by === 'Me' && (
+                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-wide">
+                      Included in your plan
+                    </span>
+                  )}
                   {lic.paid_by === 'Client' && (
                     <span className="text-[10px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-full uppercase tracking-wide">
                       Paid by you
