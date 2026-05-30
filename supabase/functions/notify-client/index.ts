@@ -170,6 +170,8 @@ Deno.serve(async (req: Request) => {
       recipients.push(alt_email);
     }
 
+    const replyTo = Deno.env.get("RESEND_REPLY_TO") || "mathias@cenas.uy";
+
     const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -178,6 +180,7 @@ Deno.serve(async (req: Request) => {
       },
       body: JSON.stringify({
         from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Notifications <notificaciones@updates.cenas.uy>",
+        reply_to: replyTo,
         to: recipients,
         subject,
         html: finalHtml,
