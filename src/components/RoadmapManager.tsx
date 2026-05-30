@@ -107,44 +107,68 @@ export function RoadmapManager({ clients, services }: Props) {
 
     setNotifying(item.id);
 
-    const { data: tokens } = await supabase
-      .from('client_share_tokens')
-      .select('token')
-      .eq('client_id', client.id)
-      .limit(1);
+    try {
+      const { data: tokens } = await supabase
+        .from('client_share_tokens')
+        .select('token')
+        .eq('client_id', client.id)
+        .limit(1);
 
-    const shareUrl = tokens && tokens.length > 0
-      ? `${window.location.origin}/share/${tokens[0].token}`
-      : undefined;
+      const shareUrl = tokens && tokens.length > 0
+        ? `${window.location.origin}/share/${tokens[0].token}`
+        : undefined;
 
-    const { data: session } = await supabase.auth.getSession();
-    const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-client`;
+      const { data: session } = await supabase.auth.getSession();
+      if (!session?.session?.access_token) {
+        alert('Session expired. Please sign in again.');
+        setNotifying(null);
+        return;
+      }
 
-    const res = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${session?.session?.access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        client_email: client.email,
-        alt_email: client.alt_email || undefined,
-        client_name: client.contact_name || client.company_name,
-        subject: `Planned: ${item.title}`,
-        title: item.title,
-        description: item.description,
-        scheduled_date: item.scheduled_date,
-        share_url: shareUrl,
-        sender_name: user?.email,
-        logo_url: logoUrl,
-      }),
-    });
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-client`;
 
-    if (res.ok) {
-      await updateItem(item.id, { notified_at: new Date().toISOString() });
-    } else {
-      const err = await res.json().catch(() => ({}));
-      alert(`Failed to send: ${err.error || 'Unknown error'}`);
+      console.log('[notify-client] Sending to:', client.email, client.alt_email || '(no alt)');
+      console.log('[notify-client] URL:', apiUrl);
+
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          client_email: client.email,
+          alt_email: client.alt_email || undefined,
+          client_name: client.contact_name || client.company_name,
+          subject: `Planned: ${item.title}`,
+          title: item.title,
+          description: item.description,
+          scheduled_date: item.scheduled_date,
+          share_url: shareUrl,
+          sender_name: user?.email,
+          logo_url: logoUrl,
+        }),
+      });
+
+      console.log('[notify-client] Response status:', res.status);
+
+      if (res.ok) {
+        const data = await res.json();
+        console.log('[notify-client] Success:', data);
+        await updateItem(item.id, { notified_at: new Date().toISOString() });
+      } else {
+        const errText = await res.text();
+        console.error('[notify-client] Error response:', res.status, errText);
+        let errMsg = `HTTP ${res.status}`;
+        try {
+          const errJson = JSON.parse(errText);
+          errMsg = errJson.error || errJson.details || errMsg;
+        } catch { /* use status */ }
+        alert(`Failed to send notification:\n${errMsg}`);
+      }
+    } catch (err) {
+      console.error('[notify-client] Network error:', err);
+      alert(`Network error sending notification: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     setNotifying(null);
