@@ -205,6 +205,25 @@ export function SupportHoursManager({ clients, services }: Props) {
         )}
       </div>
 
+      {/* Per-service confirmed hours breakdown */}
+      {filterClientId && (() => {
+        const svcsWithHours = services.filter(s => s.client_id === filterClientId && s.status === 'Active' && s.confirmed_hours_monthly && s.confirmed_hours_monthly > 0);
+        if (svcsWithHours.length === 0) return null;
+        return (
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">Confirmed Hours by Service</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {svcsWithHours.map(s => (
+                <div key={s.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
+                  <span className="text-sm text-gray-700 truncate">{s.business_name || s.name}</span>
+                  <span className="text-sm font-semibold text-gray-900 ml-2 whitespace-nowrap">{s.confirmed_hours_monthly}h/mo</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Entries table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">

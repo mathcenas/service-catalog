@@ -1,13 +1,46 @@
 # Client Manager
 
-Self-hosted IT service catalog aligned with ISO/IEC 20000: clients, projects, services, change history, and a read-only client portal with Uptime Kuma badges.
+Self-hosted IT service management platform aligned with ISO/IEC 20000. Manage clients, projects, services, licenses, support hours, roadmaps, and deliver a read-only client portal with full transparency.
 
 ## Tech Stack
 
 - React + TypeScript + Vite
 - Tailwind CSS
-- Supabase (Postgres + Auth + RLS)
+- Supabase (Postgres + Auth + RLS + Edge Functions)
 - Nginx + Docker, designed to sit behind Nginx Proxy Manager
+
+## Features
+
+### Admin Panel
+
+- **Dashboard** — Overview of all clients, services, billing, and upcoming renewals
+- **Client Management** — Create, edit, and organize clients with contact details, logos, and alternate emails
+- **Projects** — Group services under projects per client
+- **Services** — Full service catalog with billing, VPS details (provider, IP, OS, specs), SLA levels, includes/excludes, client responsibilities, operational status, and Uptime Kuma integration
+- **Support Hours** — Log time per client/service, track against confirmed monthly hours from each service, progress bars showing usage vs. allocation
+- **Licenses** — Track software licenses and subscriptions linked to services, with expiry reminders
+- **Payments** — Payment tracking with billing cycle management and revenue overview
+- **Roadmap** — Public/private roadmap items with categories, scheduling, and client notifications
+- **Data Export/Import** — CSV export and import of services
+- **Settings** — Company branding (logo, name), telemetry dashboard
+- **Share Tokens** — Generate unique portal URLs per client
+
+### Client Portal (Share Page)
+
+Read-only portal accessible via share token:
+
+1. **What's Coming** — Roadmap with upcoming updates, calendar integration
+2. **Service Catalog** — ISO 20000 service sheets with SLA, specs, resource usage, backups, cost breakdown
+3. **Licenses** — Active licenses and subscriptions with expiry status
+4. **Change Log** — Transparent history of service changes
+5. **Support Hours** — Monthly usage tracker with per-service allocation breakdown, progress gauge, and activity log
+6. **Contact Manager** — Support request form via email
+
+### Notifications (Edge Functions)
+
+- **notify-client** — Email notifications for roadmap/service actions via Resend, with tracking pixel for read receipts
+- **license-reminder** — Automated license expiry reminders via cron
+- **track-open** — Email open tracking endpoint
 
 ## Quick Start (Docker + Nginx Proxy Manager)
 
@@ -58,28 +91,36 @@ NPM_NETWORK=npm_proxy   # name of the external docker network NPM uses
 
 Rebuild the image after changing these values (`docker compose up -d --build`).
 
-## Admin / owner
+### Edge Function Secrets (deployed via Supabase)
 
-`mathias@cenas.uy` is registered as the owner/admin account. Default password: `ChangeMe123!` — change it immediately after the first login.
+- `RESEND_API_KEY` — Resend email service API key
+- `RESEND_FROM_EMAIL` — Sender email address
+- `RESEND_REPLY_TO` — Reply-to address for notifications
 
 ## Data model
 
-- `clients` — customer accounts
-- `projects` — one client can have many projects
-- `services` — attached to a client, optionally to a project; holds both technical and business/ISO 20000 fields (SLA, includes/excludes, client responsibilities, operational status, Uptime Kuma badge URLs)
-- `service_changes` — audit trail of changes, visible in the client portal
-- `client_share_tokens` — tokens that grant anonymous read access to a per-client portal
+- `clients` — Customer accounts with contact info, logo, alternate email
+- `projects` — One client can have many projects
+- `services` — Attached to a client, optionally to a project; holds billing, VPS specs, SLA, includes/excludes, confirmed support hours, operational status, Uptime Kuma badge URLs, resource usage, cost breakdown
+- `service_changes` — Audit trail of changes, visible in the client portal
+- `client_share_tokens` — Tokens granting anonymous read access to a per-client portal
+- `client_licenses` — Software licenses/subscriptions linked to services
+- `support_hours` — Time entries logged per client/service
+- `roadmap_items` — Feature/update roadmap with public visibility flag
+- `user_settings` — Admin company branding and configuration
+- `service_heartbeats` — Service health heartbeat tracking
+- `email_opens` — Notification read receipt tracking
 
 All tables have Row Level Security; only the owning user can write, the anon role can read only through a valid share token.
 
-## Client portal
+## Support Hours & Confirmed Hours
 
-Admins create a share token per client; the generated URL opens a read-only portal with four sections:
+Each service has a `confirmed_hours_monthly` field representing the contracted support hours included with that service. These hours:
 
-1. Availability — semaphore status per service, with live Uptime Kuma badges
-2. Service Catalog — ISO 20000 "service sheet" with SLA, includes / not included / responsibilities
-3. Change Log — transparent history of changes applied to services
-4. Request Support — form that opens the user's email client with full context
+- Are set per service in the admin panel (Billing section)
+- Are summed per client to show the total monthly budget
+- Drive the progress gauge in both the admin Support Hours view and the client portal
+- Appear in the client portal as a per-service allocation breakdown
 
 ## License
 
