@@ -5,7 +5,7 @@ import {
   Cpu, HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X, Check, LayoutGrid,
   Sparkles, Rocket, Search, Cloud, Wrench,
 } from 'lucide-react';
-import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapCategory, ClientLicense, UserSettings, SupportHour } from '../lib/supabase';
+import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapCategory, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat } from '../lib/supabase';
 
 type Props = { token: string };
 
@@ -56,6 +56,7 @@ export function SharePage({ token }: Props) {
   const [roadmap, setRoadmap] = useState<RoadmapItem[]>([]);
   const [licenses, setLicenses] = useState<ClientLicense[]>([]);
   const [supportHours, setSupportHours] = useState<SupportHour[]>([]);
+  const [heartbeats, setHeartbeats] = useState<ServiceHeartbeat[]>([]);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -113,6 +114,20 @@ export function SharePage({ token }: Props) {
         .eq('client_id', tokenRow.client_id)
         .order('work_date', { ascending: false });
       setSupportHours(hoursData || []);
+
+      // Fetch speedtest/heartbeat data for the last 48 hours
+      const serviceIds = (servicesData || []).map(s => s.id);
+      if (serviceIds.length > 0) {
+        const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+        const { data: hbData } = await supabase
+          .from('service_heartbeats')
+          .select('*')
+          .in('service_id', serviceIds)
+          .eq('source', 'speedtest')
+          .gte('received_at', since)
+          .order('received_at', { ascending: true });
+        setHeartbeats(hbData || []);
+      }
 
       setLoading(false);
     };
@@ -245,6 +260,7 @@ export function SharePage({ token }: Props) {
             getProjectName={getProjectName}
             expandedService={expandedService}
             setExpandedService={setExpandedService}
+            heartbeats={heartbeats}
           />
         )}
 
@@ -447,7 +463,7 @@ type GroupMode = 'project' | 'type';
 type Group = { key: string; title: string; subtitle?: string; status?: string; items: Service[] };
 
 function CatalogSection({
-  services, projects, getTypeName, getProjectName, expandedService, setExpandedService,
+  services, projects, getTypeName, getProjectName, expandedService, setExpandedService, heartbeats,
 }: {
   services: Service[];
   projects: Project[];
@@ -455,6 +471,7 @@ function CatalogSection({
   getProjectName: (id?: string) => string | null;
   expandedService: string | null;
   setExpandedService: (id: string | null) => void;
+  heartbeats: ServiceHeartbeat[];
 }) {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Other'>('all');
@@ -578,6 +595,7 @@ function CatalogSection({
                   projectName={getProjectName(s.project_id)}
                   expanded={expandedService === s.id}
                   onToggle={() => setExpandedService(expandedService === s.id ? null : s.id)}
+                  heartbeats={heartbeats.filter(h => h.service_id === s.id)}
                 />
               ))}
             </div>
@@ -589,13 +607,14 @@ function CatalogSection({
 }
 
 function ServiceSheet({
-  service, typeName, expanded, onToggle,
+  service, typeName, expanded, onToggle, heartbeats,
 }: {
   service: Service;
   typeName: string;
   projectName: string | null;
   expanded: boolean;
   onToggle: () => void;
+  heartbeats: ServiceHeartbeat[];
 }) {
   const title = service.business_name || service.name;
   const desc = service.business_description || service.description;
@@ -647,7 +666,7 @@ function ServiceSheet({
 
       {expanded && (
         <div className="mt-4 -mx-6 -mb-5">
-          <TechnicalDetails service={service} />
+          <TechnicalDetails service={service} heartbeats={heartbeats} />
         </div>
       )}
     </article>
@@ -679,7 +698,7 @@ function ListCard({ title, icon: Icon, color, items }: { title: string; icon: an
   );
 }
 
-function TechnicalDetails({ service }: { service: Service }) {
+function TechnicalDetails({ service, heartbeats }: { service: Service; heartbeats: ServiceHeartbeat[] }) {
   const specs = service.specifications || {};
   const hasSpecs = !!(specs.cpu || specs.ram || specs.storage || specs.bandwidth);
   const renewal = service.next_renewal_date ? new Date(service.next_renewal_date).toLocaleDateString() : '--';
@@ -765,6 +784,99 @@ function TechnicalDetails({ service }: { service: Service }) {
         ) : (
           <span className="text-sm text-gray-400">--</span>
         )}
+      </div>
+
+      {heartbeats.length > 0 && <SpeedChart heartbeats={heartbeats} />}
+    </div>
+  );
+}
+
+function SpeedChart({ heartbeats }: { heartbeats: ServiceHeartbeat[] }) {
+  const points = heartbeats.map(h => ({
+    time: new Date(h.received_at),
+    download: Number((h.payload as any).download_mbps) || 0,
+    upload: Number((h.payload as any).upload_mbps) || 0,
+    ping: Number((h.payload as any).ping_ms) || 0,
+    packetLoss: Number((h.payload as any).packet_loss_pct) || 0,
+  }));
+
+  if (points.length === 0) return null;
+
+  const maxSpeed = Math.max(...points.map(p => Math.max(p.download, p.upload)), 1);
+  const chartH = 120;
+
+  const toY = (val: number) => chartH - (val / maxSpeed) * (chartH - 10);
+
+  const makePath = (values: number[]) => {
+    return values.map((v, i) => {
+      const x = points.length === 1 ? 50 : (i / (points.length - 1)) * 100;
+      const y = toY(v);
+      return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+    }).join(' ');
+  };
+
+  const downloadPath = makePath(points.map(p => p.download));
+  const uploadPath = makePath(points.map(p => p.upload));
+
+  const latest = points[points.length - 1];
+  const avgDownload = points.reduce((s, p) => s + p.download, 0) / points.length;
+  const avgUpload = points.reduce((s, p) => s + p.upload, 0) / points.length;
+  const avgPing = points.reduce((s, p) => s + p.ping, 0) / points.length;
+
+  return (
+    <div className="mt-4 pt-4 border-t border-gray-200">
+      <div className="flex items-center gap-2 mb-3">
+        <Wifi className="w-4 h-4 text-blue-600" />
+        <span className="text-xs uppercase tracking-wider text-gray-500 font-medium">Network Performance (Last 48h)</span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div className="bg-white rounded-lg border border-gray-200 p-3 text-center">
+          <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Download</div>
+          <div className="text-lg font-bold text-blue-600">{latest.download.toFixed(1)}</div>
+          <div className="text-[10px] text-gray-500">Mbps</div>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-3 text-center">
+          <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Upload</div>
+          <div className="text-lg font-bold text-emerald-600">{latest.upload.toFixed(1)}</div>
+          <div className="text-[10px] text-gray-500">Mbps</div>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-3 text-center">
+          <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Ping</div>
+          <div className="text-lg font-bold text-gray-900">{latest.ping.toFixed(0)}</div>
+          <div className="text-[10px] text-gray-500">ms</div>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-3 text-center">
+          <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Packet Loss</div>
+          <div className={`text-lg font-bold ${latest.packetLoss > 0 ? 'text-red-600' : 'text-gray-900'}`}>{latest.packetLoss.toFixed(1)}%</div>
+          <div className="text-[10px] text-gray-500">current</div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <svg viewBox={`0 0 100 ${chartH}`} preserveAspectRatio="none" className="w-full h-28">
+          {/* Grid lines */}
+          {[0, 25, 50, 75, 100].map(pct => (
+            <line key={pct} x1="0" x2="100" y1={toY(maxSpeed * pct / 100)} y2={toY(maxSpeed * pct / 100)}
+              stroke="#e5e7eb" strokeWidth="0.3" strokeDasharray="1,1" />
+          ))}
+          {/* Upload area */}
+          <path d={`${uploadPath} L 100 ${chartH} L 0 ${chartH} Z`} fill="rgba(16,185,129,0.08)" />
+          {/* Download area */}
+          <path d={`${downloadPath} L 100 ${chartH} L 0 ${chartH} Z`} fill="rgba(37,99,235,0.08)" />
+          {/* Upload line */}
+          <path d={uploadPath} fill="none" stroke="#10b981" strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round" />
+          {/* Download line */}
+          <path d={downloadPath} fill="none" stroke="#2563eb" strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <div className="flex items-center justify-between mt-2">
+          <div className="flex items-center gap-4 text-[10px]">
+            <span className="flex items-center gap-1"><span className="w-2 h-0.5 bg-blue-600 rounded"></span> Download (avg {avgDownload.toFixed(1)} Mbps)</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-0.5 bg-emerald-500 rounded"></span> Upload (avg {avgUpload.toFixed(1)} Mbps)</span>
+            <span className="text-gray-400">Ping avg: {avgPing.toFixed(0)}ms</span>
+          </div>
+          <span className="text-[10px] text-gray-400">{points.length} readings</span>
+        </div>
       </div>
     </div>
   );
