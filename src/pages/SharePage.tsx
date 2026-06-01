@@ -3,7 +3,7 @@ import {
   Server, Globe, Calendar, Clock, MapPin, Shield, CheckCircle2,
   FolderOpen, History, FileText, Send,
   Cpu, HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X, Check, LayoutGrid,
-  Sparkles, Rocket, Search, Cloud, Wrench,
+  Sparkles, Rocket, Search, Cloud, Wrench, DollarSign,
 } from 'lucide-react';
 import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapCategory, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat } from '../lib/supabase';
 
@@ -476,6 +476,7 @@ function CatalogSection({
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Other'>('all');
   const [groupBy, setGroupBy] = useState<GroupMode>('project');
+  const [showCosts, setShowCosts] = useState(false);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -551,6 +552,17 @@ function CatalogSection({
             <LayoutGrid className="w-3.5 h-3.5" /> By type
           </button>
         </div>
+        <button
+          onClick={() => setShowCosts(!showCosts)}
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            showCosts
+              ? 'bg-slate-800 text-white shadow-sm'
+              : 'border border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300'
+          }`}
+        >
+          <DollarSign className="w-3.5 h-3.5" />
+          {showCosts ? 'Hide Costs' : 'Show Costs'}
+        </button>
         <div className="text-xs text-gray-500 whitespace-nowrap">{filtered.length} of {services.length}</div>
       </div>
 
@@ -576,7 +588,7 @@ function CatalogSection({
                 </div>
                 {g.subtitle && <p className="text-xs text-gray-600 mt-0.5">{g.subtitle}</p>}
               </div>
-              {subtotal > 0 && subtotalCurrency && (
+              {showCosts && subtotal > 0 && subtotalCurrency && (
                 <div className="text-right">
                   <div className="text-[10px] uppercase tracking-wider text-gray-400">Subtotal</div>
                   <div className="text-sm font-medium text-gray-600">
@@ -596,6 +608,7 @@ function CatalogSection({
                   expanded={expandedService === s.id}
                   onToggle={() => setExpandedService(expandedService === s.id ? null : s.id)}
                   heartbeats={heartbeats.filter(h => h.service_id === s.id)}
+                  showCosts={showCosts}
                 />
               ))}
             </div>
@@ -607,7 +620,7 @@ function CatalogSection({
 }
 
 function ServiceSheet({
-  service, typeName, expanded, onToggle, heartbeats,
+  service, typeName, expanded, onToggle, heartbeats, showCosts,
 }: {
   service: Service;
   typeName: string;
@@ -615,6 +628,7 @@ function ServiceSheet({
   expanded: boolean;
   onToggle: () => void;
   heartbeats: ServiceHeartbeat[];
+  showCosts: boolean;
 }) {
   const title = service.business_name || service.name;
   const desc = service.business_description || service.description;
@@ -647,7 +661,7 @@ function ServiceSheet({
             {desc && <p className="text-sm text-gray-600 mt-2 leading-relaxed">{desc}</p>}
           </div>
         </div>
-        <PriceTag service={service} />
+        {showCosts && <PriceTag service={service} />}
       </div>
 
       {(service.includes?.length || service.excludes?.length || service.client_responsibilities?.length) ? (
