@@ -38,6 +38,9 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
     rto: service.rto || '',
     rpo: service.rpo || '',
     maintenance_window: service.maintenance_window || '',
+    ip_internal: service.ip_internal || '',
+    ip_public: service.ip_public || '',
+    dns_record: service.dns_record || '',
     paid_by: (service.paid_by || '') as '' | PaidBy,
     payment_card_last4: service.payment_card_last4 || '',
   });
@@ -154,6 +157,9 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
         rto: formData.rto || null,
         rpo: formData.rpo || null,
         maintenance_window: formData.maintenance_window || null,
+        ip_internal: formData.ip_internal || null,
+        ip_public: formData.ip_public || null,
+        dns_record: formData.dns_record || null,
         paid_by: formData.paid_by || null,
         payment_card_last4: formData.payment_card_last4 ? formData.payment_card_last4.slice(-4) : null,
       })
@@ -410,6 +416,32 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
                 <img src={formData.uptime_badge_url} alt="Uptime badge preview" className="h-5" />
               </div>
             )}
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100">
+              Network / IPAM
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Internal IP</label>
+                <input type="text" value={formData.ip_internal} onChange={e => set('ip_internal', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none font-mono text-sm"
+                  placeholder="192.168.1.10" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Public IP</label>
+                <input type="text" value={formData.ip_public} onChange={e => set('ip_public', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none font-mono text-sm"
+                  placeholder="203.0.113.50" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">DNS Record</label>
+                <input type="text" value={formData.dns_record} onChange={e => set('dns_record', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none font-mono text-sm"
+                  placeholder="app.example.com A 203.0.113.50" />
+              </div>
+            </div>
           </div>
 
           <div>

@@ -126,6 +126,9 @@ export type Service = {
   ram_used_pct?: number;
   resource_updated_at?: string;
   reverse_proxy_domain?: string;
+  ip_internal?: string;
+  ip_public?: string;
+  dns_record?: string;
   infrastructure_cost?: number;
   allocated_hours?: number;
   extra_hour_rate?: number;
@@ -236,5 +239,41 @@ export type SupportHour = {
   work_date: string;
   hours: number;
   description: string;
+  created_at: string;
+};
+
+export type DeviceTelemetry = {
+  id: string;
+  user_id: string;
+  service_id: string;
+  hostname: string;
+  cpu_pct?: number;
+  ram_used_mb?: number;
+  ram_total_mb?: number;
+  bandwidth_in_bps?: number;
+  bandwidth_out_bps?: number;
+  uptime_seconds?: number;
+  firmware_version?: string;
+  recorded_at: string;
+  created_at: string;
+};
+
+export type TunnelType = 'ipsec' | 'wireguard';
+
+export type VpnPeer = {
+  id: string;
+  user_id: string;
+  service_id: string;
+  peer_name: string;
+  tunnel_type: TunnelType;
+  remote_address?: string;
+  local_address?: string;
+  status: string;
+  last_handshake_at?: string;
+  rx_bytes?: number;
+  tx_bytes?: number;
+  uptime_seconds?: number;
+  comment?: string;
+  recorded_at: string;
   created_at: string;
 };
