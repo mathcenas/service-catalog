@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings, Clock } from 'lucide-react';
+import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings, Clock, CheckCircle2, AlertTriangle, Wrench, XCircle } from 'lucide-react';
 import { supabase, Client, Service, Project, ServiceType } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { ClientList } from './ClientList';
@@ -333,6 +333,11 @@ export function Dashboard() {
               </div>
             )}
 
+            {/* Operational Status Overview */}
+            {services.filter(s => s.status === 'Active').length > 0 && (
+              <OperationalStatusPanel services={services} clients={clients} />
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -567,6 +572,109 @@ export function Dashboard() {
           clients={clients}
         />
       )}
+    </div>
+  );
+}
+
+function OperationalStatusPanel({ services, clients }: { services: Service[]; clients: Client[] }) {
+  const [filter, setFilter] = useState<'all' | 'issues' | 'monitored'>('all');
+
+  const active = services.filter(s => s.status === 'Active');
+
+  const categorized = {
+    operational: active.filter(s => s.operational_status === 'Operational'),
+    maintenance: active.filter(s => s.operational_status === 'Maintenance'),
+    degraded: active.filter(s => s.operational_status === 'Degraded'),
+    down: active.filter(s => s.operational_status === 'Down'),
+    unset: active.filter(s => !s.operational_status),
+  };
+
+  const issueCount = categorized.maintenance.length + categorized.degraded.length + categorized.down.length;
+  const monitoredCount = active.filter(s => s.uptime_badge_url).length;
+
+  const displayed = filter === 'issues'
+    ? [...categorized.down, ...categorized.degraded, ...categorized.maintenance]
+    : filter === 'monitored'
+    ? active.filter(s => s.uptime_badge_url)
+    : active;
+
+  const getClientName = (clientId: string) => clients.find(c => c.id === clientId)?.company_name || '';
+
+  const statusMeta = (s: Service) => {
+    switch (s.operational_status) {
+      case 'Operational': return { icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50', label: 'Operational' };
+      case 'Maintenance': return { icon: Wrench, color: 'text-blue-600', bg: 'bg-blue-50', label: 'Maintenance' };
+      case 'Degraded': return { icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50', label: 'Degraded' };
+      case 'Down': return { icon: XCircle, color: 'text-red-600', bg: 'bg-red-50', label: 'Down' };
+      default: return { icon: Server, color: 'text-gray-400', bg: 'bg-gray-50', label: 'Not Set' };
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">Operational Status</h3>
+          <p className="text-xs text-gray-500 mt-0.5">Service health overview across all clients</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 text-xs">
+            <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> {categorized.operational.length}</span>
+            <span className="flex items-center gap-1"><Wrench className="w-3.5 h-3.5 text-blue-600" /> {categorized.maintenance.length}</span>
+            <span className="flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5 text-amber-600" /> {categorized.degraded.length}</span>
+            <span className="flex items-center gap-1"><XCircle className="w-3.5 h-3.5 text-red-600" /> {categorized.down.length}</span>
+          </div>
+          <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 text-xs font-medium">
+            <button onClick={() => setFilter('all')}
+              className={`px-2.5 py-1 rounded-md transition-colors ${filter === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+              All ({active.length})
+            </button>
+            {issueCount > 0 && (
+              <button onClick={() => setFilter('issues')}
+                className={`px-2.5 py-1 rounded-md transition-colors ${filter === 'issues' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+                Issues ({issueCount})
+              </button>
+            )}
+            {monitoredCount > 0 && (
+              <button onClick={() => setFilter('monitored')}
+                className={`px-2.5 py-1 rounded-md transition-colors ${filter === 'monitored' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
+                Monitored ({monitoredCount})
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="divide-y divide-gray-100 max-h-80 overflow-y-auto">
+        {displayed.length === 0 ? (
+          <div className="px-6 py-8 text-center text-sm text-gray-500">No services match this filter.</div>
+        ) : displayed.map(svc => {
+          const meta = statusMeta(svc);
+          const Icon = meta.icon;
+          return (
+            <div key={svc.id} className="px-6 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors">
+              <div className={`p-1.5 rounded-md ${meta.bg}`}>
+                <Icon className={`w-4 h-4 ${meta.color}`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-900 truncate">{svc.business_name || svc.name}</span>
+                  <span className={`text-[10px] font-semibold uppercase tracking-wider ${meta.color}`}>{meta.label}</span>
+                </div>
+                <span className="text-xs text-gray-500">{getClientName(svc.client_id)}</span>
+              </div>
+              {svc.uptime_badge_url && (
+                <img src={svc.uptime_badge_url} alt="uptime" className="h-5" loading="lazy" />
+              )}
+              {svc.uptime_status_url && (
+                <a href={svc.uptime_status_url} target="_blank" rel="noopener noreferrer"
+                  className="text-[10px] text-blue-600 hover:text-blue-700 font-medium whitespace-nowrap">
+                  Live
+                </a>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

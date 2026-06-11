@@ -250,6 +250,8 @@ export function SharePage({ token }: Props) {
       </nav>
 
       <main className="max-w-6xl mx-auto px-4 py-8">
+        <StatusOverview services={services} />
+
         {section === 'overview' && <ComingSoonSection roadmap={roadmap} nextRelease={nextRelease} />}
 
         {section === 'catalog' && (
@@ -261,7 +263,6 @@ export function SharePage({ token }: Props) {
             expandedService={expandedService}
             setExpandedService={setExpandedService}
             heartbeats={heartbeats}
-            showStatusOverview
           />
         )}
 
@@ -464,7 +465,7 @@ type GroupMode = 'project' | 'type';
 type Group = { key: string; title: string; subtitle?: string; status?: string; items: Service[] };
 
 function CatalogSection({
-  services, projects, getTypeName, getProjectName, expandedService, setExpandedService, heartbeats, showStatusOverview,
+  services, projects, getTypeName, getProjectName, expandedService, setExpandedService, heartbeats,
 }: {
   services: Service[];
   projects: Project[];
@@ -473,7 +474,6 @@ function CatalogSection({
   expandedService: string | null;
   setExpandedService: (id: string | null) => void;
   heartbeats: ServiceHeartbeat[];
-  showStatusOverview?: boolean;
 }) {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Other'>('all');
@@ -525,7 +525,6 @@ function CatalogSection({
 
   return (
     <div className="space-y-6">
-      {showStatusOverview && <StatusOverview services={services} />}
       <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col md:flex-row gap-3 md:items-center">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1188,7 +1187,6 @@ function SupportSection({ clientName, services }: { clientName: string; services
 
   return (
     <section className="max-w-2xl">
-      <StatusOverview services={services} />
       <div className="flex items-center gap-2 mb-2">
         <Mail className="w-5 h-5 text-blue-600" />
         <h2 className="text-lg font-semibold text-gray-900">Request Support</h2>
