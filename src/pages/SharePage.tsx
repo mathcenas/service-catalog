@@ -261,6 +261,7 @@ export function SharePage({ token }: Props) {
             expandedService={expandedService}
             setExpandedService={setExpandedService}
             heartbeats={heartbeats}
+            showStatusOverview
           />
         )}
 
@@ -463,7 +464,7 @@ type GroupMode = 'project' | 'type';
 type Group = { key: string; title: string; subtitle?: string; status?: string; items: Service[] };
 
 function CatalogSection({
-  services, projects, getTypeName, getProjectName, expandedService, setExpandedService, heartbeats,
+  services, projects, getTypeName, getProjectName, expandedService, setExpandedService, heartbeats, showStatusOverview,
 }: {
   services: Service[];
   projects: Project[];
@@ -472,6 +473,7 @@ function CatalogSection({
   expandedService: string | null;
   setExpandedService: (id: string | null) => void;
   heartbeats: ServiceHeartbeat[];
+  showStatusOverview?: boolean;
 }) {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Other'>('all');
@@ -523,6 +525,7 @@ function CatalogSection({
 
   return (
     <div className="space-y-6">
+      {showStatusOverview && <StatusOverview services={services} />}
       <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col md:flex-row gap-3 md:items-center">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />

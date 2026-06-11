@@ -26,6 +26,7 @@ export function RoadmapManager({ clients, services }: Props) {
   });
   const [saving, setSaving] = useState(false);
   const [filterCategory, setFilterCategory] = useState<RoadmapCategory | 'all'>('all');
+  const [filterClientId, setFilterClientId] = useState<string>('all');
   const [notifying, setNotifying] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | undefined>();
   const [emailOpens, setEmailOpens] = useState<Record<string, { opened_at: string | null; open_count: number }>>({});
@@ -62,9 +63,15 @@ export function RoadmapManager({ clients, services }: Props) {
   }, []);
 
   const filtered = useMemo(() => {
-    if (filterCategory === 'all') return items;
-    return items.filter(i => i.category === filterCategory);
-  }, [items, filterCategory]);
+    let list = items;
+    if (filterClientId !== 'all') {
+      list = list.filter(i => i.client_id === filterClientId || !i.client_id);
+    }
+    if (filterCategory !== 'all') {
+      list = list.filter(i => i.category === filterCategory);
+    }
+    return list;
+  }, [items, filterCategory, filterClientId]);
 
   const addItem = async () => {
     if (!draft.title.trim()) return;
@@ -339,6 +346,16 @@ export function RoadmapManager({ clients, services }: Props) {
         <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2 flex-wrap">
           <Rocket className="w-4 h-4 text-blue-600" />
           <h3 className="text-sm font-semibold text-gray-800">Pipeline</h3>
+          <select
+            value={filterClientId}
+            onChange={e => setFilterClientId(e.target.value)}
+            className="ml-3 px-2.5 py-1 border border-gray-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-gray-50"
+          >
+            <option value="all">All Clients</option>
+            {clients.filter(c => c.status === 'Active').map(c => (
+              <option key={c.id} value={c.id}>{c.company_name}</option>
+            ))}
+          </select>
           <div className="ml-auto inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 text-xs font-medium">
             <button onClick={() => setFilterCategory('all')}
               className={`px-2.5 py-1 rounded-md transition-colors ${filterCategory === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
