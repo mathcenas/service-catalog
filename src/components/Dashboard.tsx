@@ -473,7 +473,7 @@ export function Dashboard() {
                 Add Client
               </button>
             </div>
-            <ClientList clients={clients} onUpdate={fetchData} />
+            <ClientList clients={clients} services={services} onUpdate={fetchData} />
           </div>
         )}
 
