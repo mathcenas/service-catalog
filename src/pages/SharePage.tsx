@@ -9,7 +9,7 @@ import { supabase, Client, Service, ServiceType, Project, ServiceChange, Managed
 
 type Props = { token: string };
 
-type Section = 'overview' | 'catalog' | 'licenses' | 'changes' | 'hours' | 'support';
+type Section = 'overview' | 'services' | 'licenses' | 'changes' | 'hours' | 'support';
 
 function billingCycleMonths(cycle: string): number {
   return cycle === 'Monthly' ? 1
@@ -30,7 +30,6 @@ function formatTimeAgo(iso: string): string {
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
 }
-
 
 function serviceMonthlyTotal(service: Service): number {
   const months = billingCycleMonths(service.billing_cycle);
@@ -115,7 +114,6 @@ export function SharePage({ token }: Props) {
         .order('work_date', { ascending: false });
       setSupportHours(hoursData || []);
 
-      // Fetch speedtest/heartbeat data for the last 48 hours
       const serviceIds = (servicesData || []).map(s => s.id);
       if (serviceIds.length > 0) {
         const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
@@ -136,40 +134,28 @@ export function SharePage({ token }: Props) {
 
   const getTypeName = (id: string) => serviceTypes.find(t => t.id === id)?.name || 'Service';
   const getProjectName = (id?: string): string | null => id ? projects.find(p => p.id === id)?.name || null : null;
-
   const activeServices = useMemo(() => services.filter(s => s.status === 'Active'), [services]);
 
-  const monthlyEquivalent = useMemo(
-    () => activeServices.reduce((sum, s) => sum + serviceMonthlyTotal(s), 0),
+  const allOperational = useMemo(
+    () => activeServices.every(s => s.operational_status === 'Operational' || !s.operational_status),
     [activeServices]
   );
 
-  const primaryCurrency = useMemo(() => {
-    const counts = new Map<string, number>();
-    activeServices.forEach(s => counts.set(s.currency, (counts.get(s.currency) || 0) + 1));
-    let best = 'USD';
-    let max = 0;
-    counts.forEach((v, k) => { if (v > max) { max = v; best = k; } });
-    return best;
-  }, [activeServices]);
-
-  const nextRelease = useMemo(() => roadmap.find(r => r.status === 'Next Release'), [roadmap]);
-
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-600 border-t-transparent"></div>
       </div>
     );
   }
 
   if (notFound) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="text-center">
-          <Globe className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-white mb-2">Portal Not Found</h1>
-          <p className="text-slate-400">This link is invalid or has expired.</p>
+          <Globe className="w-14 h-14 text-gray-300 mx-auto mb-4" />
+          <h1 className="text-xl font-bold text-gray-900 mb-2">Portal Not Found</h1>
+          <p className="text-gray-500 text-sm">This link is invalid or has expired.</p>
         </div>
       </div>
     );
@@ -177,85 +163,64 @@ export function SharePage({ token }: Props) {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="bg-gradient-to-br from-slate-900 to-slate-800 text-white">
-        <div className="max-w-6xl mx-auto px-4 py-10">
-          <div className="flex items-start justify-between gap-6 flex-wrap">
-            <div>
-              <div className="flex items-center gap-3 mb-3">
-                {userSettings?.logo_url ? (
-                  <img src={userSettings.logo_url} alt="Logo" className="h-9 max-w-[140px] object-contain" />
-                ) : (
-                  <div className="bg-blue-600 p-2 rounded-lg">
-                    <Shield className="w-5 h-5 text-white" />
-                  </div>
-                )}
-                <span className="text-slate-300 text-xs font-semibold uppercase tracking-widest">
-                  {userSettings?.company_name || 'IT Services Portal'}
-                </span>
-              </div>
-              <h1 className="text-3xl md:text-4xl font-bold">{client!.company_name}</h1>
-              {client!.contact_name && <p className="text-slate-300 mt-1">{client!.contact_name}</p>}
-            </div>
-            {/* Lead with status, not cost */}
-            <div className="inline-flex items-center gap-3 bg-white/10 backdrop-blur rounded-xl px-5 py-3 border border-white/10">
-              <div className={`p-2 rounded-lg ${
-                activeServices.every(s => s.operational_status === 'Operational' || !s.operational_status)
-                  ? 'bg-emerald-500/20' : 'bg-amber-500/20'
-              }`}>
-                <CheckCircle2 className={`w-5 h-5 ${
-                  activeServices.every(s => s.operational_status === 'Operational' || !s.operational_status)
-                    ? 'text-emerald-300' : 'text-amber-300'
-                }`} />
-              </div>
-              <div>
-                <div className="text-xs text-slate-300 uppercase tracking-wider">Systems Status</div>
-                <div className="text-xl font-bold">
-                  {activeServices.every(s => s.operational_status === 'Operational' || !s.operational_status)
-                    ? 'All Systems Operational'
-                    : activeServices.some(s => s.operational_status === 'Down') ? 'Service Disruption'
-                    : 'Partial Maintenance'}
+      {/* Header - compact and clean */}
+      <header className="bg-white border-b border-gray-200">
+        <div className="max-w-5xl mx-auto px-4 py-5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              {userSettings?.logo_url ? (
+                <img src={userSettings.logo_url} alt="Logo" className="h-8 max-w-[120px] object-contain" />
+              ) : (
+                <div className="bg-slate-900 p-2 rounded-lg">
+                  <Shield className="w-4 h-4 text-white" />
                 </div>
+              )}
+              <div className="h-6 w-px bg-gray-200" />
+              <div>
+                <h1 className="text-lg font-bold text-gray-900">{client!.company_name}</h1>
+                <p className="text-xs text-gray-500">{userSettings?.company_name || 'Managed Services Portal'}</p>
               </div>
             </div>
-          </div>
-
-          {/* KPI strip: status first, cost last */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8">
-            <KpiCard label="System Health" value={
-              activeServices.every(s => s.operational_status === 'Operational' || !s.operational_status) ? '100% Up' :
-              activeServices.some(s => s.operational_status === 'Down') ? 'Disruption' :
-              activeServices.some(s => s.operational_status === 'Degraded') ? 'Degraded' : 'Maintenance'
-            } accent={
-              activeServices.every(s => s.operational_status === 'Operational' || !s.operational_status) ? 'emerald' :
-              activeServices.some(s => s.operational_status === 'Down') ? 'red' : 'amber'
-            } />
-            <KpiCard label="Active Services" value={activeServices.length.toString()} />
-            <KpiCard label="Upcoming Updates" value={roadmap.filter(r => r.status !== 'Released').length.toString()} accent="amber" />
-            <KpiCard label={`Investment (${primaryCurrency}/mo)`} value={monthlyEquivalent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} />
+            <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
+              allOperational
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                : 'bg-amber-50 text-amber-700 border border-amber-200'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${allOperational ? 'bg-emerald-500' : 'bg-amber-500'} animate-pulse`} />
+              {allOperational ? 'All Operational' : 'Issues Detected'}
+            </div>
           </div>
         </div>
       </header>
 
+      {/* Status badges - persistent, only if services have uptime monitoring */}
+      <StatusBar services={services} />
+
       {/* Nav */}
       <nav className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 flex gap-1 overflow-x-auto">
-          <NavBtn icon={Sparkles} active={section === 'overview'} onClick={() => setSection('overview')}>What's Coming</NavBtn>
-          <NavBtn icon={LayoutGrid} active={section === 'catalog'} onClick={() => setSection('catalog')}>Service Catalog</NavBtn>
-          <NavBtn icon={Shield} active={section === 'licenses'} onClick={() => setSection('licenses')}>Licenses</NavBtn>
-          <NavBtn icon={History} active={section === 'changes'} onClick={() => setSection('changes')}>Change Log</NavBtn>
-          <NavBtn icon={Clock} active={section === 'hours'} onClick={() => setSection('hours')}>Support Hours</NavBtn>
-          <NavBtn icon={Mail} active={section === 'support'} onClick={() => setSection('support')}>Contact Manager</NavBtn>
+        <div className="max-w-5xl mx-auto px-4 flex gap-1 overflow-x-auto">
+          <NavBtn active={section === 'overview'} onClick={() => setSection('overview')}>Overview</NavBtn>
+          <NavBtn active={section === 'services'} onClick={() => setSection('services')}>Services</NavBtn>
+          {licenses.length > 0 && <NavBtn active={section === 'licenses'} onClick={() => setSection('licenses')}>Licenses</NavBtn>}
+          {changes.length > 0 && <NavBtn active={section === 'changes'} onClick={() => setSection('changes')}>Changes</NavBtn>}
+          {supportHours.length > 0 && <NavBtn active={section === 'hours'} onClick={() => setSection('hours')}>Hours</NavBtn>}
+          <NavBtn active={section === 'support'} onClick={() => setSection('support')}>Support</NavBtn>
         </div>
       </nav>
 
-      <main className="max-w-6xl mx-auto px-4 py-8">
-        <StatusOverview services={services} />
+      <main className="max-w-5xl mx-auto px-4 py-6">
+        {section === 'overview' && (
+          <OverviewSection
+            services={activeServices}
+            roadmap={roadmap}
+            changes={changes}
+            supportHours={supportHours}
+            getTypeName={getTypeName}
+          />
+        )}
 
-        {section === 'overview' && <ComingSoonSection roadmap={roadmap} nextRelease={nextRelease} />}
-
-        {section === 'catalog' && (
-          <CatalogSection
+        {section === 'services' && (
+          <ServiceCatalog
             services={services}
             projects={projects}
             getTypeName={getTypeName}
@@ -267,204 +232,169 @@ export function SharePage({ token }: Props) {
         )}
 
         {section === 'licenses' && <LicensesSection licenses={licenses} services={services} />}
-
         {section === 'changes' && <ChangesSection changes={changes} services={services} />}
-
         {section === 'hours' && <SupportHoursSection hours={supportHours} services={services} />}
-
         {section === 'support' && <SupportSection clientName={client!.company_name} services={services} />}
       </main>
 
-      <footer className="border-t border-gray-200 py-8 mt-8">
-        <div className="max-w-6xl mx-auto px-4 text-center">
-          <p className="text-xs text-gray-500">
-            Managed service portal · Read-only view · Aligned with ISO/IEC 20000 IT Service Management practices
-          </p>
+      <footer className="border-t border-gray-100 py-6">
+        <div className="max-w-5xl mx-auto px-4 text-center">
+          <p className="text-xs text-gray-400">Managed service portal</p>
         </div>
       </footer>
     </div>
   );
 }
 
-/* ---------- Header bits ---------- */
+/* ---------- Status bar (persistent uptime badges) ---------- */
 
-function KpiCard({ label, value, accent = 'slate' }: { label: string; value: string; accent?: string }) {
-  const bg = accent === 'emerald' ? 'bg-emerald-500/20 text-emerald-200'
-    : accent === 'amber' ? 'bg-amber-500/20 text-amber-200'
-    : accent === 'red' ? 'bg-red-500/20 text-red-200'
-    : 'bg-slate-700/30 text-slate-300';
-  const valueSize = accent === 'emerald' || accent === 'red' ? 'text-2xl font-bold' : 'text-xl font-semibold';
+function StatusBar({ services }: { services: Service[] }) {
+  const monitored = services.filter(s => s.status === 'Active' && s.uptime_badge_url);
+  if (monitored.length === 0) return null;
+
   return (
-    <div className={`rounded-lg p-4 ${bg}`}>
-      <div className="text-xs uppercase tracking-wider opacity-80 mb-1">{label}</div>
-      <div className={`${valueSize} text-white`}>{value}</div>
+    <div className="bg-slate-50 border-b border-gray-100">
+      <div className="max-w-5xl mx-auto px-4 py-2.5 flex items-center gap-4 overflow-x-auto">
+        <span className="text-[10px] text-gray-400 uppercase tracking-wider font-medium shrink-0">Status</span>
+        {monitored.map(s => (
+          <div key={s.id} className="flex items-center gap-2 shrink-0">
+            <img src={s.uptime_badge_url} alt={s.business_name || s.name} className="h-4" loading="lazy" />
+            {s.uptime_status_url && (
+              <a href={s.uptime_status_url} target="_blank" rel="noopener noreferrer"
+                className="text-[10px] text-blue-600 hover:text-blue-700 font-medium">
+                details
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-function NavBtn({ icon: Icon, active, onClick, children }: any) {
+/* ---------- Nav ---------- */
+
+function NavBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button onClick={onClick}
-      className={`inline-flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-        active ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'
+      className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+        active ? 'border-slate-900 text-slate-900' : 'border-transparent text-gray-500 hover:text-gray-800'
       }`}>
-      <Icon className="w-4 h-4" />
       {children}
     </button>
   );
 }
 
-/* ---------- Coming Soon (replaces live availability) ---------- */
+/* ---------- Overview (summary landing) ---------- */
 
-function ComingSoonSection({ roadmap, nextRelease }: { roadmap: RoadmapItem[]; nextRelease: RoadmapItem | undefined }) {
+function OverviewSection({ services, roadmap, changes, supportHours, getTypeName }: {
+  services: Service[];
+  roadmap: RoadmapItem[];
+  changes: ServiceChange[];
+  supportHours: SupportHour[];
+  getTypeName: (id: string) => string;
+}) {
   const upcoming = roadmap.filter(r => r.status !== 'Released');
-  const released = roadmap.filter(r => r.status === 'Released');
+  const recentChanges = changes.slice(0, 3);
+  const totalAllocated = services.reduce((sum, s) => sum + (s.confirmed_hours_monthly || 0), 0);
 
   return (
-    <div className="space-y-8">
-      <section className="relative overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-sky-50 p-8">
-        <div className="absolute -right-10 -top-10 w-48 h-48 bg-blue-100 rounded-full blur-3xl opacity-60"></div>
-        <div className="relative">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-600 text-white text-xs font-semibold uppercase tracking-wider mb-3">
-            <Sparkles className="w-3.5 h-3.5" /> Coming Soon
-          </div>
-          <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Live availability & operational status</h2>
-          <p className="text-gray-700 max-w-2xl">
-            Real-time monitoring of your services — uptime, maintenance windows, and incident reporting — is being prepared. It will be activated once the monitoring agents are fully deployed.
-          </p>
-          {nextRelease && (
-            <div className="mt-6 inline-flex items-center gap-3 bg-white border border-blue-200 rounded-xl px-4 py-3 shadow-sm">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Rocket className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <div className="text-xs text-blue-700 font-semibold uppercase tracking-wider">Next Release</div>
-                <div className="font-semibold text-gray-900">{nextRelease.title}</div>
-                {nextRelease.eta && <div className="text-xs text-gray-500 mt-0.5">ETA: {nextRelease.eta}</div>}
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
+    <div className="space-y-6">
+      {/* Quick stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard label="Active Services" value={services.length.toString()} />
+        <StatCard label="Upcoming Updates" value={upcoming.length.toString()} accent={upcoming.length > 0} />
+        <StatCard label="Recent Changes" value={recentChanges.length.toString()} />
+        {totalAllocated > 0 && <StatCard label="Hours/month" value={`${totalAllocated}h`} />}
+      </div>
 
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Rocket className="w-5 h-5 text-blue-600" />
-          <h3 className="text-lg font-semibold text-gray-900">Upcoming Updates</h3>
-        </div>
-        {upcoming.length === 0 ? (
-          <div className="bg-white rounded-xl border border-dashed border-gray-300 p-10 text-center">
-            <Sparkles className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-            <p className="text-gray-500 text-sm">The roadmap is being put together. Check back soon.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {upcoming.map(item => <RoadmapCard key={item.id} item={item} />)}
-          </div>
-        )}
-      </section>
-
-      {released.length > 0 && (
+      {/* Roadmap items */}
+      {upcoming.length > 0 && (
         <section>
-          <div className="flex items-center gap-2 mb-4">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-            <h3 className="text-lg font-semibold text-gray-900">Recently Released</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {released.map(item => <RoadmapCard key={item.id} item={item} />)}
+          <h2 className="text-sm font-semibold text-gray-900 mb-3">Upcoming</h2>
+          <div className="space-y-2">
+            {upcoming.slice(0, 5).map(item => {
+              const meta = ROADMAP_META[item.status];
+              const Icon = meta.icon;
+              return (
+                <div key={item.id} className="bg-white rounded-lg border border-gray-200 px-4 py-3 flex items-start gap-3">
+                  <div className={`p-1.5 rounded-md ${meta.bg} mt-0.5`}>
+                    <Icon className={`w-3.5 h-3.5 ${meta.color}`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900">{item.title}</span>
+                      <span className={`text-[10px] font-semibold uppercase ${meta.color}`}>{meta.label}</span>
+                    </div>
+                    {item.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{item.description}</p>}
+                  </div>
+                  {item.scheduled_date && (
+                    <span className="text-xs text-gray-400 shrink-0">
+                      {new Date(item.scheduled_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
+
+      {/* Recent changes */}
+      {recentChanges.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-gray-900 mb-3">Recent Changes</h2>
+          <div className="space-y-2">
+            {recentChanges.map(c => (
+              <div key={c.id} className="bg-white rounded-lg border border-gray-200 px-4 py-3">
+                <div className="flex items-center gap-2 text-xs text-gray-400 mb-0.5">
+                  <span>{new Date(c.change_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                </div>
+                <p className="text-sm text-gray-900">{c.summary}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Service summary */}
+      <section>
+        <h2 className="text-sm font-semibold text-gray-900 mb-3">Your Services</h2>
+        <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
+          {services.map(s => (
+            <div key={s.id} className="px-4 py-3 flex items-center gap-3">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${
+                s.operational_status === 'Operational' || !s.operational_status ? 'bg-emerald-500' :
+                s.operational_status === 'Degraded' ? 'bg-amber-500' :
+                s.operational_status === 'Down' ? 'bg-red-500' : 'bg-blue-500'
+              }`} />
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-medium text-gray-900">{s.business_name || s.name}</span>
+                <span className="text-xs text-gray-400 ml-2">{getTypeName(s.service_type_id)}</span>
+              </div>
+              {s.uptime_badge_url && (
+                <img src={s.uptime_badge_url} alt="status" className="h-4" loading="lazy" />
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
 
-const CATEGORY_LABELS: Record<RoadmapCategory, string> = {
-  idea: 'New Service',
-  payment: 'Pending Payment',
-  backup: 'Backup Integration',
-  visit: 'Visit / Coordination',
-};
-
-function RoadmapCard({ item }: { item: RoadmapItem }) {
-  const meta = ROADMAP_META[item.status];
-  const Icon = meta.icon;
-
-  const handleAddToCalendar = () => {
-    const date = item.scheduled_date!;
-    const dtStart = date.replace(/-/g, '');
-    const dtEnd = dtStart;
-    const ics = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//ClientManager//EN',
-      'BEGIN:VEVENT',
-      `DTSTART;VALUE=DATE:${dtStart}`,
-      `DTEND;VALUE=DATE:${dtEnd}`,
-      `SUMMARY:${item.title}`,
-      `DESCRIPTION:${(item.description || '').replace(/\n/g, '\\n')}`,
-      'END:VEVENT',
-      'END:VCALENDAR',
-    ].join('\r\n');
-    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${item.title.replace(/[^a-zA-Z0-9]/g, '_')}.ics`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
+function StatCard({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
   return (
-    <article className={`bg-white rounded-xl border ${meta.border} shadow-sm p-5 transition-shadow hover:shadow-md`}>
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <div className="flex items-center gap-2">
-          <div className={`p-1.5 rounded-md ${meta.bg}`}>
-            <Icon className={`w-4 h-4 ${meta.color}`} />
-          </div>
-          <span className={`text-xs font-semibold uppercase tracking-wider ${meta.color}`}>{meta.label}</span>
-          {item.category && item.category !== 'idea' && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">
-              {CATEGORY_LABELS[item.category]}
-            </span>
-          )}
-        </div>
-        {item.eta && (
-          <span className="text-xs text-gray-500 inline-flex items-center gap-1">
-            <Calendar className="w-3 h-3" /> {item.eta}
-          </span>
-        )}
-      </div>
-      <h4 className="font-semibold text-gray-900 mb-1">{item.title}</h4>
-      {item.description && <p className="text-sm text-gray-600 leading-relaxed">{item.description}</p>}
-      {item.requested_by && (
-        <div className="text-xs text-gray-500 mt-2">Requested by {item.requested_by}</div>
-      )}
-      {item.scheduled_date && item.status !== 'Released' && (
-        <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-          <span className="text-xs text-blue-700 font-medium flex items-center gap-1">
-            <Calendar className="w-3 h-3" />
-            {new Date(item.scheduled_date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-          </span>
-          <button
-            onClick={handleAddToCalendar}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-          >
-            <Calendar className="w-3 h-3" />
-            Add to Calendar
-          </button>
-        </div>
-      )}
-    </article>
+    <div className="bg-white rounded-lg border border-gray-200 px-4 py-3">
+      <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">{label}</div>
+      <div className={`text-xl font-bold ${accent ? 'text-blue-600' : 'text-gray-900'}`}>{value}</div>
+    </div>
   );
 }
 
-/* ---------- Catalog (ISO 20000 service sheets) ---------- */
+/* ---------- Service Catalog ---------- */
 
-type GroupMode = 'project' | 'type';
-type Group = { key: string; title: string; subtitle?: string; status?: string; items: Service[] };
-
-function CatalogSection({
+function ServiceCatalog({
   services, projects, getTypeName, getProjectName, expandedService, setExpandedService, heartbeats,
 }: {
   services: Service[];
@@ -475,154 +405,54 @@ function CatalogSection({
   setExpandedService: (id: string | null) => void;
   heartbeats: ServiceHeartbeat[];
 }) {
-  const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Other'>('all');
-  const [groupBy, setGroupBy] = useState<GroupMode>('project');
   const [showCosts, setShowCosts] = useState(false);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return services.filter(s => {
-      if (statusFilter === 'Active' && s.status !== 'Active') return false;
-      if (statusFilter === 'Other' && s.status === 'Active') return false;
-      if (!q) return true;
-      const hay = [
-        s.business_name, s.name, s.description, s.business_description,
-        getTypeName(s.service_type_id), s.provider, s.location, s.sla_level,
-      ].filter(Boolean).join(' ').toLowerCase();
-      return hay.includes(q);
-    });
-  }, [services, query, statusFilter, getTypeName]);
-
-  const groups: Group[] = useMemo(() => {
-    if (groupBy === 'project') {
-      const map = new Map<string, Group>();
-      map.set('__none__', { key: '__none__', title: 'Standalone Services', items: [] });
-      projects.forEach(p => map.set(p.id, { key: p.id, title: p.name, subtitle: p.description, status: p.status, items: [] }));
-      filtered.forEach(s => {
-        const k = s.project_id && map.has(s.project_id) ? s.project_id : '__none__';
-        map.get(k)!.items.push(s);
-      });
-      return Array.from(map.values()).filter(g => g.items.length > 0);
-    }
-    const map = new Map<string, Group>();
-    filtered.forEach(s => {
-      const name = getTypeName(s.service_type_id);
-      if (!map.has(name)) map.set(name, { key: name, title: name, items: [] });
-      map.get(name)!.items.push(s);
-    });
-    return Array.from(map.values()).sort((a, b) => a.title.localeCompare(b.title));
-  }, [filtered, projects, groupBy, getTypeName]);
 
   if (services.length === 0) {
     return (
       <div className="bg-white rounded-xl border border-dashed border-gray-300 p-12 text-center">
-        <LayoutGrid className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+        <Server className="w-10 h-10 text-gray-300 mx-auto mb-3" />
         <p className="text-gray-500 text-sm">No services in your catalog yet.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col md:flex-row gap-3 md:items-center">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Search services, providers, locations..."
-            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-          />
-        </div>
-        <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 text-xs font-medium">
-          {(['all', 'Active', 'Other'] as const).map(key => (
-            <button key={key} onClick={() => setStatusFilter(key)}
-              className={`px-3 py-1.5 rounded-md transition-colors ${statusFilter === key ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
-              {key === 'all' ? 'All' : key === 'Active' ? 'Active' : 'Other'}
-            </button>
-          ))}
-        </div>
-        <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 text-xs font-medium">
-          <button onClick={() => setGroupBy('project')}
-            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-md transition-colors ${groupBy === 'project' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
-            <FolderOpen className="w-3.5 h-3.5" /> By project
-          </button>
-          <button onClick={() => setGroupBy('type')}
-            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-md transition-colors ${groupBy === 'type' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
-            <LayoutGrid className="w-3.5 h-3.5" /> By type
-          </button>
-        </div>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-900">{services.length} Services</h2>
         <button
           onClick={() => setShowCosts(!showCosts)}
           className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
             showCosts
-              ? 'bg-slate-800 text-white shadow-sm'
-              : 'border border-gray-200 text-gray-600 hover:text-gray-900 hover:border-gray-300'
+              ? 'bg-slate-800 text-white'
+              : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'
           }`}
         >
           <DollarSign className="w-3.5 h-3.5" />
           {showCosts ? 'Hide Costs' : 'Show Costs'}
         </button>
-        <div className="text-xs text-gray-500 whitespace-nowrap">{filtered.length} of {services.length}</div>
       </div>
 
-      {groups.length === 0 ? (
-        <div className="bg-white rounded-xl border border-dashed border-gray-300 p-10 text-center">
-          <Search className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-          <p className="text-sm text-gray-500">No services match your filters.</p>
-        </div>
-      ) : groups.map(g => {
-        const subtotal = g.items.reduce((sum, s) => sum + (s.status === 'Active' ? serviceMonthlyTotal(s) : 0), 0);
-        const subtotalCurrency = g.items.find(s => s.status === 'Active')?.currency;
-        const HeaderIcon = groupBy === 'project' ? FolderOpen : LayoutGrid;
-        return (
-          <section key={g.key} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <header className="px-6 py-4 bg-gradient-to-r from-slate-50 to-white border-b border-gray-200 flex items-center gap-3 flex-wrap">
-              <HeaderIcon className="w-4 h-4 text-blue-600" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-base font-semibold text-gray-900">{g.title}</h2>
-                  {g.status && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">{g.status}</span>
-                  )}
-                </div>
-                {g.subtitle && <p className="text-xs text-gray-600 mt-0.5">{g.subtitle}</p>}
-              </div>
-              {showCosts && subtotal > 0 && subtotalCurrency && (
-                <div className="text-right">
-                  <div className="text-[10px] uppercase tracking-wider text-gray-400">Subtotal</div>
-                  <div className="text-sm font-medium text-gray-600">
-                    {subtotalCurrency} {subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo
-                  </div>
-                </div>
-              )}
-              <span className="text-xs text-gray-500">{g.items.length} {g.items.length === 1 ? 'service' : 'services'}</span>
-            </header>
-            <div className="divide-y divide-gray-100">
-              {g.items.map(s => (
-                <ServiceSheet
-                  key={s.id}
-                  service={s}
-                  typeName={getTypeName(s.service_type_id)}
-                  projectName={getProjectName(s.project_id)}
-                  expanded={expandedService === s.id}
-                  onToggle={() => setExpandedService(expandedService === s.id ? null : s.id)}
-                  heartbeats={heartbeats.filter(h => h.service_id === s.id)}
-                  showCosts={showCosts}
-                />
-              ))}
-            </div>
-          </section>
-        );
-      })}
+      <div className="space-y-3">
+        {services.map(s => (
+          <ServiceCard
+            key={s.id}
+            service={s}
+            typeName={getTypeName(s.service_type_id)}
+            projectName={getProjectName(s.project_id)}
+            expanded={expandedService === s.id}
+            onToggle={() => setExpandedService(expandedService === s.id ? null : s.id)}
+            heartbeats={heartbeats.filter(h => h.service_id === s.id)}
+            showCosts={showCosts}
+          />
+        ))}
+      </div>
     </div>
   );
 }
 
-function ServiceSheet({
-  service, typeName, expanded, onToggle, heartbeats, showCosts,
+function ServiceCard({
+  service, typeName, projectName, expanded, onToggle, heartbeats, showCosts,
 }: {
   service: Service;
   typeName: string;
@@ -635,78 +465,160 @@ function ServiceSheet({
   const title = service.business_name || service.name;
   const desc = service.business_description || service.description;
   const isActive = service.status === 'Active';
-  const statusStyle =
-    service.status === 'Suspended' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-    service.status === 'Cancelled' ? 'bg-red-50 text-red-700 border-red-200' :
-    service.status === 'Pending' ? 'bg-slate-50 text-slate-700 border-slate-200' :
-    'bg-emerald-50 text-emerald-700 border-emerald-200';
+  const monthly = serviceMonthlyTotal(service);
 
   return (
-    <article className={`px-6 py-5 transition-colors ${isActive ? 'hover:bg-slate-50' : 'bg-gray-50/60'}`}>
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex items-start gap-3 flex-1 min-w-0">
-          <div className={`p-2 rounded-lg ${isActive ? 'bg-blue-50' : 'bg-gray-100'}`}>
-            <Server className={`w-5 h-5 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className={`font-bold text-xl ${isActive ? 'text-gray-900' : 'text-gray-600'}`}>{title}</h3>
-              {!isActive && (
-                <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full border font-semibold ${statusStyle}`}>
-                  {service.status}
-                </span>
-              )}
+    <div className={`bg-white rounded-xl border border-gray-200 overflow-hidden transition-shadow hover:shadow-sm ${!isActive ? 'opacity-70' : ''}`}>
+      <div className="px-5 py-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3 flex-1 min-w-0">
+            <span className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${
+              service.operational_status === 'Operational' || !service.operational_status ? 'bg-emerald-500' :
+              service.operational_status === 'Degraded' ? 'bg-amber-500' :
+              service.operational_status === 'Down' ? 'bg-red-500' : 'bg-blue-500'
+            }`} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+                <span className="text-xs text-gray-400">{typeName}</span>
+                {projectName && (
+                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{projectName}</span>
+                )}
+                {!isActive && (
+                  <span className="text-[10px] uppercase tracking-wider font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">{service.status}</span>
+                )}
+              </div>
+              {desc && <p className="text-sm text-gray-500 mt-1 line-clamp-2">{desc}</p>}
             </div>
-            <div className="flex items-center gap-2 flex-wrap mt-1">
-              <span className="text-xs text-gray-500">{typeName}</span>
-            </div>
-            {desc && <p className="text-sm text-gray-600 mt-2 leading-relaxed">{desc}</p>}
           </div>
+          {showCosts && monthly > 0 && (
+            <div className="text-right shrink-0">
+              <div className="text-sm font-bold text-gray-900">{service.currency} {monthly.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+              <div className="text-[10px] text-gray-400">per month</div>
+            </div>
+          )}
         </div>
-        {showCosts && <PriceTag service={service} />}
+
+        {/* Includes/Excludes - compact */}
+        {(service.includes?.length || service.client_responsibilities?.length) && (
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {(service.includes || []).slice(0, 4).map((item, i) => (
+              <span key={i} className="text-[11px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">{item}</span>
+            ))}
+            {(service.includes || []).length > 4 && (
+              <span className="text-[11px] text-gray-400">+{(service.includes || []).length - 4} more</span>
+            )}
+          </div>
+        )}
+
+        {/* Expand toggle */}
+        <button onClick={onToggle}
+          className="mt-3 inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 font-medium transition-colors">
+          {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          Details
+        </button>
       </div>
 
-      {(service.includes?.length || service.excludes?.length || service.client_responsibilities?.length) ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
-          <ListCard title="What's Included" icon={Check} color="emerald" items={service.includes || []} />
-          <ListCard title="Ownership & Requirements" icon={FileText} color="slate" items={service.excludes || []} />
-          <ListCard title="Your Role" icon={Send} color="blue" items={service.client_responsibilities || []} />
-        </div>
-      ) : null}
-
-      <button onClick={onToggle}
-        className="mt-5 inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium">
-        {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-        Service Scope &amp; Specs
-      </button>
-
-      {expanded && (
-        <div className="mt-4 -mx-6 -mb-5">
-          <TechnicalDetails service={service} heartbeats={heartbeats} />
-        </div>
-      )}
-    </article>
+      {expanded && <TechnicalDetails service={service} heartbeats={heartbeats} showCosts={showCosts} />}
+    </div>
   );
 }
 
-function ListCard({ title, icon: Icon, color, items }: { title: string; icon: any; color: string; items: string[] }) {
-  if (items.length === 0) return null;
-  const styles: Record<string, string> = {
-    emerald: 'bg-emerald-50 border-emerald-100 text-emerald-700',
-    slate: 'bg-slate-50 border-slate-200 text-slate-600',
-    blue: 'bg-blue-50 border-blue-100 text-blue-700',
-  };
+function TechnicalDetails({ service, heartbeats, showCosts }: { service: Service; heartbeats: ServiceHeartbeat[]; showCosts: boolean }) {
+  const specs = service.specifications || {};
+  const hasSpecs = !!(specs.cpu || specs.ram || specs.storage || specs.bandwidth);
+
   return (
-    <div className={`rounded-lg border p-4 ${styles[color]}`}>
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider mb-2">
-        <Icon className="w-3.5 h-3.5" />
-        {title}
+    <div className="bg-gray-50 border-t border-gray-100 px-5 py-4 space-y-4">
+      {/* Key fields */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 text-sm">
+        {service.sla_level && <Field label="SLA" value={service.sla_level} />}
+        {service.provider && <Field label="Provider" value={service.provider} />}
+        {service.location && <Field label="Location" value={service.location} />}
+        {service.infrastructure_type && <Field label="Infrastructure" value={service.infrastructure_type} />}
+        {service.rto && <Field label="RTO" value={service.rto} />}
+        {service.rpo && <Field label="RPO" value={service.rpo} />}
+        {service.maintenance_window && <Field label="Maintenance" value={service.maintenance_window} />}
+        {service.next_renewal_date && <Field label="Next Renewal" value={new Date(service.next_renewal_date).toLocaleDateString()} />}
+        {service.last_backup_at && <Field label="Last Backup" value={formatTimeAgo(service.last_backup_at)} />}
       </div>
-      <ul className="space-y-1.5">
+
+      {/* Resource bars */}
+      {(service.storage_used_pct != null || service.ram_used_pct != null) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {service.storage_used_pct != null && <ResourceBar label="Storage" pct={service.storage_used_pct} />}
+          {service.ram_used_pct != null && <ResourceBar label="RAM" pct={service.ram_used_pct} />}
+        </div>
+      )}
+
+      {/* Specs */}
+      {hasSpecs && (
+        <div className="flex flex-wrap gap-2">
+          {specs.cpu && <Tag label={specs.cpu} />}
+          {specs.ram && <Tag label={`${specs.ram} RAM`} />}
+          {specs.storage && <Tag label={specs.storage} />}
+          {specs.bandwidth && <Tag label={specs.bandwidth} />}
+        </div>
+      )}
+
+      {/* Managed roles */}
+      {service.managed_roles && service.managed_roles.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {(service.managed_roles as ManagedRole[]).map(r => (
+            <span key={r} className="text-[11px] bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full border border-teal-100">{r}</span>
+          ))}
+        </div>
+      )}
+
+      {/* Includes / Excludes / Responsibilities full list */}
+      {(service.includes?.length || service.excludes?.length || service.client_responsibilities?.length) ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-gray-200">
+          <BulletList title="Included" items={service.includes || []} color="emerald" />
+          <BulletList title="Not Included" items={service.excludes || []} color="gray" />
+          <BulletList title="Your Role" items={service.client_responsibilities || []} color="blue" />
+        </div>
+      ) : null}
+
+      {/* Cost breakdown */}
+      {showCosts && (service.infrastructure_cost || service.allocated_hours || service.extra_hour_rate) && (
+        <div className="pt-2 border-t border-gray-200">
+          <div className="flex flex-wrap gap-4 text-xs text-gray-600">
+            {service.infrastructure_cost ? <span>Infra: {service.currency} {service.infrastructure_cost.toFixed(2)}</span> : null}
+            {service.allocated_hours ? <span>Allocated: {service.allocated_hours}h/mo</span> : null}
+            {service.extra_hour_rate ? <span>Extra hour: {service.currency} {service.extra_hour_rate.toFixed(2)}</span> : null}
+          </div>
+        </div>
+      )}
+
+      {heartbeats.length > 0 && <SpeedChart heartbeats={heartbeats} />}
+    </div>
+  );
+}
+
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-gray-400">{label}</div>
+      <div className="text-sm font-medium text-gray-900">{value}</div>
+    </div>
+  );
+}
+
+function Tag({ label }: { label: string }) {
+  return <span className="text-xs bg-white border border-gray-200 px-2.5 py-1 rounded-md text-gray-700">{label}</span>;
+}
+
+function BulletList({ title, items, color }: { title: string; items: string[]; color: string }) {
+  if (items.length === 0) return null;
+  const textColor = color === 'emerald' ? 'text-emerald-700' : color === 'blue' ? 'text-blue-700' : 'text-gray-600';
+  return (
+    <div>
+      <div className={`text-[10px] uppercase tracking-wider font-semibold ${textColor} mb-1.5`}>{title}</div>
+      <ul className="space-y-1">
         {items.map((item, i) => (
-          <li key={i} className="text-sm text-gray-800 flex items-start gap-2">
-            <span className="mt-1.5 w-1 h-1 rounded-full bg-gray-400 flex-shrink-0"></span>
-            <span>{item}</span>
+          <li key={i} className="text-xs text-gray-700 flex items-start gap-1.5">
+            <span className="mt-1.5 w-1 h-1 rounded-full bg-gray-300 shrink-0" />
+            {item}
           </li>
         ))}
       </ul>
@@ -714,95 +626,18 @@ function ListCard({ title, icon: Icon, color, items }: { title: string; icon: an
   );
 }
 
-function TechnicalDetails({ service, heartbeats }: { service: Service; heartbeats: ServiceHeartbeat[] }) {
-  const specs = service.specifications || {};
-  const hasSpecs = !!(specs.cpu || specs.ram || specs.storage || specs.bandwidth);
-  const renewal = service.next_renewal_date ? new Date(service.next_renewal_date).toLocaleDateString() : '--';
+function ResourceBar({ label, pct }: { label: string; pct: number }) {
+  const clamped = Math.max(0, Math.min(100, pct));
+  const barColor = clamped >= 90 ? 'bg-red-500' : clamped >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
   return (
-    <div className="bg-slate-50 border-t border-gray-100 px-6 py-5">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-        <Field icon={Shield} label="SLA" value={service.sla_level || '--'} />
-        <Field icon={Globe} label="Provider" value={service.provider || '--'} />
-        <Field icon={MapPin} label="Location" value={service.location || '--'} />
-        <Field icon={Shield} label="Infrastructure" value={service.infrastructure_type || '--'} />
-        <Field icon={Globe} label="Cloud" value={service.cloud_provider || '--'} />
-        <Field icon={Server} label="IP" value={service.server_ip || '--'} />
-        <Field icon={Clock} label="Monthly Hours" value={service.confirmed_hours_monthly != null ? `${service.confirmed_hours_monthly}h` : '--'} />
-        <Field icon={Calendar} label="Next Renewal" value={renewal} />
-        <Field icon={FileText} label="Billing" value={`${service.price} ${service.currency} / ${service.billing_cycle}`} />
+    <div className="bg-white rounded-lg border border-gray-200 px-3 py-2">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-xs text-gray-600">{label}</span>
+        <span className="text-xs font-semibold text-gray-900">{Math.round(clamped)}%</span>
       </div>
-
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <div className="text-xs uppercase tracking-wider text-gray-500 mb-3">Recovery & Maintenance</div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="bg-white rounded-lg border border-gray-200 p-3">
-            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">RTO (Recovery Time)</div>
-            <div className="text-sm font-medium text-gray-900">{service.rto || '--'}</div>
-          </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-3">
-            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">RPO (Data Recovery)</div>
-            <div className="text-sm font-medium text-gray-900">{service.rpo || '--'}</div>
-          </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-3">
-            <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Maintenance Window</div>
-            <div className="text-sm font-medium text-gray-900">{service.maintenance_window || '--'}</div>
-          </div>
-          {service.last_backup_at && (
-            <div className="bg-white rounded-lg border border-emerald-200 p-3">
-              <div className="text-[10px] uppercase tracking-wider text-emerald-600 mb-1">Last Backup</div>
-              <div className="text-sm font-medium text-gray-900">{formatTimeAgo(service.last_backup_at)}</div>
-            </div>
-          )}
-        </div>
+      <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${clamped}%` }} />
       </div>
-
-      {(service.storage_used_pct != null || service.ram_used_pct != null) && (
-        <div className="mt-4 pt-4 border-t border-gray-200">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-xs uppercase tracking-wider text-gray-500">Resource Usage</div>
-            {service.resource_updated_at && (
-              <div className="text-[10px] text-gray-400">Updated {formatTimeAgo(service.resource_updated_at)}</div>
-            )}
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {service.storage_used_pct != null && (
-              <ResourceBar label="Storage" pct={service.storage_used_pct} icon={HardDrive} />
-            )}
-            {service.ram_used_pct != null && (
-              <ResourceBar label="RAM" pct={service.ram_used_pct} icon={Server} />
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Specifications</div>
-        {hasSpecs ? (
-          <div className="flex flex-wrap gap-2">
-            {specs.cpu && <Spec icon={Cpu} label={specs.cpu} />}
-            {specs.ram && <Spec icon={Server} label={`${specs.ram} RAM`} />}
-            {specs.storage && <Spec icon={HardDrive} label={specs.storage} />}
-            {specs.bandwidth && <Spec icon={Wifi} label={specs.bandwidth} />}
-          </div>
-        ) : (
-          <span className="text-sm text-gray-400">--</span>
-        )}
-      </div>
-
-      <div className="mt-4 pt-4 border-t border-gray-200">
-        <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Managed Roles</div>
-        {service.managed_roles && service.managed_roles.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {(service.managed_roles as ManagedRole[]).map(r => (
-              <span key={r} className="text-xs bg-teal-50 text-teal-700 px-2.5 py-1 rounded-full font-medium border border-teal-100">{r}</span>
-            ))}
-          </div>
-        ) : (
-          <span className="text-sm text-gray-400">--</span>
-        )}
-      </div>
-
-      {heartbeats.length > 0 && <SpeedChart heartbeats={heartbeats} />}
     </div>
   );
 }
@@ -813,193 +648,45 @@ function SpeedChart({ heartbeats }: { heartbeats: ServiceHeartbeat[] }) {
     download: Number((h.payload as any).download_mbps) || 0,
     upload: Number((h.payload as any).upload_mbps) || 0,
     ping: Number((h.payload as any).ping_ms) || 0,
-    packetLoss: Number((h.payload as any).packet_loss_pct) || 0,
   }));
 
   if (points.length === 0) return null;
 
   const maxSpeed = Math.max(...points.map(p => Math.max(p.download, p.upload)), 1);
-  const chartH = 120;
+  const chartH = 80;
+  const toY = (val: number) => chartH - (val / maxSpeed) * (chartH - 8);
 
-  const toY = (val: number) => chartH - (val / maxSpeed) * (chartH - 10);
-
-  const makePath = (values: number[]) => {
-    return values.map((v, i) => {
+  const makePath = (values: number[]) =>
+    values.map((v, i) => {
       const x = points.length === 1 ? 50 : (i / (points.length - 1)) * 100;
-      const y = toY(v);
-      return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+      return `${i === 0 ? 'M' : 'L'} ${x} ${toY(v)}`;
     }).join(' ');
-  };
-
-  const downloadPath = makePath(points.map(p => p.download));
-  const uploadPath = makePath(points.map(p => p.upload));
 
   const latest = points[points.length - 1];
-  const avgDownload = points.reduce((s, p) => s + p.download, 0) / points.length;
-  const avgUpload = points.reduce((s, p) => s + p.upload, 0) / points.length;
-  const avgPing = points.reduce((s, p) => s + p.ping, 0) / points.length;
 
   return (
-    <div className="mt-4 pt-4 border-t border-gray-200">
-      <div className="flex items-center gap-2 mb-3">
-        <Wifi className="w-4 h-4 text-blue-600" />
-        <span className="text-xs uppercase tracking-wider text-gray-500 font-medium">Network Performance (Last 48h)</span>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        <div className="bg-white rounded-lg border border-gray-200 p-3 text-center">
-          <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Download</div>
-          <div className="text-lg font-bold text-blue-600">{latest.download.toFixed(1)}</div>
-          <div className="text-[10px] text-gray-500">Mbps</div>
-        </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-3 text-center">
-          <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Upload</div>
-          <div className="text-lg font-bold text-emerald-600">{latest.upload.toFixed(1)}</div>
-          <div className="text-[10px] text-gray-500">Mbps</div>
-        </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-3 text-center">
-          <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Ping</div>
-          <div className="text-lg font-bold text-gray-900">{latest.ping.toFixed(0)}</div>
-          <div className="text-[10px] text-gray-500">ms</div>
-        </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-3 text-center">
-          <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">Packet Loss</div>
-          <div className={`text-lg font-bold ${latest.packetLoss > 0 ? 'text-red-600' : 'text-gray-900'}`}>{latest.packetLoss.toFixed(1)}%</div>
-          <div className="text-[10px] text-gray-500">current</div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <svg viewBox={`0 0 100 ${chartH}`} preserveAspectRatio="none" className="w-full h-28">
-          {/* Grid lines */}
-          {[0, 25, 50, 75, 100].map(pct => (
-            <line key={pct} x1="0" x2="100" y1={toY(maxSpeed * pct / 100)} y2={toY(maxSpeed * pct / 100)}
-              stroke="#e5e7eb" strokeWidth="0.3" strokeDasharray="1,1" />
-          ))}
-          {/* Upload area */}
-          <path d={`${uploadPath} L 100 ${chartH} L 0 ${chartH} Z`} fill="rgba(16,185,129,0.08)" />
-          {/* Download area */}
-          <path d={`${downloadPath} L 100 ${chartH} L 0 ${chartH} Z`} fill="rgba(37,99,235,0.08)" />
-          {/* Upload line */}
-          <path d={uploadPath} fill="none" stroke="#10b981" strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round" />
-          {/* Download line */}
-          <path d={downloadPath} fill="none" stroke="#2563eb" strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        <div className="flex items-center justify-between mt-2">
-          <div className="flex items-center gap-4 text-[10px]">
-            <span className="flex items-center gap-1"><span className="w-2 h-0.5 bg-blue-600 rounded"></span> Download (avg {avgDownload.toFixed(1)} Mbps)</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-0.5 bg-emerald-500 rounded"></span> Upload (avg {avgUpload.toFixed(1)} Mbps)</span>
-            <span className="text-gray-400">Ping avg: {avgPing.toFixed(0)}ms</span>
-          </div>
-          <span className="text-[10px] text-gray-400">{points.length} readings</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PriceTag({ service }: { service: Service }) {
-  const hours = service.confirmed_hours_monthly;
-  const isHourly = !!(hours && hours > 0);
-  const monthly = serviceMonthlyTotal(service);
-  const annual = monthly * 12;
-  const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-  const infraCost = service.infrastructure_cost || 0;
-  const allocHours = service.allocated_hours || 0;
-  const extraRate = service.extra_hour_rate || 0;
-  const hasBreakdown = infraCost > 0 || allocHours > 0;
-  const maintenanceCost = hasBreakdown ? (monthly - infraCost) : 0;
-
-  return (
-    <div className="flex flex-col items-end">
-      <div className="inline-flex items-baseline gap-1 bg-slate-800 text-white rounded-xl px-4 py-2.5 shadow-sm">
-        <span className="text-xs font-medium opacity-75">{service.currency}</span>
-        <span className="text-xl md:text-2xl font-bold tracking-tight">{fmt(monthly)}</span>
-      </div>
-      <div className="text-[11px] text-gray-500 mt-1 font-medium">per month</div>
-
-      {hasBreakdown && (
-        <div className="mt-2 text-right space-y-0.5 border-t border-gray-100 pt-2">
-          {infraCost > 0 && (
-            <div className="text-xs text-gray-500 flex items-center justify-end gap-1.5">
-              <Cloud className="w-3 h-3" />
-              <span>Infra: {service.currency} {fmt(infraCost)}</span>
-            </div>
-          )}
-          {allocHours > 0 && (
-            <div className="text-xs text-gray-500 flex items-center justify-end gap-1.5">
-              <Wrench className="w-3 h-3" />
-              <span>Maint. ({allocHours}h): {service.currency} {fmt(maintenanceCost)}</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="text-xs text-gray-400 mt-1.5">{service.currency} {fmt(annual)} / year</div>
-
-      {extraRate > 0 && (
-        <div className="text-xs text-gray-500 mt-0.5">
-          Extra hr: {service.currency} {fmt(extraRate)}/hr
-        </div>
-      )}
-
-      {!hasBreakdown && isHourly && (
-        <div className="text-xs text-gray-500 mt-0.5">
-          {hours}h / month &middot; {service.currency} {fmt(service.price)}/hr
-        </div>
-      )}
-
-      {service.next_renewal_date && (
-        <div className="text-xs text-gray-400 mt-0.5 inline-flex items-center gap-1">
-          <Calendar className="w-3 h-3" /> Renews {new Date(service.next_renewal_date).toLocaleDateString()}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Field({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
-  return (
-    <div>
-      <div className="flex items-center gap-1.5 text-gray-500 text-xs mb-1">
-        <Icon className="w-3 h-3" /> {label}
-      </div>
-      <div className="font-medium text-gray-900">{value}</div>
-    </div>
-  );
-}
-
-function ResourceBar({ label, pct, icon: Icon }: { label: string; pct: number; icon: any }) {
-  const clamped = Math.max(0, Math.min(100, pct));
-  const barColor = clamped >= 90 ? 'bg-red-500' : clamped >= 80 ? 'bg-amber-500' : 'bg-emerald-500';
-  const textColor = clamped >= 90 ? 'text-red-700' : clamped >= 80 ? 'text-amber-700' : 'text-gray-700';
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 p-3">
+    <div className="pt-3 border-t border-gray-200">
       <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-1.5">
-          <Icon className="w-3.5 h-3.5 text-gray-500" />
-          <span className="text-xs font-medium text-gray-600">{label}</span>
+        <span className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Network (48h)</span>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="text-blue-600 font-medium">{latest.download.toFixed(0)} Mbps down</span>
+          <span className="text-emerald-600 font-medium">{latest.upload.toFixed(0)} Mbps up</span>
+          <span className="text-gray-500">{latest.ping.toFixed(0)}ms</span>
         </div>
-        <span className={`text-xs font-semibold ${textColor}`}>{Math.round(clamped)}%</span>
       </div>
-      <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${clamped}%` }} />
+      <div className="bg-white rounded-lg border border-gray-200 p-3">
+        <svg viewBox={`0 0 100 ${chartH}`} preserveAspectRatio="none" className="w-full h-16">
+          <path d={`${makePath(points.map(p => p.download))} L 100 ${chartH} L 0 ${chartH} Z`} fill="rgba(37,99,235,0.06)" />
+          <path d={`${makePath(points.map(p => p.upload))} L 100 ${chartH} L 0 ${chartH} Z`} fill="rgba(16,185,129,0.06)" />
+          <path d={makePath(points.map(p => p.download))} fill="none" stroke="#2563eb" strokeWidth="0.8" />
+          <path d={makePath(points.map(p => p.upload))} fill="none" stroke="#10b981" strokeWidth="0.8" />
+        </svg>
       </div>
     </div>
   );
 }
 
-function Spec({ icon: Icon, label }: { icon: any; label: string }) {
-  return (
-    <div className="flex items-center gap-1.5 text-sm bg-white border border-gray-200 px-3 py-1.5 rounded-lg">
-      <Icon className="w-3.5 h-3.5 text-gray-500" />
-      <span className="text-gray-700">{label}</span>
-    </div>
-  );
-}
-
-/* ---------- Licenses & Subscriptions ---------- */
+/* ---------- Licenses ---------- */
 
 function LicensesSection({ licenses, services }: { licenses: ClientLicense[]; services: Service[] }) {
   const getServiceName = (id?: string) => id ? services.find(s => s.id === id)?.business_name || services.find(s => s.id === id)?.name : null;
@@ -1009,79 +696,35 @@ function LicensesSection({ licenses, services }: { licenses: ClientLicense[]; se
     return Math.ceil((new Date(date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
   };
 
-  if (licenses.length === 0) {
-    return (
-      <div className="bg-white rounded-xl border border-dashed border-gray-300 p-10 text-center">
-        <Shield className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-        <p className="text-sm text-gray-500">No active licenses or subscriptions.</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 mb-2">
-        <Shield className="w-5 h-5 text-blue-600" />
-        <h2 className="text-lg font-semibold text-gray-900">Active Licenses & Subscriptions</h2>
-      </div>
-      <p className="text-sm text-gray-600 mb-4">
-        Software and subscriptions managed as part of your service agreement.
-      </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="space-y-3">
+      <h2 className="text-sm font-semibold text-gray-900">Licenses & Subscriptions</h2>
+      <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
         {licenses.map(lic => {
           const days = daysUntilExpiry(lic.expiration_date);
           const isExpiring = days !== null && days >= 0 && days <= 30;
           const isExpired = days !== null && days < 0;
-          const borderColor = isExpired ? 'border-red-200' : isExpiring ? 'border-amber-200' : 'border-gray-200';
-          const linkedService = getServiceName(lic.service_id);
 
           return (
-            <div key={lic.id} className={`bg-white rounded-xl border ${borderColor} p-5 shadow-sm transition-shadow hover:shadow-md`}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-semibold text-gray-900">{lic.software_name}</h4>
-                  {linkedService && (
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      Linked to: {linkedService}
-                    </div>
-                  )}
-                </div>
-                <div className="text-right shrink-0">
-                  <div className="text-sm font-medium text-gray-900">
-                    {lic.quantity} {lic.quantity_label}
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
+            <div key={lic.id} className="px-5 py-3.5 flex items-center gap-4">
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  {lic.paid_by !== 'Me' && (
-                    <span className="text-xs text-gray-500">
-                      {lic.billing_cycle === 'Perpetual' ? 'Perpetual license' : `Billed ${lic.billing_cycle.toLowerCase()}`}
-                    </span>
-                  )}
-                  {lic.paid_by === 'Me' && (
-                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-wide">
-                      Included in your plan
-                    </span>
-                  )}
-                  {lic.paid_by === 'Client' && (
-                    <span className="text-[10px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-full uppercase tracking-wide">
-                      Paid by you
-                    </span>
-                  )}
+                  <span className="text-sm font-medium text-gray-900">{lic.software_name}</span>
+                  <span className="text-xs text-gray-400">{lic.quantity} {lic.quantity_label}</span>
                 </div>
-                {days === null ? (
-                  <span className="text-xs text-gray-500 font-medium">No expiry</span>
-                ) : isExpired ? (
-                  <span className="text-xs font-semibold text-red-700 bg-red-50 px-2.5 py-1 rounded-full">Expired</span>
+                {getServiceName(lic.service_id) && (
+                  <span className="text-xs text-gray-400">{getServiceName(lic.service_id)}</span>
+                )}
+              </div>
+              <div className="shrink-0">
+                {isExpired ? (
+                  <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Expired</span>
                 ) : isExpiring ? (
-                  <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full flex items-center gap-1">
-                    <Calendar className="w-3 h-3" /> Renews in {days}d
-                  </span>
+                  <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Renews in {days}d</span>
+                ) : days !== null ? (
+                  <span className="text-xs text-gray-500">{new Date(lic.expiration_date!).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</span>
                 ) : (
-                  <span className="text-xs text-gray-600 flex items-center gap-1">
-                    <Calendar className="w-3 h-3" /> {new Date(lic.expiration_date!).toLocaleDateString()}
-                  </span>
+                  <span className="text-xs text-gray-400">Perpetual</span>
                 )}
               </div>
             </div>
@@ -1099,70 +742,20 @@ function ChangesSection({ changes, services }: { changes: ServiceChange[]; servi
     const s = services.find(s => s.id === id);
     return s ? (s.business_name || s.name) : 'Service';
   };
-  return (
-    <section>
-      <div className="flex items-center gap-2 mb-5">
-        <History className="w-5 h-5 text-blue-600" />
-        <h2 className="text-lg font-semibold text-gray-900">Change History</h2>
-      </div>
-      <p className="text-sm text-gray-600 mb-6">Record of changes and improvements applied to your services. Transparency is part of our ISO 20000 service management practice.</p>
-      {changes.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-500">
-          No changes logged yet.
-        </div>
-      ) : (
-        <ol className="relative border-l-2 border-gray-200 ml-2 space-y-6">
-          {changes.map(c => (
-            <li key={c.id} className="pl-6 relative">
-              <span className="absolute -left-[9px] top-1.5 w-4 h-4 bg-blue-600 rounded-full border-4 border-slate-50"></span>
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
-                  <Calendar className="w-3 h-3" />
-                  {new Date(c.change_date).toLocaleDateString()}
-                  <span className="text-gray-300">·</span>
-                  <span className="text-blue-600 font-medium">{getServiceName(c.service_id)}</span>
-                </div>
-                <div className="text-sm font-semibold text-gray-900">{c.summary}</div>
-                {c.details && <p className="text-sm text-gray-600 mt-1.5 whitespace-pre-wrap">{c.details}</p>}
-              </div>
-            </li>
-          ))}
-        </ol>
-      )}
-    </section>
-  );
-}
-
-/* ---------- Support / Incident form (UI only, not wired) ---------- */
-
-function StatusOverview({ services }: { services: Service[] }) {
-  const monitored = services.filter(s => s.status === 'Active' && s.uptime_badge_url);
-  if (monitored.length === 0) return null;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 shadow-sm">
-      <div className="flex items-center gap-2 mb-4">
-        <Shield className="w-4 h-4 text-emerald-600" />
-        <h3 className="text-sm font-semibold text-gray-900">System Status</h3>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {monitored.map(s => (
-          <div key={s.id} className="flex items-center gap-3 bg-slate-50 rounded-lg border border-gray-100 px-3 py-2.5">
-            <img
-              src={s.uptime_badge_url}
-              alt={`${s.business_name || s.name} status`}
-              className="h-5"
-              loading="lazy"
-            />
-            <div className="flex-1 min-w-0">
-              <span className="text-xs font-medium text-gray-800 truncate block">{s.business_name || s.name}</span>
+    <div className="space-y-3">
+      <h2 className="text-sm font-semibold text-gray-900">Change History</h2>
+      <div className="space-y-2">
+        {changes.map(c => (
+          <div key={c.id} className="bg-white rounded-lg border border-gray-200 px-4 py-3">
+            <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
+              <span>{new Date(c.change_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+              <span className="text-gray-300">-</span>
+              <span className="text-blue-600 font-medium">{getServiceName(c.service_id)}</span>
             </div>
-            {s.uptime_status_url && (
-              <a href={s.uptime_status_url} target="_blank" rel="noopener noreferrer"
-                className="text-[10px] text-blue-600 hover:text-blue-700 font-medium whitespace-nowrap">
-                Live status
-              </a>
-            )}
+            <p className="text-sm font-medium text-gray-900">{c.summary}</p>
+            {c.details && <p className="text-xs text-gray-500 mt-1">{c.details}</p>}
           </div>
         ))}
       </div>
@@ -1170,79 +763,7 @@ function StatusOverview({ services }: { services: Service[] }) {
   );
 }
 
-function SupportSection({ clientName, services }: { clientName: string; services: Service[] }) {
-  const [serviceId, setServiceId] = useState('');
-  const [priority, setPriority] = useState<'Low' | 'Medium' | 'High' | 'Critical'>('Medium');
-  const [subject, setSubject] = useState('');
-  const [message, setMessage] = useState('');
-  const [sent, setSent] = useState(false);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const svc = services.find(s => s.id === serviceId);
-    const body = `Client: ${clientName}%0D%0AService: ${svc?.business_name || svc?.name || '(general)'}%0D%0APriority: ${priority}%0D%0A%0D%0A${encodeURIComponent(message)}`;
-    window.location.href = `mailto:?subject=${encodeURIComponent('[Support] ' + subject)}&body=${body}`;
-    setSent(true);
-  };
-
-  return (
-    <section className="max-w-2xl">
-      <div className="flex items-center gap-2 mb-2">
-        <Mail className="w-5 h-5 text-blue-600" />
-        <h2 className="text-lg font-semibold text-gray-900">Request Support</h2>
-      </div>
-      <p className="text-sm text-gray-600 mb-6">
-        Report an incident or request a service change. Submissions open your email client so our team receives all context.
-      </p>
-
-      {sent && (
-        <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg p-4 flex items-start gap-3">
-          <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          <div className="text-sm">Your email client should now be open with the request draft. Send it to reach our support team.</div>
-          <button onClick={() => setSent(false)} className="ml-auto"><X className="w-4 h-4" /></button>
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-6 space-y-4 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Affected Service</label>
-            <select value={serviceId} onChange={e => setServiceId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">General inquiry</option>
-              {services.map(s => <option key={s.id} value={s.id}>{s.business_name || s.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Priority</label>
-            <select value={priority} onChange={e => setPriority(e.target.value as any)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500">
-              <option>Low</option><option>Medium</option><option>High</option><option>Critical</option>
-            </select>
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Subject</label>
-          <input type="text" value={subject} onChange={e => setSubject(e.target.value)} required
-            placeholder="Brief summary of the issue"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
-          <textarea value={message} onChange={e => setMessage(e.target.value)} rows={5} required
-            placeholder="Describe what is happening, when it started, who is affected..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
-        </div>
-        <button type="submit"
-          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors">
-          <Send className="w-4 h-4" /> Submit Request
-        </button>
-      </form>
-    </section>
-  );
-}
-
-/* ---------- Support Hours Section ---------- */
+/* ---------- Support Hours ---------- */
 
 function SupportHoursSection({ hours, services }: { hours: SupportHour[]; services: Service[] }) {
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -1251,7 +772,6 @@ function SupportHoursSection({ hours, services }: { hours: SupportHour[]; servic
   });
 
   const filteredHours = useMemo(() => {
-    if (!selectedMonth) return hours;
     const [year, month] = selectedMonth.split('-');
     const start = `${year}-${month}-01`;
     const endDate = new Date(parseInt(year), parseInt(month), 0);
@@ -1263,8 +783,6 @@ function SupportHoursSection({ hours, services }: { hours: SupportHour[]; servic
   const totalAllocated = services
     .filter(s => s.status === 'Active')
     .reduce((sum, s) => sum + (s.confirmed_hours_monthly || 0), 0);
-  const extraRate = services.find(s => s.extra_hour_rate && s.extra_hour_rate > 0)?.extra_hour_rate || 0;
-  const primaryCurrency = services.find(s => s.currency)?.currency || 'USD';
   const pctUsed = totalAllocated > 0 ? (totalHoursUsed / totalAllocated) * 100 : 0;
 
   const getServiceName = (id?: string) => {
@@ -1285,127 +803,138 @@ function SupportHoursSection({ hours, services }: { hours: SupportHour[]; servic
   }, [hours]);
 
   return (
-    <div className="space-y-6">
-      {/* Summary */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Support Hours Usage</h3>
-            <p className="text-sm text-gray-500 mt-0.5">Time spent on your managed services and infrastructure</p>
-          </div>
-          <select
-            value={selectedMonth}
-            onChange={e => setSelectedMonth(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"
-          >
-            {availableMonths.map(m => {
-              const [y, mo] = m.split('-');
-              const label = new Date(parseInt(y), parseInt(mo) - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-              return <option key={m} value={m}>{label}</option>;
-            })}
-          </select>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-slate-50 rounded-xl p-4">
-            <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Hours Used</div>
-            <div className="text-2xl font-bold text-gray-900">{totalHoursUsed.toFixed(1)}h</div>
-            {totalAllocated > 0 && (
-              <div className="text-sm text-gray-500">of {totalAllocated}h included</div>
-            )}
-          </div>
-          {totalAllocated > 0 && (
-            <div className="bg-slate-50 rounded-xl p-4">
-              <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Plan Usage</div>
-              <div className="mt-2">
-                <div className="flex items-baseline gap-2">
-                  <span className={`text-2xl font-bold ${pctUsed > 90 ? 'text-red-600' : pctUsed > 70 ? 'text-amber-600' : 'text-gray-900'}`}>
-                    {pctUsed.toFixed(0)}%
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                  <div
-                    className={`h-2 rounded-full transition-all ${pctUsed > 90 ? 'bg-red-500' : pctUsed > 70 ? 'bg-amber-500' : 'bg-blue-500'}`}
-                    style={{ width: `${Math.min(pctUsed, 100)}%` }}
-                  />
-                </div>
-                {totalHoursUsed > totalAllocated && (
-                  <div className="text-xs text-red-600 font-medium mt-1">
-                    {(totalHoursUsed - totalAllocated).toFixed(1)}h over plan
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          {extraRate > 0 && (
-            <div className="bg-slate-50 rounded-xl p-4">
-              <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Extra Hour Rate</div>
-              <div className="text-2xl font-bold text-gray-900">{primaryCurrency} {extraRate.toFixed(2)}</div>
-              <div className="text-sm text-gray-500">per additional hour</div>
-            </div>
-          )}
-        </div>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-900">Support Hours</h2>
+        <select
+          value={selectedMonth}
+          onChange={e => setSelectedMonth(e.target.value)}
+          className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+        >
+          {availableMonths.map(m => {
+            const [y, mo] = m.split('-');
+            const label = new Date(parseInt(y), parseInt(mo) - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            return <option key={m} value={m}>{label}</option>;
+          })}
+        </select>
       </div>
 
-      {/* Per-service allocation breakdown */}
+      {/* Usage summary */}
       {totalAllocated > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-200 p-6">
-          <h4 className="font-semibold text-gray-900 mb-4">Hours Allocation by Service</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {services
-              .filter(s => s.status === 'Active' && s.confirmed_hours_monthly && s.confirmed_hours_monthly > 0)
-              .map(s => (
-                <div key={s.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3 border border-gray-100">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Server className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                    <span className="text-sm font-medium text-gray-800 truncate">{s.business_name || s.name}</span>
-                  </div>
-                  <span className="text-sm font-semibold text-gray-900 whitespace-nowrap ml-3">{s.confirmed_hours_monthly}h/mo</span>
-                </div>
-              ))}
+        <div className="bg-white rounded-lg border border-gray-200 px-4 py-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-gray-600">{totalHoursUsed.toFixed(1)}h of {totalAllocated}h used</span>
+            <span className={`text-xs font-semibold ${pctUsed > 90 ? 'text-red-600' : pctUsed > 70 ? 'text-amber-600' : 'text-gray-900'}`}>
+              {pctUsed.toFixed(0)}%
+            </span>
+          </div>
+          <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full ${pctUsed > 90 ? 'bg-red-500' : pctUsed > 70 ? 'bg-amber-500' : 'bg-blue-500'}`}
+              style={{ width: `${Math.min(pctUsed, 100)}%` }}
+            />
           </div>
         </div>
       )}
 
-      {/* Activity log */}
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h4 className="font-semibold text-gray-900">Activity Log</h4>
+      {/* Activity */}
+      {filteredHours.length === 0 ? (
+        <div className="bg-white rounded-lg border border-gray-200 p-8 text-center text-sm text-gray-400">
+          No hours logged this period.
         </div>
-        {filteredHours.length === 0 ? (
-          <div className="p-10 text-center">
-            <Clock className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-            <p className="text-gray-500 text-sm">No support hours logged for this period</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {filteredHours.map(entry => (
-              <div key={entry.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 mb-1">
-                      <span className="text-sm font-medium text-gray-900">
-                        {new Date(entry.work_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                      </span>
-                      {getServiceName(entry.service_id) && (
-                        <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-medium">
-                          {getServiceName(entry.service_id)}
-                        </span>
-                      )}
-                    </div>
-                    {entry.description && (
-                      <p className="text-sm text-gray-600 mt-0.5">{entry.description}</p>
-                    )}
-                  </div>
-                  <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 px-2.5 py-1 rounded-full text-sm font-semibold whitespace-nowrap">
-                    <Clock className="w-3.5 h-3.5" />{Number(entry.hours).toFixed(1)}h
+      ) : (
+        <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
+          {filteredHours.map(entry => (
+            <div key={entry.id} className="px-4 py-3 flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400">
+                    {new Date(entry.work_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                   </span>
+                  {getServiceName(entry.service_id) && (
+                    <span className="text-xs text-blue-600 font-medium">{getServiceName(entry.service_id)}</span>
+                  )}
                 </div>
+                {entry.description && <p className="text-sm text-gray-700 mt-0.5">{entry.description}</p>}
               </div>
-            ))}
-          </div>
-        )}
+              <span className="text-xs font-semibold text-gray-900 bg-gray-100 px-2 py-0.5 rounded-full shrink-0">
+                {Number(entry.hours).toFixed(1)}h
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Support Form ---------- */
+
+function SupportSection({ clientName, services }: { clientName: string; services: Service[] }) {
+  const [serviceId, setServiceId] = useState('');
+  const [priority, setPriority] = useState<'Low' | 'Medium' | 'High' | 'Critical'>('Medium');
+  const [subject, setSubject] = useState('');
+  const [message, setMessage] = useState('');
+  const [sent, setSent] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const svc = services.find(s => s.id === serviceId);
+    const body = `Client: ${clientName}%0D%0AService: ${svc?.business_name || svc?.name || '(general)'}%0D%0APriority: ${priority}%0D%0A%0D%0A${encodeURIComponent(message)}`;
+    window.location.href = `mailto:?subject=${encodeURIComponent('[Support] ' + subject)}&body=${body}`;
+    setSent(true);
+  };
+
+  return (
+    <div className="max-w-xl space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold text-gray-900">Request Support</h2>
+        <p className="text-xs text-gray-500 mt-0.5">Opens your email client with a pre-filled support request.</p>
       </div>
+
+      {sent && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-4 py-3 flex items-center gap-3 text-sm">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>Email draft opened. Send it to reach the support team.</span>
+          <button onClick={() => setSent(false)} className="ml-auto"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Service</label>
+            <select value={serviceId} onChange={e => setServiceId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">General inquiry</option>
+              {services.map(s => <option key={s.id} value={s.id}>{s.business_name || s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Priority</label>
+            <select value={priority} onChange={e => setPriority(e.target.value as any)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500">
+              <option>Low</option><option>Medium</option><option>High</option><option>Critical</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Subject</label>
+          <input type="text" value={subject} onChange={e => setSubject(e.target.value)} required
+            placeholder="Brief summary"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+          <textarea value={message} onChange={e => setMessage(e.target.value)} rows={4} required
+            placeholder="What's happening, when it started..."
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+        </div>
+        <button type="submit"
+          className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+          <Send className="w-3.5 h-3.5" /> Send Request
+        </button>
+      </form>
     </div>
   );
 }
