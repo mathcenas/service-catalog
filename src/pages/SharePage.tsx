@@ -28,7 +28,18 @@ function formatTimeAgo(iso: string): string {
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  if (days === 1) return 'Yesterday';
+  if (days === 2) return '2 days ago';
+  if (days < 7) return `${days} days ago`;
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  return `${(bytes / (1024 * 1024 * 1024 * 1024)).toFixed(2)} TB`;
 }
 
 function serviceMonthlyTotal(service: Service): number {
@@ -308,6 +319,9 @@ function OverviewSection({ services, roadmap, changes, supportHours, getTypeName
         {totalAllocated > 0 && <StatCard label="Hours/month" value={`${totalAllocated}h`} />}
       </div>
 
+      {/* Backup status */}
+      <BackupStatus services={services} />
+
       {/* Roadmap items */}
       {upcoming.length > 0 && (
         <section>
@@ -389,6 +403,51 @@ function StatCard({ label, value, accent = false }: { label: string; value: stri
       <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">{label}</div>
       <div className={`text-xl font-bold ${accent ? 'text-blue-600' : 'text-gray-900'}`}>{value}</div>
     </div>
+  );
+}
+
+function BackupStatus({ services }: { services: Service[] }) {
+  const withBackup = services.filter(s => s.last_backup_at);
+  if (withBackup.length === 0) return null;
+
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-3">
+        <HardDrive className="w-4 h-4 text-gray-500" />
+        <h2 className="text-sm font-semibold text-gray-900">Backup Status</h2>
+      </div>
+      <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100">
+        {withBackup.map(s => {
+          const age = Date.now() - new Date(s.last_backup_at!).getTime();
+          const hoursOld = age / (1000 * 60 * 60);
+          const isStale = hoursOld > 48;
+          const isWarning = hoursOld > 24 && hoursOld <= 48;
+
+          return (
+            <div key={s.id} className="px-4 py-3 flex items-center gap-3">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${
+                isStale ? 'bg-red-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500'
+              }`} />
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-medium text-gray-900">{s.business_name || s.name}</span>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                {s.last_backup_size_bytes != null && (
+                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full font-medium">
+                    {formatBytes(s.last_backup_size_bytes)}
+                  </span>
+                )}
+                <span className={`text-xs font-medium ${
+                  isStale ? 'text-red-600' : isWarning ? 'text-amber-600' : 'text-gray-600'
+                }`}>
+                  {formatTimeAgo(s.last_backup_at!)}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -507,6 +566,19 @@ function ServiceCard({
             ))}
             {(service.includes || []).length > 4 && (
               <span className="text-[11px] text-gray-400">+{(service.includes || []).length - 4} more</span>
+            )}
+          </div>
+        )}
+
+        {/* Backup indicator */}
+        {service.last_backup_at && (
+          <div className="flex items-center gap-2 mt-3">
+            <HardDrive className="w-3.5 h-3.5 text-gray-400" />
+            <span className="text-xs text-gray-600">
+              Last backup: <span className="font-medium">{formatTimeAgo(service.last_backup_at)}</span>
+            </span>
+            {service.last_backup_size_bytes != null && (
+              <span className="text-xs text-gray-400">({formatBytes(service.last_backup_size_bytes)})</span>
             )}
           </div>
         )}
