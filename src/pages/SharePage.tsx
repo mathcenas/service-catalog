@@ -79,13 +79,11 @@ export function SharePage({ token }: Props) {
 
   useEffect(() => {
     const load = async () => {
-      const { data: tokenRow } = await supabase
-        .from('client_share_tokens')
-        .select('*')
-        .eq('token', token)
-        .maybeSingle();
+      const { data: tokenRows, error: tokenError } = await supabase
+        .rpc('resolve_share_token', { p_token: token });
+      const tokenRow = tokenRows?.[0];
 
-      if (!tokenRow) { setNotFound(true); setLoading(false); return; }
+      if (tokenError || !tokenRow) { setNotFound(true); setLoading(false); return; }
 
       const [{ data: clientData }, { data: servicesData }, { data: projectsData }, { data: typesData }, { data: roadmapData }, { data: settingsData }] = await Promise.all([
         supabase.from('clients').select('*').eq('id', tokenRow.client_id).maybeSingle(),
