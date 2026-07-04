@@ -9,6 +9,26 @@ import { supabase, Client, Service, ServiceType, Project, ServiceChange, Managed
 type Props = { token: string };
 type Section = 'overview' | 'services' | 'licenses' | 'changes' | 'hours' | 'support';
 
+interface ServiceBackup {
+  id: string;
+  service_id: string;
+  job_name: string | null;
+  status: string;
+  size_bytes: number | null;
+  duration_seconds: number | null;
+  backed_up_at: string;
+}
+
+interface UptimeEvent {
+  id: string;
+  service_id: string;
+  monitor_name: string | null;
+  event_type: string;
+  message: string | null;
+  duration_seconds: number | null;
+  occurred_at: string;
+}
+
 function billingCycleMonths(cycle: string): number {
   return cycle === 'Monthly' ? 1 : cycle === 'Quarterly' ? 3 : cycle === 'Semi-Annually' ? 6 : cycle === 'Annually' ? 12 : cycle === 'Biennially' ? 24 : 0;
 }
@@ -60,6 +80,8 @@ export function SharePage({ token }: Props) {
   const [licenses, setLicenses] = useState<ClientLicense[]>([]);
   const [supportHours, setSupportHours] = useState<SupportHour[]>([]);
   const [heartbeats, setHeartbeats] = useState<ServiceHeartbeat[]>([]);
+  const [backups, setBackups] = useState<ServiceBackup[]>([]);
+  const [uptimeEvents, setUptimeEvents] = useState<UptimeEvent[]>([]);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -120,10 +142,17 @@ export function SharePage({ token }: Props) {
 
       const serviceIds = (servicesData || []).map(s => s.id);
       if (serviceIds.length > 0) {
-        const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-        const { data: hbData } = await supabase
-          .from('service_heartbeats').select('*').in('service_id', serviceIds).eq('source', 'speedtest').gte('received_at', since).order('received_at', { ascending: true });
+        const since48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+        const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+        const [{ data: hbData }, { data: backupsData }, { data: uptimeData }] = await Promise.all([
+          supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).eq('source', 'speedtest').gte('received_at', since48h).order('received_at', { ascending: true }),
+          supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(50),
+          supabase.from('uptime_events').select('id,service_id,monitor_name,event_type,message,duration_seconds,occurred_at').in('service_id', serviceIds).gte('occurred_at', since30d).order('occurred_at', { ascending: false }),
+        ]);
         setHeartbeats(hbData || []);
+        setBackups(backupsData || []);
+        setUptimeEvents(uptimeData || []);
       }
 
       setLoading(false);
@@ -216,7 +245,7 @@ export function SharePage({ token }: Props) {
         </nav>
 
         <main className="max-w-5xl mx-auto px-4 py-6">
-          {section === 'overview' && <OverviewSection services={activeServices} roadmap={roadmap} changes={changes} getTypeName={getTypeName} />}
+          {section === 'overview' && <OverviewSection services={activeServices} roadmap={roadmap} changes={changes} getTypeName={getTypeName} backups={backups} uptimeEvents={uptimeEvents} />}
           {section === 'services' && <ServiceCatalog services={services} projects={projects} getTypeName={getTypeName} getProjectName={getProjectName} expandedService={expandedService} setExpandedService={setExpandedService} heartbeats={heartbeats} />}
           {section === 'licenses' && <LicensesSection licenses={licenses} services={services} />}
           {section === 'changes' && <ChangesSection changes={changes} services={services} />}
@@ -268,8 +297,9 @@ function NavBtn({ active, onClick, children }: { active: boolean; onClick: () =>
 
 /* ---------- Overview ---------- */
 
-function OverviewSection({ services, roadmap, changes, getTypeName }: {
+function OverviewSection({ services, roadmap, changes, getTypeName, backups, uptimeEvents }: {
   services: Service[]; roadmap: RoadmapItem[]; changes: ServiceChange[]; getTypeName: (id: string) => string;
+  backups: ServiceBackup[]; uptimeEvents: UptimeEvent[];
 }) {
   const upcoming = roadmap.filter(r => r.status !== 'Released');
   const recentChanges = changes.slice(0, 3);
@@ -284,7 +314,8 @@ function OverviewSection({ services, roadmap, changes, getTypeName }: {
         {totalAllocated > 0 && <StatCard label="Hours/month" value={`${totalAllocated}h`} />}
       </div>
 
-      <BackupStatus services={services} />
+      <BackupStatus services={services} backups={backups} />
+      <UptimeStatus services={services} uptimeEvents={uptimeEvents} />
 
       {upcoming.length > 0 && (
         <section>
@@ -359,7 +390,7 @@ function StatCard({ label, value, accent = false }: { label: string; value: stri
   );
 }
 
-function BackupStatus({ services }: { services: Service[] }) {
+function BackupStatus({ services, backups }: { services: Service[]; backups: ServiceBackup[] }) {
   const withBackup = services.filter(s => s.last_backup_at);
   if (withBackup.length === 0) return null;
 
@@ -376,22 +407,99 @@ function BackupStatus({ services }: { services: Service[] }) {
           const isStale = hoursOld > 48;
           const isWarning = hoursOld > 24 && hoursOld <= 48;
 
+          // Last few backups for this service (from history table)
+          const recent = backups.filter(b => b.service_id === s.id).slice(0, 7);
+          const lastBackup = recent[0];
+          const lastStatus = lastBackup?.status || 'success';
+          const dotColor = lastStatus === 'failed' ? 'bg-red-500' : lastStatus === 'warning' ? 'bg-amber-500'
+            : isStale ? 'bg-red-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500';
+
           return (
-            <div key={s.id} className="px-4 py-3 flex items-center gap-3">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${isStale ? 'bg-red-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-              <div className="flex-1 min-w-0">
-                <span className="text-sm font-medium text-gray-900 dark:text-white">{s.business_name || s.name}</span>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                {s.last_backup_size_bytes != null && (
-                  <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full font-medium">
-                    {formatBytes(s.last_backup_size_bytes)}
+            <div key={s.id} className="px-4 py-3">
+              <div className="flex items-center gap-3">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">{s.business_name || s.name}</span>
+                  {lastBackup?.job_name && (
+                    <span className="text-xs text-gray-400 ml-2">{lastBackup.job_name}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  {s.last_backup_size_bytes != null && (
+                    <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full font-medium">
+                      {formatBytes(s.last_backup_size_bytes)}
+                    </span>
+                  )}
+                  <span className={`text-xs font-medium ${isStale || lastStatus === 'failed' ? 'text-red-600 dark:text-red-400' : isWarning || lastStatus === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-gray-600 dark:text-gray-300'}`}>
+                    {formatTimeAgo(s.last_backup_at!)}
                   </span>
-                )}
-                <span className={`text-xs font-medium ${isStale ? 'text-red-600 dark:text-red-400' : isWarning ? 'text-amber-600 dark:text-amber-400' : 'text-gray-600 dark:text-gray-300'}`}>
-                  {formatTimeAgo(s.last_backup_at!)}
-                </span>
+                </div>
               </div>
+              {recent.length > 1 && (
+                <div className="flex items-center gap-1 mt-2 ml-5">
+                  <span className="text-[10px] text-gray-400 mr-1">Last {recent.length}</span>
+                  {recent.map(b => (
+                    <span key={b.id} title={`${b.status} — ${formatTimeAgo(b.backed_up_at)}`}
+                      className={`w-3 h-3 rounded-sm ${b.status === 'failed' ? 'bg-red-500' : b.status === 'warning' ? 'bg-amber-400' : 'bg-emerald-500'}`} />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function UptimeStatus({ services, uptimeEvents }: { services: Service[]; uptimeEvents: UptimeEvent[] }) {
+  const servicesWithEvents = services.filter(s => uptimeEvents.some(e => e.service_id === s.id));
+  if (servicesWithEvents.length === 0) return null;
+
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-3">
+        <Wifi className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Uptime — Last 30 Days</h2>
+      </div>
+      <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+        {servicesWithEvents.map(s => {
+          const events = uptimeEvents.filter(e => e.service_id === s.id);
+          const downEvents = events.filter(e => e.event_type === 'down');
+          const lastDown = downEvents[0];
+
+          // Calculate approximate uptime %: sum of duration_seconds for 'up' events that recovered
+          const windowMs = 30 * 24 * 60 * 60 * 1000;
+          const totalDownMs = downEvents.reduce((sum, e) => {
+            // duration_seconds on 'down' event is how long it was down before recovery (set by Kuma)
+            return sum + (e.duration_seconds ? e.duration_seconds * 1000 : 0);
+          }, 0);
+          const uptimePct = Math.max(0, Math.min(100, ((windowMs - totalDownMs) / windowMs) * 100));
+          const hasDowntime = totalDownMs > 0;
+
+          return (
+            <div key={s.id} className="px-4 py-3">
+              <div className="flex items-center gap-3">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${!hasDowntime ? 'bg-emerald-500' : uptimePct > 99 ? 'bg-amber-400' : 'bg-red-500'}`} />
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">{s.business_name || s.name}</span>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className={`text-xs font-semibold ${!hasDowntime ? 'text-emerald-600 dark:text-emerald-400' : uptimePct > 99 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
+                    {hasDowntime ? `${uptimePct.toFixed(2)}%` : '100%'}
+                  </span>
+                  {downEvents.length > 0 && (
+                    <span className="text-xs text-gray-400">{downEvents.length} incident{downEvents.length !== 1 ? 's' : ''}</span>
+                  )}
+                </div>
+              </div>
+              {lastDown && (
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-5">
+                  Last incident: {formatTimeAgo(lastDown.occurred_at)}
+                  {lastDown.duration_seconds ? ` · ${Math.round(lastDown.duration_seconds / 60)} min down` : ''}
+                  {lastDown.message ? ` · ${lastDown.message}` : ''}
+                </p>
+              )}
             </div>
           );
         })}
