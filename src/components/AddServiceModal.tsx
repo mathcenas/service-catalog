@@ -121,6 +121,7 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
       maintenance_window: formData.maintenance_window || null,
       paid_by: formData.paid_by || null,
       payment_card_last4: formData.payment_card_last4 ? formData.payment_card_last4.slice(-4) : null,
+      ingest_secret: Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, '0')).join(''),
     });
 
     if (insertError) {

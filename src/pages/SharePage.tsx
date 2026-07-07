@@ -113,7 +113,7 @@ export function SharePage({ token }: Props) {
         supabase.from('projects').select('*').eq('client_id', tokenRow.client_id).order('created_at'),
         supabase.from('service_types').select('*'),
         supabase.from('roadmap_items').select('*').eq('user_id', tokenRow.user_id).eq('is_public', true).order('sort_order').order('created_at'),
-        supabase.from('user_settings').select('*').eq('user_id', tokenRow.user_id).maybeSingle(),
+        supabase.from('user_settings').select('company_name, logo_url').eq('user_id', tokenRow.user_id).maybeSingle(),
       ]);
 
       if (!clientData) { setNotFound(true); setLoading(false); return; }
@@ -125,10 +125,14 @@ export function SharePage({ token }: Props) {
       setRoadmap(roadmapData || []);
       if (settingsData) setUserSettings(settingsData);
 
+      const currentYearStart = `${new Date().getFullYear()}-01-01`;
+
       const ids = (servicesData || []).map(s => s.id);
       if (ids.length > 0) {
         const { data: changesData } = await supabase
-          .from('service_changes').select('*').in('service_id', ids).order('change_date', { ascending: false });
+          .from('service_changes').select('*').in('service_id', ids)
+          .gte('change_date', currentYearStart)
+          .order('change_date', { ascending: false });
         setChanges(changesData || []);
       }
 
@@ -137,7 +141,9 @@ export function SharePage({ token }: Props) {
       setLicenses(licensesData || []);
 
       const { data: hoursData } = await supabase
-        .from('support_hours').select('*').eq('client_id', tokenRow.client_id).order('work_date', { ascending: false });
+        .from('support_hours').select('*').eq('client_id', tokenRow.client_id)
+        .gte('work_date', currentYearStart)
+        .order('work_date', { ascending: false });
       setSupportHours(hoursData || []);
 
       const serviceIds = (servicesData || []).map(s => s.id);
@@ -246,7 +252,7 @@ export function SharePage({ token }: Props) {
 
         <main className="max-w-5xl mx-auto px-4 py-6">
           {section === 'overview' && <OverviewSection services={activeServices} roadmap={roadmap} changes={changes} getTypeName={getTypeName} backups={backups} uptimeEvents={uptimeEvents} />}
-          {section === 'services' && <ServiceCatalog services={services} projects={projects} getTypeName={getTypeName} getProjectName={getProjectName} expandedService={expandedService} setExpandedService={setExpandedService} heartbeats={heartbeats} />}
+          {section === 'services' && <ServiceCatalog services={services} projects={projects} getTypeName={getTypeName} getProjectName={getProjectName} expandedService={expandedService} setExpandedService={setExpandedService} heartbeats={heartbeats} backups={backups} />}
           {section === 'licenses' && <LicensesSection licenses={licenses} services={services} />}
           {section === 'changes' && <ChangesSection changes={changes} services={services} />}
           {section === 'hours' && <SupportHoursSection hours={supportHours} services={services} />}
@@ -510,9 +516,9 @@ function UptimeStatus({ services, uptimeEvents }: { services: Service[]; uptimeE
 
 /* ---------- Service Catalog ---------- */
 
-function ServiceCatalog({ services, projects, getTypeName, getProjectName, expandedService, setExpandedService, heartbeats }: {
+function ServiceCatalog({ services, projects, getTypeName, getProjectName, expandedService, setExpandedService, heartbeats, backups }: {
   services: Service[]; projects: Project[]; getTypeName: (id: string) => string; getProjectName: (id?: string) => string | null;
-  expandedService: string | null; setExpandedService: (id: string | null) => void; heartbeats: ServiceHeartbeat[];
+  expandedService: string | null; setExpandedService: (id: string | null) => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[];
 }) {
   const [showCosts, setShowCosts] = useState(false);
 
@@ -542,15 +548,17 @@ function ServiceCatalog({ services, projects, getTypeName, getProjectName, expan
         {services.map(s => (
           <ServiceCard key={s.id} service={s} typeName={getTypeName(s.service_type_id)} projectName={getProjectName(s.project_id)}
             expanded={expandedService === s.id} onToggle={() => setExpandedService(expandedService === s.id ? null : s.id)}
-            heartbeats={heartbeats.filter(h => h.service_id === s.id)} showCosts={showCosts} />
+            heartbeats={heartbeats.filter(h => h.service_id === s.id)}
+            backups={backups.filter(b => b.service_id === s.id)}
+            showCosts={showCosts} />
         ))}
       </div>
     </div>
   );
 }
 
-function ServiceCard({ service, typeName, projectName, expanded, onToggle, heartbeats, showCosts }: {
-  service: Service; typeName: string; projectName: string | null; expanded: boolean; onToggle: () => void; heartbeats: ServiceHeartbeat[]; showCosts: boolean;
+function ServiceCard({ service, typeName, projectName, expanded, onToggle, heartbeats, backups, showCosts }: {
+  service: Service; typeName: string; projectName: string | null; expanded: boolean; onToggle: () => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; showCosts: boolean;
 }) {
   const title = service.business_name || service.name;
   const desc = service.business_description || service.description;
@@ -603,6 +611,11 @@ function ServiceCard({ service, typeName, projectName, expanded, onToggle, heart
             {service.last_backup_size_bytes != null && (
               <span className="text-xs text-gray-400">({formatBytes(service.last_backup_size_bytes)})</span>
             )}
+            {backups[0] && backups[0].status !== 'success' && (
+              <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${backups[0].status === 'failed' ? 'bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400' : 'bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400'}`}>
+                {backups[0].status}
+              </span>
+            )}
           </div>
         )}
 
@@ -611,12 +624,12 @@ function ServiceCard({ service, typeName, projectName, expanded, onToggle, heart
         </button>
       </div>
 
-      {expanded && <TechnicalDetails service={service} heartbeats={heartbeats} showCosts={showCosts} />}
+      {expanded && <TechnicalDetails service={service} heartbeats={heartbeats} backups={backups} showCosts={showCosts} />}
     </div>
   );
 }
 
-function TechnicalDetails({ service, heartbeats, showCosts }: { service: Service; heartbeats: ServiceHeartbeat[]; showCosts: boolean }) {
+function TechnicalDetails({ service, heartbeats, backups, showCosts }: { service: Service; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; showCosts: boolean }) {
   const specs = service.specifications || {};
   const hasSpecs = !!(specs.cpu || specs.ram || specs.storage || specs.bandwidth);
 
@@ -676,7 +689,68 @@ function TechnicalDetails({ service, heartbeats, showCosts }: { service: Service
         </div>
       )}
 
+      {backups.length > 0 && <BackupHistory backups={backups} />}
+
       {heartbeats.length > 0 && <SpeedChart heartbeats={heartbeats} />}
+    </div>
+  );
+}
+
+function BackupHistory({ backups }: { backups: ServiceBackup[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? backups : backups.slice(0, 10);
+
+  return (
+    <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+      <div className="flex items-center gap-2 mb-2">
+        <HardDrive className="w-3.5 h-3.5 text-gray-400" />
+        <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Backup History</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-gray-400 border-b border-gray-100 dark:border-gray-700">
+              <th className="pb-1.5 pr-3 font-medium">Date</th>
+              <th className="pb-1.5 pr-3 font-medium">Job</th>
+              <th className="pb-1.5 pr-3 font-medium">Status</th>
+              <th className="pb-1.5 pr-3 font-medium text-right">Size</th>
+              <th className="pb-1.5 font-medium text-right">Duration</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+            {visible.map(b => (
+              <tr key={b.id}>
+                <td className="py-1.5 pr-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  {new Date(b.backed_up_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  <span className="text-gray-400 ml-1">{new Date(b.backed_up_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
+                </td>
+                <td className="py-1.5 pr-3 text-gray-600 dark:text-gray-300 max-w-[140px] truncate">{b.job_name || '—'}</td>
+                <td className="py-1.5 pr-3">
+                  <span className={`inline-flex items-center gap-1 font-semibold ${
+                    b.status === 'failed'  ? 'text-red-600 dark:text-red-400' :
+                    b.status === 'warning' ? 'text-amber-600 dark:text-amber-400' :
+                                            'text-emerald-600 dark:text-emerald-400'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${b.status === 'failed' ? 'bg-red-500' : b.status === 'warning' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                    {b.status}
+                  </span>
+                </td>
+                <td className="py-1.5 pr-3 text-right text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  {b.size_bytes != null ? formatBytes(b.size_bytes) : '—'}
+                </td>
+                <td className="py-1.5 text-right text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  {b.duration_seconds != null ? `${Math.round(b.duration_seconds / 60)}m` : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {backups.length > 10 && (
+        <button onClick={() => setShowAll(!showAll)} className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline">
+          {showAll ? 'Show less' : `Show all ${backups.length} records`}
+        </button>
+      )}
     </div>
   );
 }
