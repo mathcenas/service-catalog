@@ -2,10 +2,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "https://servicios.cenas-support.com",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers":
-    "Content-Type, Authorization, X-Client-Info, Apikey",
+    "Content-Type, Authorization, X-Client-Info, Apikey, X-Ingest-Secret",
 };
 
 Deno.serve(async (req: Request) => {
@@ -21,6 +21,14 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    const ingestSecret = req.headers.get("X-Ingest-Secret");
+    if (!ingestSecret) {
+      return new Response(
+        JSON.stringify({ error: "Missing X-Ingest-Secret header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const body = await req.json();
     const { service_id, telemetry, vpn_peers } = body;
 
@@ -36,10 +44,9 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Look up the service owner
     const { data: service, error: svcErr } = await supabaseAdmin
       .from("services")
-      .select("user_id")
+      .select("user_id, ingest_secret")
       .eq("id", service_id)
       .maybeSingle();
 
@@ -50,10 +57,16 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    if (!service.ingest_secret || service.ingest_secret !== ingestSecret) {
+      return new Response(
+        JSON.stringify({ error: "Invalid secret" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const userId = service.user_id;
     const results: Record<string, unknown> = {};
 
-    // Insert device telemetry if provided
     if (telemetry) {
       const { error: telErr } = await supabaseAdmin
         .from("device_telemetry")
@@ -78,7 +91,6 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Insert VPN peers if provided (array)
     if (vpn_peers && Array.isArray(vpn_peers) && vpn_peers.length > 0) {
       const rows = vpn_peers.map((p: Record<string, unknown>) => ({
         user_id: userId,

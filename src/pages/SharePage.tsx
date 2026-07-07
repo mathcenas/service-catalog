@@ -113,7 +113,7 @@ export function SharePage({ token }: Props) {
         supabase.from('projects').select('*').eq('client_id', tokenRow.client_id).order('created_at'),
         supabase.from('service_types').select('*'),
         supabase.from('roadmap_items').select('*').eq('user_id', tokenRow.user_id).eq('is_public', true).order('sort_order').order('created_at'),
-        supabase.from('user_settings').select('*').eq('user_id', tokenRow.user_id).maybeSingle(),
+        supabase.from('user_settings').select('company_name, logo_url').eq('user_id', tokenRow.user_id).maybeSingle(),
       ]);
 
       if (!clientData) { setNotFound(true); setLoading(false); return; }
@@ -125,10 +125,14 @@ export function SharePage({ token }: Props) {
       setRoadmap(roadmapData || []);
       if (settingsData) setUserSettings(settingsData);
 
+      const currentYearStart = `${new Date().getFullYear()}-01-01`;
+
       const ids = (servicesData || []).map(s => s.id);
       if (ids.length > 0) {
         const { data: changesData } = await supabase
-          .from('service_changes').select('*').in('service_id', ids).order('change_date', { ascending: false });
+          .from('service_changes').select('*').in('service_id', ids)
+          .gte('change_date', currentYearStart)
+          .order('change_date', { ascending: false });
         setChanges(changesData || []);
       }
 
@@ -137,7 +141,9 @@ export function SharePage({ token }: Props) {
       setLicenses(licensesData || []);
 
       const { data: hoursData } = await supabase
-        .from('support_hours').select('*').eq('client_id', tokenRow.client_id).order('work_date', { ascending: false });
+        .from('support_hours').select('*').eq('client_id', tokenRow.client_id)
+        .gte('work_date', currentYearStart)
+        .order('work_date', { ascending: false });
       setSupportHours(hoursData || []);
 
       const serviceIds = (servicesData || []).map(s => s.id);

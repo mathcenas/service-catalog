@@ -135,6 +135,7 @@ export type Service = {
   extra_hour_rate?: number;
   paid_by?: PaidBy;
   payment_card_last4?: string;
+  ingest_secret?: string;
   created_at: string;
   updated_at: string;
 };
