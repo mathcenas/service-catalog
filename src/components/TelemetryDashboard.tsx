@@ -1,6 +1,22 @@
 import { useEffect, useState, useMemo, Fragment } from 'react';
-import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, ChevronDown, ChevronRight, Trash2, HardDrive } from 'lucide-react';
 import { supabase, Service, Client, ServiceHeartbeat } from '../lib/supabase';
+
+interface ServiceBackup {
+  id: string;
+  service_id: string;
+  job_name: string | null;
+  status: string;
+  size_bytes: number | null;
+  duration_seconds: number | null;
+  backed_up_at: string;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
 
 type Props = {
   services: Service[];
@@ -9,19 +25,22 @@ type Props = {
 
 export function TelemetryDashboard({ services, clients }: Props) {
   const [heartbeats, setHeartbeats] = useState<ServiceHeartbeat[]>([]);
+  const [backups, setBackups] = useState<ServiceBackup[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [backupSearch, setBackupSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'ok' | 'warning' | 'error' | 'stale'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showAllBackups, setShowAllBackups] = useState(false);
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('service_heartbeats')
-      .select('*')
-      .order('received_at', { ascending: false })
-      .limit(200);
-    setHeartbeats(data || []);
+    const [{ data: hbData }, { data: backupData }] = await Promise.all([
+      supabase.from('service_heartbeats').select('*').order('received_at', { ascending: false }).limit(200),
+      supabase.from('service_backups').select('*').order('backed_up_at', { ascending: false }).limit(200),
+    ]);
+    setHeartbeats(hbData || []);
+    setBackups(backupData || []);
     setLoading(false);
   };
 
@@ -242,6 +261,96 @@ export function TelemetryDashboard({ services, clients }: Props) {
           )}
         </div>
       )}
+
+      {/* Backup History */}
+      <div className="space-y-4">
+        <div className="flex items-start justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-2">
+            <HardDrive className="w-5 h-5 text-gray-500" />
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Backup History</h2>
+              <p className="text-sm text-gray-600 mt-0.5">All backup reports received from your scripts.</p>
+            </div>
+          </div>
+          <div className="relative max-w-xs w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input type="text" value={backupSearch} onChange={e => setBackupSearch(e.target.value)}
+              placeholder="Search service, job..."
+              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+        </div>
+
+        {backups.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+            <HardDrive className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500 font-medium">No backup records yet</p>
+            <p className="text-sm text-gray-400 mt-1">Your scripts will POST data here via the ingest-backup function.</p>
+          </div>
+        ) : (() => {
+          const filtered = backups.filter(b => {
+            if (!backupSearch) return true;
+            const q = backupSearch.toLowerCase();
+            const svc = services.find(s => s.id === b.service_id);
+            const name = (svc?.business_name || svc?.name || '').toLowerCase();
+            return name.includes(q) || (b.job_name || '').toLowerCase().includes(q) || b.status.includes(q);
+          });
+          const visible = showAllBackups ? filtered : filtered.slice(0, 25);
+          return (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="text-left px-4 py-3 font-medium text-gray-600">Service</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-600">Client</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-600">Job</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-600">Size</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-600">Duration</th>
+                      <th className="text-left px-4 py-3 font-medium text-gray-600">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {visible.map(b => {
+                      const svc = services.find(s => s.id === b.service_id);
+                      const client = svc ? clients.find(c => c.id === svc.client_id) : null;
+                      return (
+                        <tr key={b.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 font-medium text-gray-900">{svc?.business_name || svc?.name || b.service_id.slice(0, 8)}</td>
+                          <td className="px-4 py-3 text-gray-500 text-xs">{client?.company_name || '—'}</td>
+                          <td className="px-4 py-3 text-gray-600 font-mono text-xs">{b.job_name || '—'}</td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
+                              b.status === 'failed' ? 'text-red-600' :
+                              b.status === 'warning' ? 'text-amber-600' : 'text-emerald-600'
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${b.status === 'failed' ? 'bg-red-500' : b.status === 'warning' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                              {b.status.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-500 text-xs">{b.size_bytes != null ? formatBytes(b.size_bytes) : '—'}</td>
+                          <td className="px-4 py-3 text-gray-500 text-xs">{b.duration_seconds != null ? `${b.duration_seconds}s` : '—'}</td>
+                          <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                            {new Date(b.backed_up_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}{' '}
+                            <span className="text-gray-400">{new Date(b.backed_up_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {filtered.length > 25 && (
+                <div className="border-t border-gray-200 px-4 py-3 text-center">
+                  <button onClick={() => setShowAllBackups(!showAllBackups)} className="text-sm text-blue-600 hover:underline">
+                    {showAllBackups ? 'Show less' : `Show all ${filtered.length} records`}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </div>
     </div>
   );
 }
