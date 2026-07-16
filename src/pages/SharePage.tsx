@@ -364,6 +364,10 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
         </section>
       )}
 
+      {roadmap.filter(r => r.status === 'Released').length > 0 && (
+        <CompletedUpdates items={roadmap.filter(r => r.status === 'Released')} />
+      )}
+
       <section>
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Your Services</h2>
         <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
@@ -384,6 +388,39 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
         </div>
       </section>
     </div>
+  );
+}
+
+function CompletedUpdates({ items }: { items: RoadmapItem[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? items : items.slice(0, 3);
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Completed Updates
+        </h2>
+        {items.length > 3 && (
+          <button onClick={() => setExpanded(!expanded)} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+            {expanded ? 'Show less' : `Show all ${items.length}`}
+          </button>
+        )}
+      </div>
+      <div className="space-y-2">
+        {visible.map(item => (
+          <div key={item.id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3 flex items-start gap-3 opacity-75">
+            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <span className="text-sm font-medium text-gray-900 dark:text-white">{item.title}</span>
+              {item.description && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">{item.description}</p>}
+            </div>
+            {item.scheduled_date && (
+              <span className="text-xs text-gray-400 shrink-0">{new Date(item.scheduled_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

@@ -147,7 +147,7 @@ Deno.serve(async (req: Request) => {
         </div>
 
         <p style="color: #94a3b8; font-size: 10px; font-style: italic; margin-top: 12px; text-align: center;">
-          Cenas-Support &mdash; Mensaje automatizado
+          Correo generado por Task Tracker Pro, by Cenas Support
         </p>
       </div>
     `;
