@@ -271,6 +271,45 @@ export function SharePage({ token }: Props) {
 
 /* ---------- Status Bar ---------- */
 
+function useKumaUptime(statusUrl: string | null | undefined): number | null {
+  const [uptime, setUptime] = useState<number | null>(null);
+  useEffect(() => {
+    if (!statusUrl) return;
+    try {
+      const url = new URL(statusUrl);
+      const slug = url.pathname.replace(/^\/status\//, '').replace(/\/$/, '');
+      if (!slug) return;
+      const apiUrl = `${url.origin}/api/status-page/heartbeat/${slug}`;
+      fetch(apiUrl)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!data?.uptimeList) return;
+          const vals = Object.entries(data.uptimeList)
+            .filter(([k]) => k.endsWith('_24'))
+            .map(([, v]) => v as number);
+          if (vals.length > 0) setUptime(vals.reduce((a, b) => a + b, 0) / vals.length);
+        })
+        .catch(() => {});
+    } catch {}
+  }, [statusUrl]);
+  return uptime;
+}
+
+function ServiceBadge({ service }: { service: Service }) {
+  const uptime = useKumaUptime(service.uptime_status_url);
+  const pct = uptime !== null ? (uptime * 100).toFixed(uptime >= 0.9995 ? 2 : 1) : null;
+  const color = uptime === null ? '' : uptime >= 0.999 ? 'text-emerald-600 dark:text-emerald-400' : uptime >= 0.99 ? 'text-amber-600 dark:text-amber-400' : 'text-red-500';
+  return (
+    <div className="flex items-center gap-2 shrink-0">
+      <img src={service.uptime_badge_url!} alt={service.business_name || service.name} className="h-4" loading="lazy" />
+      {pct && <span className={`text-[10px] font-semibold tabular-nums ${color}`}>{pct}%</span>}
+      {service.uptime_status_url && (
+        <a href={service.uptime_status_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-600 dark:text-blue-400 hover:text-blue-500 font-medium">details</a>
+      )}
+    </div>
+  );
+}
+
 function StatusBar({ services }: { services: Service[] }) {
   const monitored = services.filter(s => s.status === 'Active' && s.uptime_badge_url);
   if (monitored.length === 0) return null;
@@ -278,14 +317,7 @@ function StatusBar({ services }: { services: Service[] }) {
     <div className="bg-slate-50 dark:bg-gray-900/50 border-b border-gray-100 dark:border-gray-800">
       <div className="max-w-5xl mx-auto px-4 py-2.5 flex items-center gap-4 overflow-x-auto">
         <span className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider font-medium shrink-0">Status</span>
-        {monitored.map(s => (
-          <div key={s.id} className="flex items-center gap-2 shrink-0">
-            <img src={s.uptime_badge_url} alt={s.business_name || s.name} className="h-4" loading="lazy" />
-            {s.uptime_status_url && (
-              <a href={s.uptime_status_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-600 dark:text-blue-400 hover:text-blue-500 font-medium">details</a>
-            )}
-          </div>
-        ))}
+        {monitored.map(s => <ServiceBadge key={s.id} service={s} />)}
       </div>
     </div>
   );
