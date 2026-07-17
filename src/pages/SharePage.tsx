@@ -112,7 +112,7 @@ export function SharePage({ token }: Props) {
         supabase.from('services').select('*').eq('client_id', tokenRow.client_id).order('created_at'),
         supabase.from('projects').select('*').eq('client_id', tokenRow.client_id).order('created_at'),
         supabase.from('service_types').select('*'),
-        supabase.from('roadmap_items').select('*').eq('user_id', tokenRow.user_id).eq('is_public', true).order('sort_order').order('created_at'),
+        supabase.from('roadmap_items').select('*').eq('user_id', tokenRow.user_id).eq('is_public', true).or(`client_id.eq.${tokenRow.client_id},client_id.is.null`).order('sort_order').order('created_at'),
         supabase.from('user_settings').select('company_name, logo_url').eq('user_id', tokenRow.user_id).maybeSingle(),
       ]);
 
