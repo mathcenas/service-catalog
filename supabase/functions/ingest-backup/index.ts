@@ -5,7 +5,7 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "https://servicios.cenas-support.com",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers":
-    "Content-Type, Authorization, X-Client-Info, Apikey",
+    "Content-Type, Authorization, X-Client-Info, Apikey, X-Ingest-Secret",
 };
 
 Deno.serve(async (req: Request) => {
@@ -40,6 +40,14 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const ingestSecret = req.headers.get("X-Ingest-Secret");
+    if (!ingestSecret) {
+      return new Response(
+        JSON.stringify({ error: "Missing X-Ingest-Secret header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -47,7 +55,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: service, error: svcErr } = await supabaseAdmin
       .from("services")
-      .select("user_id")
+      .select("user_id, ingest_secret")
       .eq("id", service_id)
       .maybeSingle();
 
@@ -55,6 +63,13 @@ Deno.serve(async (req: Request) => {
       return new Response(
         JSON.stringify({ error: "Service not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!service.ingest_secret || service.ingest_secret !== ingestSecret) {
+      return new Response(
+        JSON.stringify({ error: "Invalid secret" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 

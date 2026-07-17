@@ -18,7 +18,7 @@ function slugify(input: string): string {
     .slice(0, 40);
 }
 
-function randomSuffix(length = 6): string {
+function randomSuffix(length = 10): string {
   const alphabet = 'abcdefghijkmnpqrstuvwxyz23456789';
   const arr = new Uint8Array(length);
   crypto.getRandomValues(arr);
