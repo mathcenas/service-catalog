@@ -136,7 +136,8 @@ Deno.serve(async (req: Request) => {
         </div>
 
         <p style="color: #94a3b8; font-size: 11px; margin: 0; text-align: center;">
-          Submitted via Client Portal &bull; ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+          Submitted via Client Portal &bull; ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}<br/>
+          <span style="font-style: italic;">Correo generado por Task Tracker Pro, by Cenas Support</span>
         </p>
       </div>
     `;
