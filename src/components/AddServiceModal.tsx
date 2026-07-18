@@ -46,6 +46,7 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
   const [selectedRoles, setSelectedRoles] = useState<ManagedRole[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [notifyClient, setNotifyClient] = useState(false);
 
   useEffect(() => {
     const fetchServiceTypes = async () => {
@@ -128,6 +129,33 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
       setError(insertError.message);
       setLoading(false);
       return;
+    }
+
+    if (notifyClient && formData.client_id) {
+      const client = clients.find(c => c.id === formData.client_id);
+      if (client?.email) {
+        const { data: tokens } = await supabase.from('client_share_tokens').select('token').eq('client_id', client.id).limit(1);
+        const shareUrl = tokens?.[0]?.token ? `${window.location.origin}/share/${tokens[0].token}` : undefined;
+        const { data: session } = await supabase.auth.getSession();
+        if (session?.session?.access_token) {
+          const { data: settings } = await supabase.from('user_settings').select('company_name, logo_url').eq('user_id', user!.id).maybeSingle();
+          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-client`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${session.session.access_token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              client_email: client.email,
+              alt_email: client.alt_email || undefined,
+              client_name: client.contact_name || client.company_name,
+              subject: `New Service: ${formData.business_name || formData.name}`,
+              title: `New Service Added: ${formData.business_name || formData.name}`,
+              description: formData.business_description || formData.description || undefined,
+              share_url: shareUrl,
+              sender_name: settings?.company_name || user?.email,
+              logo_url: settings?.logo_url || undefined,
+            }),
+          }).catch(() => {});
+        }
+      }
     }
 
     setLoading(false);
@@ -389,6 +417,14 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
               rows={3}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none" />
           </div>
+
+          {formData.client_id && (
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" checked={notifyClient} onChange={e => setNotifyClient(e.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+              <span className="text-sm text-gray-600">Notify client by email about this new service</span>
+            </label>
+          )}
 
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose}
