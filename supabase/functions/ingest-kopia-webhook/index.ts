@@ -104,7 +104,7 @@ Deno.serve(async (req: Request) => {
       status,
       size_bytes: sizeBytes || null,
       duration_seconds: durationSeconds,
-      details: `snapshot_id=${body.snapshotID || "unknown"} path=${sourcePath}`,
+      details: rawBody.slice(0, 500),
       backed_up_at: backedUpAt,
     });
 
