@@ -45,24 +45,57 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const body = await req.json();
+    const contentType = req.headers.get("content-type") || "";
+    const rawBody = await req.text();
 
-    // Kopia webhook payload
-    const kopiaStatus: string = body.status || body.eventType || "";
-    const status = kopiaStatus.includes("SUCCESS") || kopiaStatus === "SNAPSHOT_STATUS_SUCCESS"
-      ? "success"
-      : kopiaStatus.includes("FAIL") ? "failed" : "warning";
+    let status = "success";
+    let jobName = "Kopia Backup";
+    let sizeBytes: number | null = null;
+    let durationSeconds: number | null = null;
+    const backedUpAt = new Date().toISOString();
 
-    const sourcePath: string = body.source?.path || body.sourcePath || "unknown";
-    const jobName = `Kopia - ${sourcePath.split(/[/\\]/).pop() || sourcePath}`;
+    if (contentType.includes("application/json")) {
+      try {
+        const body = JSON.parse(rawBody);
+        const kopiaStatus: string = body.status || body.eventType || "";
+        status = kopiaStatus.includes("SUCCESS") ? "success"
+          : kopiaStatus.includes("FAIL") ? "failed" : "warning";
+        const sourcePath: string = body.source?.path || body.sourcePath || "";
+        if (sourcePath) jobName = `Kopia - ${sourcePath.split(/[/\\]/).pop() || sourcePath}`;
+        sizeBytes = body.stats?.totalSize ?? body.totalSize ?? null;
+        const startTime = body.startTime ? new Date(body.startTime).getTime() : null;
+        const endTime = body.endTime ? new Date(body.endTime).getTime() : null;
+        if (startTime && endTime) durationSeconds = Math.round((endTime - startTime) / 1000);
+      } catch { /* fallthrough */ }
+    } else {
+      // Plain text or HTML — parse what we can
+      const lower = rawBody.toLowerCase();
+      if (lower.includes("fail") || lower.includes("error")) status = "failed";
+      else if (lower.includes("warn")) status = "warning";
 
-    const sizeBytes: number = body.stats?.totalSize ?? body.totalSize ?? 0;
+      // Try to extract path
+      const pathMatch = rawBody.match(/path[:\s]+([^\n\r,]+)/i) || rawBody.match(/source[:\s]+([^\n\r,]+)/i);
+      if (pathMatch) jobName = `Kopia - ${pathMatch[1].trim().split(/[/\\]/).pop() || pathMatch[1].trim()}`;
 
-    const startTime = body.startTime ? new Date(body.startTime).getTime() : null;
-    const endTime = body.endTime ? new Date(body.endTime).getTime() : null;
-    const durationSeconds = startTime && endTime ? Math.round((endTime - startTime) / 1000) : null;
+      // Try to extract size
+      const sizeMatch = rawBody.match(/(\d+(?:\.\d+)?)\s*(GB|MB|KB|B)\b/i);
+      if (sizeMatch) {
+        const num = parseFloat(sizeMatch[1]);
+        const unit = sizeMatch[2].toUpperCase();
+        sizeBytes = unit === "GB" ? Math.round(num * 1073741824)
+          : unit === "MB" ? Math.round(num * 1048576)
+          : unit === "KB" ? Math.round(num * 1024) : Math.round(num);
+      }
 
-    const backedUpAt = body.endTime || body.startTime || new Date().toISOString();
+      // Try to extract duration
+      const durMatch = rawBody.match(/(\d+(?:\.\d+)?)\s*(second|minute|hour|min|sec|s\b)/i);
+      if (durMatch) {
+        const num = parseFloat(durMatch[1]);
+        const unit = durMatch[2].toLowerCase();
+        durationSeconds = unit.startsWith("h") ? Math.round(num * 3600)
+          : unit.startsWith("m") ? Math.round(num * 60) : Math.round(num);
+      }
+    }
 
     const { error: insertErr } = await supabase.from("service_backups").insert({
       user_id: service.user_id,
