@@ -120,6 +120,35 @@ export function RoadmapManager({ clients, services }: Props) {
         details: item.description || null,
       });
     }
+
+    if (item.client_id) {
+      const client = clients.find(c => c.id === item.client_id);
+      if (client?.email && window.confirm(`Notify ${client.company_name} about "${item.title}"?`)) {
+        const { data: tokens } = await supabase.from('client_share_tokens').select('token').eq('client_id', client.id).limit(1);
+        const shareUrl = tokens?.[0]?.token ? `${window.location.origin}/share/${tokens[0].token}` : undefined;
+        const { data: session } = await supabase.auth.getSession();
+        if (session?.session?.access_token) {
+          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-client`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${session.session.access_token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              client_email: client.email,
+              alt_email: client.alt_email || undefined,
+              client_name: client.contact_name || client.company_name,
+              subject: `Released: ${item.title}`,
+              title: `✅ Released: ${item.title}`,
+              description: item.description || undefined,
+              scheduled_date: item.scheduled_date || undefined,
+              share_url: shareUrl,
+              sender_name: user?.email,
+              logo_url: logoUrl,
+              roadmap_item_id: item.id,
+            }),
+          }).catch(() => {});
+          await updateItem(item.id, { notified_at: new Date().toISOString() });
+        }
+      }
+    }
   };
 
   const notifyClient = async (item: RoadmapItem) => {
