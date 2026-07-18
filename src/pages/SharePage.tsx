@@ -271,26 +271,23 @@ export function SharePage({ token }: Props) {
 
 /* ---------- Status Bar ---------- */
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+
 function useKumaUptime(statusUrl: string | null | undefined): number | null {
   const [uptime, setUptime] = useState<number | null>(null);
   useEffect(() => {
     if (!statusUrl) return;
-    try {
-      const url = new URL(statusUrl);
-      const slug = url.pathname.replace(/^\/status\//, '').replace(/\/$/, '');
-      if (!slug) return;
-      const apiUrl = `${url.origin}/api/status-page/heartbeat/${slug}`;
-      fetch(apiUrl)
-        .then(r => r.ok ? r.json() : null)
-        .then(data => {
-          if (!data?.uptimeList) return;
-          const vals = Object.entries(data.uptimeList)
-            .filter(([k]) => k.endsWith('_24'))
-            .map(([, v]) => v as number);
-          if (vals.length > 0) setUptime(vals.reduce((a, b) => a + b, 0) / vals.length);
-        })
-        .catch(() => {});
-    } catch {}
+    const proxyUrl = `${SUPABASE_URL}/functions/v1/kuma-proxy?url=${encodeURIComponent(statusUrl)}`;
+    fetch(proxyUrl)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data?.uptimeList) return;
+        const vals = Object.entries(data.uptimeList)
+          .filter(([k]) => k.endsWith('_24'))
+          .map(([, v]) => v as number);
+        if (vals.length > 0) setUptime(vals.reduce((a, b) => a + b, 0) / vals.length);
+      })
+      .catch(() => {});
   }, [statusUrl]);
   return uptime;
 }
