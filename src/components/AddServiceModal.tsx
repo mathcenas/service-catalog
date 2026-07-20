@@ -228,6 +228,7 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
               <input type="text" value={formData.name} onChange={e => set('name', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 placeholder="e.g., Production Web Server" required />
+              <p className="mt-1 text-xs text-gray-400">Internal reference — include client or project name if they share a service type, e.g. "Base de Datos Farai", "Backup Agro-Match"</p>
             </div>
           </div>
 
@@ -238,7 +239,8 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Business Name</label>
                 <input type="text" value={formData.business_name} onChange={e => set('business_name', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  placeholder="e.g., Data Continuity" />
+                  placeholder="e.g., Base de Datos de Producción" />
+                <p className="mt-1 text-xs text-gray-400">Shown to the client in the portal — use a clear, commercial name</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">SLA Level</label>
@@ -339,11 +341,17 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
                   </select>
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Next Renewal Date</label>
-                <input type="date" value={formData.next_renewal_date} onChange={e => set('next_renewal_date', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
-              </div>
+              {['Annually', 'Biennially', 'Semi-Annually', 'One-Time'].includes(formData.billing_cycle) ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Next Renewal Date</label>
+                  <input type="date" value={formData.next_renewal_date} onChange={e => set('next_renewal_date', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+                </div>
+              ) : (
+                <div className="flex items-end pb-2">
+                  <p className="text-xs text-gray-400">Monthly / Quarterly services renew automatically — no expiry date needed.</p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Confirmed Hours / Month</label>
                 <input type="number" step="0.5" value={formData.confirmed_hours_monthly} onChange={e => set('confirmed_hours_monthly', e.target.value)}
