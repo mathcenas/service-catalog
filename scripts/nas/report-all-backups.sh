@@ -16,9 +16,17 @@ report() {
     return
   fi
 
-  SIZE_BYTES=0
-  RAW=$(timeout 60 du -sb "$SNAP_DIR" 2>/dev/null | awk '{print $1}')
-  SIZE_BYTES=${RAW:-0}
+  # du en grandes directorios NAS puede tardar minutos; usamos cache de 25h
+  local CACHE_FILE="/tmp/du_cache_$(echo "$SNAP_DIR" | md5sum | cut -c1-8)"
+  local SIZE_BYTES=0
+
+  if [ -f "$CACHE_FILE" ] && [ $(( $(date +%s) - $(stat -c %Y "$CACHE_FILE") )) -lt 90000 ]; then
+    SIZE_BYTES=$(cat "$CACHE_FILE")
+  else
+    RAW=$(timeout 600 du -sb "$SNAP_DIR" 2>/dev/null | awk '{print $1}')
+    SIZE_BYTES=${RAW:-0}
+    echo "$SIZE_BYTES" > "$CACHE_FILE"
+  fi
 
   curl -s -X POST "$INGEST_URL" \
     -H "Content-Type: application/json" \
