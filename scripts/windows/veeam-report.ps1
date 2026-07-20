@@ -37,6 +37,7 @@ foreach ($session in $sessions) {
     $durationSecs = [int]($session.EndTime - $session.CreationTime).TotalSeconds
     $jobName      = "Veeam - $($session.JobName)"
     $details      = "result=$($session.Result) transferredGB=$([math]::Round($session.BackupStats.TransferedSize/1GB,2)) dedupRatio=$($session.BackupStats.DedupRatio)"
+    $backedUpAt   = $session.EndTime.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
     $body = @{
         service_id       = $SERVICE_ID
@@ -45,6 +46,7 @@ foreach ($session in $sessions) {
         size_bytes       = $sizeBytes
         duration_seconds = $durationSecs
         details          = $details
+        backed_up_at     = $backedUpAt
     } | ConvertTo-Json
 
     try {
