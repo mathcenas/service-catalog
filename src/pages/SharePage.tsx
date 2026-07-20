@@ -338,6 +338,12 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
 }) {
   const upcoming = roadmap.filter(r => r.status !== 'Released');
   const recentChanges = changes.slice(0, 3);
+
+  const renewalCycles = new Set(['Annually', 'Biennially', 'Semi-Annually', 'One-Time']);
+  const in60days = new Date(); in60days.setDate(in60days.getDate() + 60);
+  const upcomingRenewals = services
+    .filter(s => s.next_renewal_date && renewalCycles.has(s.billing_cycle ?? '') && new Date(s.next_renewal_date) <= in60days)
+    .sort((a, b) => new Date(a.next_renewal_date!).getTime() - new Date(b.next_renewal_date!).getTime());
   const totalAllocated = services.reduce((sum, s) => sum + (s.confirmed_hours_monthly || 0), 0);
 
   return (
@@ -389,6 +395,31 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
                 <p className="text-sm text-gray-900 dark:text-white">{c.summary}</p>
               </div>
             ))}
+          </div>
+        </section>
+      )}
+
+      {upcomingRenewals.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Upcoming Renewals</h2>
+          <div className="space-y-2">
+            {upcomingRenewals.map(s => {
+              const date = new Date(s.next_renewal_date!);
+              const daysLeft = Math.ceil((date.getTime() - Date.now()) / 86400000);
+              const urgent = daysLeft <= 14;
+              return (
+                <div key={s.id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{s.business_name || s.name}</p>
+                    <p className="text-xs text-gray-400">{getTypeName(s.service_type_id)} · {s.billing_cycle}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                    <p className={`text-xs font-medium ${urgent ? 'text-amber-500' : 'text-gray-400'}`}>{daysLeft <= 0 ? 'Due today' : `in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}`}</p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}

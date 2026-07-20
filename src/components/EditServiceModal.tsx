@@ -334,11 +334,17 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
                   </select>
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Next Renewal Date</label>
-                <input type="date" value={formData.next_renewal_date} onChange={e => set('next_renewal_date', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
-              </div>
+              {['Annually', 'Biennially', 'Semi-Annually', 'One-Time'].includes(formData.billing_cycle) ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Next Renewal Date</label>
+                  <input type="date" value={formData.next_renewal_date} onChange={e => set('next_renewal_date', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+                </div>
+              ) : (
+                <div className="flex items-end pb-2">
+                  <p className="text-xs text-gray-400">Monthly / Quarterly services renew automatically — no expiry date needed.</p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Confirmed Hours / Month</label>
                 <input type="number" step="0.5" value={formData.confirmed_hours_monthly} onChange={e => set('confirmed_hours_monthly', e.target.value)}
