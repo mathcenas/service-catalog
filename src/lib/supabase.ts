@@ -29,6 +29,9 @@ export type UserSettings = {
   user_id: string;
   logo_url?: string;
   company_name?: string;
+  weekly_digest_enabled: boolean;
+  weekly_digest_day: number;
+  weekly_digest_email?: string;
   created_at: string;
   updated_at: string;
 };
@@ -123,6 +126,8 @@ export type Service = {
   maintenance_window?: string;
   last_backup_at?: string;
   last_backup_size_bytes?: number;
+  last_restore_test_at?: string;
+  last_restore_test_result?: 'success' | 'failed' | 'partial';
   storage_used_pct?: number;
   ram_used_pct?: number;
   resource_updated_at?: string;
@@ -241,7 +246,23 @@ export type SupportHour = {
   work_date: string;
   hours: number;
   description: string;
+  type: 'work' | 'incident';
+  title?: string;
   created_at: string;
+};
+
+export type ClientApp = {
+  id: string;
+  user_id: string;
+  client_id: string;
+  name: string;
+  vendor?: string;
+  support_phone?: string;
+  whatsapp_url?: string;
+  notes?: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
 };
 
 export type DeviceTelemetry = {

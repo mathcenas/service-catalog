@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
-import { Mail, Phone, Building2, Share2, Search, MoreHorizontal, Pencil, Trash2, Server, ExternalLink } from 'lucide-react';
+import { Mail, Phone, Building2, Share2, Search, MoreHorizontal, Pencil, Trash2, Server, ExternalLink, AppWindow } from 'lucide-react';
 import { Client, Service, supabase } from '../lib/supabase';
 import { EditClientModal } from './EditClientModal';
 import { ShareTokenModal } from './ShareTokenModal';
+import { ClientAppsManager } from './ClientAppsManager';
 
 type Props = {
   clients: Client[];
@@ -17,6 +18,7 @@ export function ClientList({ clients, services, onUpdate }: Props) {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Inactive' | 'Pending'>('all');
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [expandedApps, setExpandedApps] = useState<string | null>(null);
 
   const serviceCountMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -154,6 +156,13 @@ export function ClientList({ clients, services, onUpdate }: Props) {
                 {/* Actions */}
                 <div className="flex items-center gap-1 shrink-0 relative">
                   <button
+                    onClick={() => setExpandedApps(expandedApps === client.id ? null : client.id)}
+                    className={`p-2 rounded-lg transition-colors opacity-0 group-hover:opacity-100 ${expandedApps === client.id ? 'text-violet-600 bg-violet-50' : 'text-gray-400 hover:text-violet-600 hover:bg-violet-50'}`}
+                    title="Apps & Software"
+                  >
+                    <AppWindow className="w-4 h-4" />
+                  </button>
+                  <button
                     onClick={() => setSharingClient(client)}
                     className="p-2 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
                     title="Share portal"
@@ -203,6 +212,11 @@ export function ClientList({ clients, services, onUpdate }: Props) {
                     )}
                   </div>
                 </div>
+                {expandedApps === client.id && (
+                  <div className="px-5 pb-4 border-t border-gray-100 mt-2 pt-2">
+                    <ClientAppsManager clientId={client.id} />
+                  </div>
+                )}
               </div>
             );
           })}

@@ -4,7 +4,7 @@ import {
   HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X,
   Sparkles, Rocket, DollarSign, Send, Loader2,
 } from 'lucide-react';
-import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat } from '../lib/supabase';
+import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat, ClientApp } from '../lib/supabase';
 
 type Props = { token: string };
 type Section = 'overview' | 'services' | 'licenses' | 'changes' | 'hours' | 'support';
@@ -80,6 +80,8 @@ export function SharePage({ token }: Props) {
   const [licenses, setLicenses] = useState<ClientLicense[]>([]);
   const [supportHours, setSupportHours] = useState<SupportHour[]>([]);
   const [heartbeats, setHeartbeats] = useState<ServiceHeartbeat[]>([]);
+  const [systemHeartbeats, setSystemHeartbeats] = useState<ServiceHeartbeat[]>([]);
+  const [clientApps, setClientApps] = useState<ClientApp[]>([]);
   const [backups, setBackups] = useState<ServiceBackup[]>([]);
   const [uptimeEvents, setUptimeEvents] = useState<UptimeEvent[]>([]);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
@@ -151,15 +153,21 @@ export function SharePage({ token }: Props) {
         const since48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
         const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-        const [{ data: hbData }, { data: backupsData }, { data: uptimeData }] = await Promise.all([
+        const [{ data: hbData }, { data: sysHbData }, { data: backupsData }, { data: uptimeData }] = await Promise.all([
           supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).eq('source', 'speedtest').gte('received_at', since48h).order('received_at', { ascending: true }),
+          supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).eq('source', 'system-health').gte('received_at', new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
           supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(50),
           supabase.from('uptime_events').select('id,service_id,monitor_name,event_type,message,duration_seconds,occurred_at').in('service_id', serviceIds).gte('occurred_at', since30d).order('occurred_at', { ascending: false }),
         ]);
         setHeartbeats(hbData || []);
+        setSystemHeartbeats(sysHbData || []);
         setBackups(backupsData || []);
         setUptimeEvents(uptimeData || []);
       }
+
+      const { data: appsData } = await supabase
+        .from('client_apps').select('*').eq('client_id', tokenRow.client_id).order('sort_order');
+      setClientApps(appsData || []);
 
       setLoading(false);
     };
@@ -251,7 +259,7 @@ export function SharePage({ token }: Props) {
         </nav>
 
         <main className="max-w-5xl mx-auto px-4 py-6">
-          {section === 'overview' && <OverviewSection services={activeServices} roadmap={roadmap} changes={changes} getTypeName={getTypeName} backups={backups} uptimeEvents={uptimeEvents} />}
+          {section === 'overview' && <OverviewSection services={activeServices} roadmap={roadmap} changes={changes} getTypeName={getTypeName} backups={backups} uptimeEvents={uptimeEvents} supportHours={supportHours} systemHeartbeats={systemHeartbeats} clientApps={clientApps} />}
           {section === 'services' && <ServiceCatalog services={services} projects={projects} getTypeName={getTypeName} getProjectName={getProjectName} expandedService={expandedService} setExpandedService={setExpandedService} heartbeats={heartbeats} backups={backups} />}
           {section === 'licenses' && <LicensesSection licenses={licenses} services={services} />}
           {section === 'changes' && <ChangesSection changes={changes} services={services} />}
@@ -332,9 +340,10 @@ function NavBtn({ active, onClick, children }: { active: boolean; onClick: () =>
 
 /* ---------- Overview ---------- */
 
-function OverviewSection({ services, roadmap, changes, getTypeName, backups, uptimeEvents }: {
+function OverviewSection({ services, roadmap, changes, getTypeName, backups, uptimeEvents, supportHours, systemHeartbeats, clientApps }: {
   services: Service[]; roadmap: RoadmapItem[]; changes: ServiceChange[]; getTypeName: (id: string) => string;
-  backups: ServiceBackup[]; uptimeEvents: UptimeEvent[];
+  backups: ServiceBackup[]; uptimeEvents: UptimeEvent[]; supportHours: SupportHour[];
+  systemHeartbeats: ServiceHeartbeat[]; clientApps: ClientApp[];
 }) {
   const upcoming = roadmap.filter(r => r.status !== 'Released');
   const recentChanges = changes.slice(0, 3);
@@ -344,6 +353,18 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
   const upcomingRenewals = services
     .filter(s => s.next_renewal_date && renewalCycles.has(s.billing_cycle ?? '') && new Date(s.next_renewal_date) <= in60days)
     .sort((a, b) => new Date(a.next_renewal_date!).getTime() - new Date(b.next_renewal_date!).getTime());
+
+  // Latest system-health heartbeat per service
+  const latestHealth: Record<string, ServiceHeartbeat> = {};
+  for (const h of systemHeartbeats) {
+    if (!latestHealth[h.service_id] || h.received_at > latestHealth[h.service_id].received_at) {
+      latestHealth[h.service_id] = h;
+    }
+  }
+  const healthEntries = Object.values(latestHealth);
+
+  // Resolved incidents from support_hours
+  const incidents = supportHours.filter(h => h.type === 'incident').slice(0, 5);
   const totalAllocated = services.reduce((sum, s) => sum + (s.confirmed_hours_monthly || 0), 0);
 
   return (
@@ -420,6 +441,85 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
                 </div>
               );
             })}
+          </div>
+        </section>
+      )}
+
+      {healthEntries.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">System Health</h2>
+          <div className="space-y-2">
+            {healthEntries.map(h => {
+              const svc = services.find(s => s.id === h.service_id);
+              const payload = h.payload as Record<string, any>;
+              const disk = payload?.disk_pct != null ? payload.disk_pct : null;
+              const ram = payload?.ram_pct != null ? payload.ram_pct : null;
+              const dot = h.status === 'ok' ? 'bg-emerald-500' : h.status === 'warning' ? 'bg-amber-500' : 'bg-red-500';
+              return (
+                <div key={h.service_id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center gap-3">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{svc?.business_name || svc?.name || h.service_id}</p>
+                    {h.message && <p className="text-xs text-gray-400">{h.message}</p>}
+                  </div>
+                  <div className="flex gap-3 text-xs text-gray-500 shrink-0">
+                    {disk != null && <span>Disk <span className={disk > 90 ? 'text-red-500 font-semibold' : disk > 75 ? 'text-amber-500 font-semibold' : 'text-gray-700 dark:text-gray-300'}>{disk}%</span></span>}
+                    {ram != null && <span>RAM <span className={ram > 90 ? 'text-red-500 font-semibold' : ram > 75 ? 'text-amber-500 font-semibold' : 'text-gray-700 dark:text-gray-300'}>{ram}%</span></span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {incidents.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Resolved Incidents</h2>
+          <div className="space-y-2">
+            {incidents.map(h => (
+              <div key={h.id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3 flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">{h.title || h.description}</p>
+                  {h.title && <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{h.description}</p>}
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xs text-gray-400">{new Date(h.work_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
+                  {h.hours > 0 && <p className="text-xs text-gray-500">{h.hours}h</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {clientApps.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Applications & Software</h2>
+          <div className="space-y-2">
+            {clientApps.map(app => (
+              <div key={app.id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">{app.name}</p>
+                  {app.vendor && <p className="text-xs text-gray-400">{app.vendor}</p>}
+                  {app.notes && <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{app.notes}</p>}
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  {app.whatsapp_url && (
+                    <a href={app.whatsapp_url} target="_blank" rel="noopener noreferrer"
+                      className="text-xs text-emerald-600 hover:text-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded-md font-medium">
+                      WhatsApp
+                    </a>
+                  )}
+                  {app.support_phone && (
+                    <a href={`tel:${app.support_phone}`}
+                      className="text-xs text-blue-600 hover:text-blue-700 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-md font-medium">
+                      {app.support_phone}
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </section>
       )}
