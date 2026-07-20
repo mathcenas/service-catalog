@@ -119,6 +119,15 @@ export const SERVICE_TYPE_FIELDS: Record<string, SpecField[]> = {
     { key: 'automated_backups', label: 'Automated Backups', kind: 'boolean', storage: 'spec' },
     { key: 'login_url', label: 'Admin / Dashboard URL', kind: 'url', storage: 'column', placeholder: 'https://' },
   ],
+  'Router / Switch': [
+    { key: 'provider', label: 'Vendor / Model', kind: 'text', storage: 'column', placeholder: 'e.g., MikroTik RB5009, Cisco SG350' },
+    { key: 'location', label: 'Location', kind: 'text', storage: 'column', placeholder: 'e.g., Main Office, Server Room' },
+    { key: 'server_ip', label: 'Management IP', kind: 'text', storage: 'column', placeholder: 'e.g., 192.168.88.1' },
+    { key: 'os_version', label: 'Firmware / RouterOS Version', kind: 'text', storage: 'spec', placeholder: 'e.g., 7.14.3' },
+    { key: 'serial', label: 'Serial Number', kind: 'text', storage: 'spec' },
+    { key: 'ha_enabled', label: 'High Availability / VRRP', kind: 'boolean', storage: 'spec' },
+    { key: 'login_url', label: 'WebFig / Management URL', kind: 'url', storage: 'column', placeholder: 'https://192.168.88.1' },
+  ],
   'Managed Service': [
     { key: 'provider', label: 'Provider / Team', kind: 'text', storage: 'column' },
     { key: 'location', label: 'Location / Environment', kind: 'text', storage: 'column' },
