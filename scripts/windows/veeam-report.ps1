@@ -33,7 +33,7 @@ foreach ($session in $sessions) {
         default   { "warning" }
     }
 
-    $sizeBytes    = [long]($session.BackupStats.BackupSize)
+    $sizeBytes    = if ($session.BackupStats.BackupSize -gt 0) { [long]($session.BackupStats.BackupSize) } else { [long]($session.Progress.ProcessedSize) }
     $durationSecs = [int]($session.EndTime - $session.CreationTime).TotalSeconds
     $jobName      = "Veeam - $($session.JobName)"
     $details      = "result=$($session.Result) transferredGB=$([math]::Round($session.BackupStats.TransferedSize/1GB,2)) dedupRatio=$($session.BackupStats.DedupRatio)"
