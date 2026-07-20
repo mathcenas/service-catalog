@@ -18,6 +18,7 @@ const COLUMN_KEYS = new Set([
   'location',
   'cloud_provider',
   'cloud_account_payer',
+  'ip_internal',
 ]);
 
 export const COLUMN_FIELD_KEYS = COLUMN_KEYS;
@@ -105,6 +106,18 @@ export const SERVICE_TYPE_FIELDS: Record<string, SpecField[]> = {
     { key: 'endpoints', label: 'Endpoints / Peers', kind: 'text', storage: 'spec', placeholder: 'e.g., Office-HQ <-> AWS-VPC', colSpan: 2 },
     { key: 'user_count', label: 'User Count', kind: 'number', storage: 'spec' },
     { key: 'server_ip', label: 'Public Endpoint / IP', kind: 'text', storage: 'column' },
+  ],
+  'Database': [
+    { key: 'provider', label: 'Provider', kind: 'text', storage: 'column', placeholder: 'e.g., UpCloud, AWS RDS, Supabase' },
+    { key: 'db_engine', label: 'Engine', kind: 'select', options: ['PostgreSQL', 'MySQL', 'MariaDB', 'Redis', 'MongoDB', 'SQLite', 'MSSQL', 'Other'], storage: 'spec' },
+    { key: 'db_version', label: 'Version', kind: 'text', storage: 'spec', placeholder: 'e.g., 15.3' },
+    { key: 'ip_internal', label: 'Private Endpoint / Host', kind: 'text', storage: 'column', placeholder: 'e.g., db-host.internal or 10.0.0.5' },
+    { key: 'db_port', label: 'Port', kind: 'number', storage: 'spec', placeholder: 'e.g., 5432' },
+    { key: 'db_name', label: 'Database Name', kind: 'text', storage: 'spec', placeholder: 'e.g., production_db' },
+    { key: 'storage', label: 'Storage', kind: 'text', storage: 'spec', placeholder: 'e.g., 50 GB SSD' },
+    { key: 'ha_enabled', label: 'High Availability', kind: 'boolean', storage: 'spec' },
+    { key: 'automated_backups', label: 'Automated Backups', kind: 'boolean', storage: 'spec' },
+    { key: 'login_url', label: 'Admin / Dashboard URL', kind: 'url', storage: 'column', placeholder: 'https://' },
   ],
   'Managed Service': [
     { key: 'provider', label: 'Provider / Team', kind: 'text', storage: 'column' },

@@ -106,6 +106,7 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
       location: columnUpdates.location ?? null,
       cloud_provider: columnUpdates.cloud_provider ?? null,
       cloud_account_payer: columnUpdates.cloud_account_payer ?? null,
+      ip_internal: columnUpdates.ip_internal ?? null,
       managed_roles: currentTypeName === 'Managed Service' && selectedRoles.length > 0 ? selectedRoles : null,
       specifications: Object.keys(specifications).length > 0 ? specifications : null,
       business_name: formData.business_name || null,
@@ -134,27 +135,39 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
     if (notifyClient && formData.client_id) {
       const client = clients.find(c => c.id === formData.client_id);
       if (client?.email) {
-        const { data: tokens } = await supabase.from('client_share_tokens').select('token').eq('client_id', client.id).limit(1);
-        const shareUrl = tokens?.[0]?.token ? `${window.location.origin}/share/${tokens[0].token}` : undefined;
-        const { data: session } = await supabase.auth.getSession();
-        if (session?.session?.access_token) {
-          const { data: settings } = await supabase.from('user_settings').select('company_name, logo_url').eq('user_id', user!.id).maybeSingle();
-          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-client`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${session.session.access_token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              client_email: client.email,
-              alt_email: client.alt_email || undefined,
-              client_name: client.contact_name || client.company_name,
-              subject: `New Service: ${formData.business_name || formData.name}`,
-              title: `New Service Added: ${formData.business_name || formData.name}`,
-              description: formData.business_description || formData.description || undefined,
-              share_url: shareUrl,
-              sender_name: settings?.company_name || user?.email,
-              logo_url: settings?.logo_url || undefined,
-            }),
-          }).catch(() => {});
+        try {
+          const { data: tokens } = await supabase.from('client_share_tokens').select('token').eq('client_id', client.id).limit(1);
+          const shareUrl = tokens?.[0]?.token ? `${window.location.origin}/share/${tokens[0].token}` : undefined;
+          const { data: session } = await supabase.auth.getSession();
+          if (session?.session?.access_token) {
+            const { data: settings } = await supabase.from('user_settings').select('company_name, logo_url').eq('user_id', user!.id).maybeSingle();
+            const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-client`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${session.session.access_token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                client_email: client.email,
+                alt_email: client.alt_email || undefined,
+                client_name: client.contact_name || client.company_name,
+                subject: `New Service: ${formData.business_name || formData.name}`,
+                title: `New Service Added: ${formData.business_name || formData.name}`,
+                description: formData.business_description || formData.description || undefined,
+                share_url: shareUrl,
+                sender_name: settings?.company_name || user?.email,
+                logo_url: settings?.logo_url || undefined,
+              }),
+            });
+            if (!res.ok) {
+              const text = await res.text();
+              console.error('notify-client failed:', res.status, text);
+            }
+          } else {
+            console.warn('notify-client: no active session');
+          }
+        } catch (err) {
+          console.error('notify-client error:', err);
         }
+      } else {
+        console.warn('notify-client: client has no email configured');
       }
     }
 
