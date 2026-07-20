@@ -613,6 +613,16 @@ function UptimeStatus({ services, uptimeEvents }: { services: Service[]; uptimeE
 
 /* ---------- Service Catalog ---------- */
 
+const SERVICE_GROUPS: { label: string; types: string[] }[] = [
+  { label: 'Infrastructure', types: ['VPS', 'Dedicated Server'] },
+  { label: 'Network & Connectivity', types: ['Firewall', 'Router / Switch', 'VPN'] },
+  { label: 'Database', types: ['Database'] },
+  { label: 'Web & Applications', types: ['Web Hosting', 'Email Hosting', 'CDN'] },
+  { label: 'Domain & DNS', types: ['Domain'] },
+  { label: 'Backup', types: ['Backup'] },
+  { label: 'Managed Services', types: ['Managed Service', 'Monitoring'] },
+];
+
 function ServiceCatalog({ services, projects, getTypeName, getProjectName, expandedService, setExpandedService, heartbeats, backups }: {
   services: Service[]; projects: Project[]; getTypeName: (id: string) => string; getProjectName: (id?: string) => string | null;
   expandedService: string | null; setExpandedService: (id: string | null) => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[];
@@ -628,8 +638,23 @@ function ServiceCatalog({ services, projects, getTypeName, getProjectName, expan
     );
   }
 
+  const knownTypes = new Set(SERVICE_GROUPS.flatMap(g => g.types));
+  const grouped = SERVICE_GROUPS.map(g => ({
+    ...g,
+    items: services.filter(s => g.types.includes(getTypeName(s.service_type_id))),
+  })).filter(g => g.items.length > 0);
+  const ungrouped = services.filter(s => !knownTypes.has(getTypeName(s.service_type_id)));
+
+  const renderCards = (items: Service[]) => items.map(s => (
+    <ServiceCard key={s.id} service={s} typeName={getTypeName(s.service_type_id)} projectName={getProjectName(s.project_id)}
+      expanded={expandedService === s.id} onToggle={() => setExpandedService(expandedService === s.id ? null : s.id)}
+      heartbeats={heartbeats.filter(h => h.service_id === s.id)}
+      backups={backups.filter(b => b.service_id === s.id)}
+      showCosts={showCosts} />
+  ));
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white">{services.length} Services</h2>
         <button onClick={() => setShowCosts(!showCosts)}
@@ -641,15 +666,19 @@ function ServiceCatalog({ services, projects, getTypeName, getProjectName, expan
         </button>
       </div>
 
-      <div className="space-y-3">
-        {services.map(s => (
-          <ServiceCard key={s.id} service={s} typeName={getTypeName(s.service_type_id)} projectName={getProjectName(s.project_id)}
-            expanded={expandedService === s.id} onToggle={() => setExpandedService(expandedService === s.id ? null : s.id)}
-            heartbeats={heartbeats.filter(h => h.service_id === s.id)}
-            backups={backups.filter(b => b.service_id === s.id)}
-            showCosts={showCosts} />
-        ))}
-      </div>
+      {grouped.map(g => (
+        <div key={g.label}>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2 px-1">{g.label}</h3>
+          <div className="space-y-3">{renderCards(g.items)}</div>
+        </div>
+      ))}
+
+      {ungrouped.length > 0 && (
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2 px-1">Other</h3>
+          <div className="space-y-3">{renderCards(ungrouped)}</div>
+        </div>
+      )}
     </div>
   );
 }
