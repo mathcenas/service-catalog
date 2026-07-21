@@ -129,148 +129,62 @@ export function Dashboard() {
     setShowAddService(false);
   };
 
-  return (
-    <div className="min-h-screen bg-slate-50">
-      <nav className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-3">
-              <div className="bg-blue-600 p-2 rounded-lg">
-                <Server className="w-6 h-6 text-white" />
-              </div>
-              <h1 className="text-xl font-bold text-gray-900">Client Manager</h1>
-            </div>
-            <button
-              onClick={() => signOut()}
-              className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <LogOut className="w-5 h-5" />
-              Sign Out
-            </button>
-          </div>
-        </div>
-      </nav>
+  const navItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: Server },
+    { id: 'clients',   label: 'Clients',   icon: Users },
+    { id: 'projects',  label: 'Projects',  icon: FolderOpen },
+    { id: 'services',  label: 'Services',  icon: Server },
+    { id: 'payments',  label: 'Payments',  icon: CreditCard },
+    { id: 'licenses',  label: 'Licenses',  icon: FileText },
+    { id: 'roadmap',   label: 'Roadmap',   icon: Rocket },
+    { id: 'hours',     label: 'Hours',     icon: Clock },
+    { id: 'telemetry', label: 'Telemetry', icon: Activity },
+    { id: 'data',      label: 'Data',      icon: Database },
+    { id: 'settings',  label: 'Settings',  icon: Settings },
+  ] as const;
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex gap-4 mb-8 border-b border-gray-200 overflow-x-auto scrollbar-hide">
+  return (
+    <div className="min-h-screen bg-slate-50 flex">
+      {/* Sidebar */}
+      <aside className="w-56 shrink-0 bg-white border-r border-gray-200 flex flex-col min-h-screen sticky top-0 h-screen">
+        <div className="flex items-center gap-2.5 px-4 h-14 border-b border-gray-100">
+          <div className="bg-blue-600 p-1.5 rounded-lg">
+            <Server className="w-4 h-4 text-white" />
+          </div>
+          <span className="text-sm font-bold text-gray-900">Client Manager</span>
+        </div>
+
+        <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
+          {navItems.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id as typeof activeTab)}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === id
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              }`}
+            >
+              <Icon className="w-4 h-4 shrink-0" />
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="px-2 pb-3 border-t border-gray-100 pt-2">
           <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
-              activeTab === 'dashboard'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
+            onClick={() => signOut()}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
           >
-            Dashboard
-          </button>
-          <button
-            onClick={() => setActiveTab('clients')}
-            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
-              activeTab === 'clients'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Clients
-          </button>
-          <button
-            onClick={() => setActiveTab('projects')}
-            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
-              activeTab === 'projects'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Projects
-          </button>
-          <button
-            onClick={() => setActiveTab('services')}
-            className={`px-4 py-2 font-medium border-b-2 transition-colors ${
-              activeTab === 'services'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Services
-          </button>
-          <button
-            onClick={() => setActiveTab('payments')}
-            className={`flex items-center gap-1.5 px-4 py-2 font-medium border-b-2 transition-colors ${
-              activeTab === 'payments'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <CreditCard className="w-4 h-4" />
-            Payments
-          </button>
-          <button
-            onClick={() => setActiveTab('licenses')}
-            className={`flex items-center gap-1.5 px-4 py-2 font-medium border-b-2 transition-colors ${
-              activeTab === 'licenses'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            Licenses
-          </button>
-          <button
-            onClick={() => setActiveTab('roadmap')}
-            className={`flex items-center gap-1.5 px-4 py-2 font-medium border-b-2 transition-colors ${
-              activeTab === 'roadmap'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Rocket className="w-4 h-4" />
-            Roadmap
-          </button>
-          <button
-            onClick={() => setActiveTab('hours')}
-            className={`flex items-center gap-1.5 px-4 py-2 font-medium border-b-2 transition-colors ${
-              activeTab === 'hours'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Clock className="w-4 h-4" />
-            Hours
-          </button>
-          <button
-            onClick={() => setActiveTab('telemetry')}
-            className={`flex items-center gap-1.5 px-4 py-2 font-medium border-b-2 transition-colors ${
-              activeTab === 'telemetry'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Activity className="w-4 h-4" />
-            Telemetry
-          </button>
-          <button
-            onClick={() => setActiveTab('data')}
-            className={`flex items-center gap-1.5 px-4 py-2 font-medium border-b-2 transition-colors ${
-              activeTab === 'data'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Database className="w-4 h-4" />
-            Data
-          </button>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`flex items-center gap-1.5 px-4 py-2 font-medium border-b-2 transition-colors ${
-              activeTab === 'settings'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            <Settings className="w-4 h-4" />
-            Settings
+            <LogOut className="w-4 h-4 shrink-0" />
+            Sign Out
           </button>
         </div>
+      </aside>
+
+      {/* Main content */}
+      <div className="flex-1 min-w-0">
+        <div className="max-w-6xl mx-auto px-6 py-8">
 
         {activeTab === 'dashboard' && (
           <div className="space-y-8">
@@ -547,6 +461,7 @@ export function Dashboard() {
         {activeTab === 'settings' && (
           <SettingsPanel />
         )}
+        </div>
       </div>
 
       {showAddClient && (
@@ -574,6 +489,7 @@ export function Dashboard() {
       )}
     </div>
   );
+
 }
 
 function OperationalStatusPanel({ services, clients }: { services: Service[]; clients: Client[] }) {
