@@ -23,7 +23,9 @@ report() {
   if [ -f "$CACHE_FILE" ] && [ $(( $(date +%s) - $(stat -c %Y "$CACHE_FILE") )) -lt 90000 ]; then
     SIZE_BYTES=$(cat "$CACHE_FILE")
   else
-    RAW=$(timeout 600 du -sb "$SNAP_DIR" 2>/dev/null | awk '{print $1}')
+    # -l cuenta cada hardlink como archivo independiente (rsnapshot usa hardlinks,
+    # sin -l los snapshots weekly/monthly aparecen como 0 bytes en el frontend)
+    RAW=$(timeout 600 du -sbl "$SNAP_DIR" 2>/dev/null | awk '{print $1}')
     SIZE_BYTES=${RAW:-0}
     echo "$SIZE_BYTES" > "$CACHE_FILE"
   fi
