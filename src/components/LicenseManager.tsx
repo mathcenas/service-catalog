@@ -151,7 +151,7 @@ export function LicenseManager({ clients, services }: Props) {
     const total = licenses.length;
     const expiringSoon = licenses.filter(l => { const d = daysUntilExpiry(l.expiration_date); return d !== null && d >= 0 && d <= 30; }).length;
     const expired = licenses.filter(l => { const d = daysUntilExpiry(l.expiration_date); return d !== null && d < 0; }).length;
-    const totalCost = licenses.reduce((sum, l) => sum + (l.cost || 0), 0);
+    const totalCost = licenses.filter(l => l.paid_by !== 'Client').reduce((sum, l) => sum + (l.cost || 0), 0);
     return { total, expiringSoon, expired, totalCost };
   }, [licenses]);
 
