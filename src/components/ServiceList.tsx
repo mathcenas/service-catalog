@@ -18,10 +18,34 @@ export function ServiceList({ services, clients, projects, onUpdate }: Props) {
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [filterClientId, setFilterClientId] = useState<string>('all');
 
+  const [groupByType, setGroupByType] = useState(false);
+
   const filteredServices = useMemo(() => {
     if (filterClientId === 'all') return services;
     return services.filter(s => s.client_id === filterClientId);
   }, [services, filterClientId]);
+
+  const SERVICE_GROUPS = [
+    { label: 'Infrastructure', types: ['VPS', 'Dedicated Server'] },
+    { label: 'Network & Connectivity', types: ['Firewall', 'Router / Switch', 'VPN'] },
+    { label: 'Database', types: ['Database'] },
+    { label: 'Web & Applications', types: ['Web Hosting', 'Email Hosting', 'CDN'] },
+    { label: 'Domain & DNS', types: ['Domain'] },
+    { label: 'Backup', types: ['Backup'] },
+    { label: 'Managed Services', types: ['Managed Service', 'Monitoring'] },
+  ];
+
+  const groupedServices = useMemo(() => {
+    if (!groupByType) return null;
+    const knownTypes = new Set(SERVICE_GROUPS.flatMap(g => g.types));
+    const groups = SERVICE_GROUPS.map(g => ({
+      ...g,
+      items: filteredServices.filter(s => g.types.includes(getServiceTypeName(s.service_type_id))),
+    })).filter(g => g.items.length > 0);
+    const other = filteredServices.filter(s => !knownTypes.has(getServiceTypeName(s.service_type_id)));
+    if (other.length > 0) groups.push({ label: 'Other', types: [], items: other });
+    return groups;
+  }, [filteredServices, groupByType, serviceTypes]);
 
   useEffect(() => {
     const fetchServiceTypes = async () => {
@@ -93,14 +117,29 @@ export function ServiceList({ services, clients, projects, onUpdate }: Props) {
             ))}
           </select>
           {filterClientId !== 'all' && (
-            <button
-              onClick={() => setFilterClientId('all')}
-              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-            >
+            <button onClick={() => setFilterClientId('all')} className="text-xs text-blue-600 hover:text-blue-800 font-medium">
               Clear filter
             </button>
           )}
+          <div className="ml-auto">
+            <button onClick={() => setGroupByType(v => !v)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${groupByType ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+              Group by type
+            </button>
+          </div>
         </div>
+        {groupedServices ? (
+          <div className="divide-y divide-gray-100">
+            {groupedServices.map(group => (
+              <div key={group.label}>
+                <div className="px-6 py-2 bg-gray-50 border-b border-gray-100">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">{group.label} ({group.items.length})</span>
+                </div>
+                <ServiceTable services={group.items} getClientName={getClientName} getProjectName={getProjectName} getServiceTypeName={getServiceTypeName} isExpiringSoon={isExpiringSoon} onEdit={setEditingService} onChanges={setChangesService} onDelete={handleDelete} deletingId={deletingId} />
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -221,6 +260,7 @@ export function ServiceList({ services, clients, projects, onUpdate }: Props) {
             </tbody>
           </table>
         </div>
+        )}
       </div>
 
       {editingService && (
@@ -243,5 +283,111 @@ export function ServiceList({ services, clients, projects, onUpdate }: Props) {
         />
       )}
     </>
+  );
+}
+
+function ServiceTable({ services, getClientName, getProjectName, getServiceTypeName, isExpiringSoon, onEdit, onChanges, onDelete, deletingId }: {
+  services: Service[];
+  getClientName: (id: string) => string;
+  getProjectName: (id?: string) => string | null;
+  getServiceTypeName: (id: string) => string;
+  isExpiringSoon: (date?: string) => boolean;
+  onEdit: (s: Service) => void;
+  onChanges: (s: Service) => void;
+  onDelete: (id: string) => void;
+  deletingId: string | null;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full">
+        <thead className="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Service</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Client</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Type</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Price</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Renewal</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Status</th>
+            <th className="px-6 py-3 text-right text-xs font-medium text-gray-700 uppercase tracking-wider">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          {services.map(service => (
+            <tr key={service.id} className="hover:bg-gray-50">
+              <td className="px-6 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="bg-blue-100 p-2 rounded-lg">
+                    <Server className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div>
+                    <div className="font-medium text-gray-900">{service.name}</div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      {service.provider && <span className="text-xs text-gray-500">{service.provider}</span>}
+                      {service.infrastructure_type && (
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                          service.infrastructure_type === 'Cloud' ? 'bg-sky-100 text-sky-700' :
+                          service.infrastructure_type === 'Physical' ? 'bg-stone-100 text-stone-700' :
+                          'bg-teal-100 text-teal-700'
+                        }`}>{service.infrastructure_type}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <td className="px-6 py-4 text-sm text-gray-900">
+                <div>{getClientName(service.client_id)}</div>
+                {getProjectName(service.project_id) && <div className="text-xs text-blue-600 mt-0.5">{getProjectName(service.project_id)}</div>}
+              </td>
+              <td className="px-6 py-4 text-sm text-gray-900">{getServiceTypeName(service.service_type_id)}</td>
+              <td className="px-6 py-4">
+                <div className="flex items-center gap-1 text-sm">
+                  <DollarSign className="w-4 h-4 text-gray-500" />
+                  <span className="font-medium text-gray-900">{service.price}</span>
+                  <span className="text-gray-600">/ {service.billing_cycle}</span>
+                </div>
+              </td>
+              <td className="px-6 py-4">
+                {service.next_renewal_date ? (
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-gray-500" />
+                    <span className={`text-sm ${isExpiringSoon(service.next_renewal_date) ? 'text-amber-600 font-medium' : 'text-gray-900'}`}>
+                      {new Date(service.next_renewal_date).toLocaleDateString()}
+                    </span>
+                  </div>
+                ) : <span className="text-sm text-gray-500">-</span>}
+              </td>
+              <td className="px-6 py-4">
+                <span className={`px-3 py-1 text-xs font-medium rounded-full ${
+                  service.status === 'Active' ? 'bg-green-100 text-green-800' :
+                  service.status === 'Suspended' ? 'bg-red-100 text-red-800' :
+                  service.status === 'Cancelled' ? 'bg-gray-100 text-gray-800' :
+                  'bg-yellow-100 text-yellow-800'
+                }`}>{service.status}</span>
+              </td>
+              <td className="px-6 py-4">
+                <div className="flex items-center justify-end gap-2">
+                  {service.login_url && (
+                    <a href={service.login_url} target="_blank" rel="noopener noreferrer"
+                      className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Open login URL">
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  )}
+                  <button onClick={() => onChanges(service)} className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Change history">
+                    <History className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => onEdit(service)} className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => onDelete(service.id)} disabled={deletingId === service.id}
+                    className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50" title="Delete">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

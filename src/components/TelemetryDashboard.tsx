@@ -29,6 +29,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [backupSearch, setBackupSearch] = useState('');
+  const [backupClientFilter, setBackupClientFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'ok' | 'warning' | 'error' | 'stale'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAllBackups, setShowAllBackups] = useState(false);
@@ -272,11 +273,18 @@ export function TelemetryDashboard({ services, clients }: Props) {
               <p className="text-sm text-gray-600 mt-0.5">All backup reports received from your scripts.</p>
             </div>
           </div>
-          <div className="relative max-w-xs w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input type="text" value={backupSearch} onChange={e => setBackupSearch(e.target.value)}
-              placeholder="Search service, job..."
-              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+          <div className="flex gap-2 flex-wrap">
+            <select value={backupClientFilter} onChange={e => setBackupClientFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+              <option value="all">All clients</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
+            </select>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input type="text" value={backupSearch} onChange={e => setBackupSearch(e.target.value)}
+                placeholder="Search service, job..."
+                className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-56" />
+            </div>
           </div>
         </div>
 
@@ -288,9 +296,10 @@ export function TelemetryDashboard({ services, clients }: Props) {
           </div>
         ) : (() => {
           const filtered = backups.filter(b => {
+            const svc = services.find(s => s.id === b.service_id);
+            if (backupClientFilter !== 'all' && svc?.client_id !== backupClientFilter) return false;
             if (!backupSearch) return true;
             const q = backupSearch.toLowerCase();
-            const svc = services.find(s => s.id === b.service_id);
             const name = (svc?.business_name || svc?.name || '').toLowerCase();
             return name.includes(q) || (b.job_name || '').toLowerCase().includes(q) || b.status.includes(q);
           });
