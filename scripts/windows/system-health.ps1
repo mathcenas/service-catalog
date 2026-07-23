@@ -6,10 +6,23 @@
 
 . "$PSScriptRoot\config.ps1"
 
+# ---------- Log local con retención mensual ----------
+$LogDir  = "$PSScriptRoot\logs"
+if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir | Out-Null }
+$LogFile = "$LogDir\system-health-$(Get-Date -Format 'yyyy-MM').log"
+function Write-Log($msg) {
+    $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $msg"
+    Add-Content -Path $LogFile -Value $line
+    Write-Host $line
+}
+# Borrar logs de más de 31 días
+Get-ChildItem "$LogDir\system-health-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-31) } | Remove-Item -Force
+
 $headers = @{
-    "Content-Type"  = "application/json"
-    "apikey"        = $ANON_KEY
-    "Authorization" = "Bearer $ANON_KEY"
+    "Content-Type"    = "application/json"
+    "apikey"          = $ANON_KEY
+    "Authorization"   = "Bearer $ANON_KEY"
+    "X-Ingest-Secret" = $INGEST_SECRET
 }
 
 # ---------- 1. HARDWARE (CPU / RAM / Disco C:) ----------
@@ -46,9 +59,9 @@ $hwBody = @{
 
 try {
     Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $hwBody | Out-Null
-    Write-Host "✅ system-health → $hwStatus | CPU: $cpuUsage% | RAM: $ramUsePct% | Disk: $diskUsePct%"
+    Write-Log "✅ system-health → $hwStatus | CPU: $cpuUsage% | RAM: $ramUsePct% | Disk: $diskUsePct%"
 } catch {
-    Write-Host "❌ system-health Error: $($_.Exception.Message)"
+    Write-Log "❌ system-health Error: $($_.Exception.Message)"
 }
 
 # ---------- 2. RED (ping + packet loss) ----------
@@ -101,7 +114,7 @@ $netBody = @{
 
 try {
     Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $netBody | Out-Null
-    Write-Host "✅ speedtest → $netStatus | $netMsg"
+    Write-Log "✅ speedtest → $netStatus | $netMsg"
 } catch {
-    Write-Host "❌ speedtest Error: $($_.Exception.Message)"
+    Write-Log "❌ speedtest Error: $($_.Exception.Message)"
 }
