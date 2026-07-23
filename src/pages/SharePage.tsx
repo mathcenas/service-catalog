@@ -260,7 +260,7 @@ export function SharePage({ token }: Props) {
 
         <main className="max-w-5xl mx-auto px-4 py-6">
           {section === 'overview' && <OverviewSection services={activeServices} roadmap={roadmap} changes={changes} getTypeName={getTypeName} backups={backups} uptimeEvents={uptimeEvents} supportHours={supportHours} systemHeartbeats={systemHeartbeats} clientApps={clientApps} />}
-          {section === 'services' && <ServiceCatalog services={services} projects={projects} getTypeName={getTypeName} getProjectName={getProjectName} expandedService={expandedService} setExpandedService={setExpandedService} heartbeats={heartbeats} backups={backups} />}
+          {section === 'services' && <ServiceCatalog services={services} projects={projects} getTypeName={getTypeName} getProjectName={getProjectName} expandedService={expandedService} setExpandedService={setExpandedService} heartbeats={heartbeats} backups={backups} systemHeartbeats={systemHeartbeats} />}
           {section === 'licenses' && <LicensesSection licenses={licenses} services={services} />}
           {section === 'changes' && <ChangesSection changes={changes} services={services} />}
           {section === 'hours' && <SupportHoursSection hours={supportHours} services={services} />}
@@ -723,9 +723,9 @@ const SERVICE_GROUPS: { label: string; types: string[] }[] = [
   { label: 'Managed Services', types: ['Managed Service', 'Monitoring'] },
 ];
 
-function ServiceCatalog({ services, projects, getTypeName, getProjectName, expandedService, setExpandedService, heartbeats, backups }: {
+function ServiceCatalog({ services, projects, getTypeName, getProjectName, expandedService, setExpandedService, heartbeats, backups, systemHeartbeats }: {
   services: Service[]; projects: Project[]; getTypeName: (id: string) => string; getProjectName: (id?: string) => string | null;
-  expandedService: string | null; setExpandedService: (id: string | null) => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[];
+  expandedService: string | null; setExpandedService: (id: string | null) => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; systemHeartbeats: ServiceHeartbeat[];
 }) {
   const [showCosts, setShowCosts] = useState(false);
 
@@ -750,6 +750,7 @@ function ServiceCatalog({ services, projects, getTypeName, getProjectName, expan
       expanded={expandedService === s.id} onToggle={() => setExpandedService(expandedService === s.id ? null : s.id)}
       heartbeats={heartbeats.filter(h => h.service_id === s.id)}
       backups={backups.filter(b => b.service_id === s.id)}
+      latestHealth={systemHeartbeats.find(h => h.service_id === s.id) ?? null}
       showCosts={showCosts} />
   ));
 
@@ -783,8 +784,31 @@ function ServiceCatalog({ services, projects, getTypeName, getProjectName, expan
   );
 }
 
-function ServiceCard({ service, typeName, projectName, expanded, onToggle, heartbeats, backups, showCosts }: {
-  service: Service; typeName: string; projectName: string | null; expanded: boolean; onToggle: () => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; showCosts: boolean;
+function HealthDot({ hb }: { hb: ServiceHeartbeat | null }) {
+  if (!hb) return null;
+  const p = hb.payload as any;
+  const diskPct: number | undefined = p?.disk_pct ?? p?.disk_used_pct;
+  const ramPct: number | undefined  = p?.ram_pct  ?? p?.ram_used_pct;
+
+  const warn = hb.status === 'warning' || hb.status === 'error';
+  const color = hb.status === 'error'   ? 'bg-red-500'
+              : hb.status === 'warning'  ? 'bg-amber-500'
+              : 'bg-emerald-500';
+
+  const label = warn && diskPct != null ? `Disk ${diskPct}%`
+              : warn && ramPct  != null ? `RAM ${ramPct}%`
+              : null;
+
+  return (
+    <span className="inline-flex items-center gap-1" title={hb.message || hb.status}>
+      <span className={`w-2 h-2 rounded-full shrink-0 ${color}`} />
+      {label && <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400">{label}</span>}
+    </span>
+  );
+}
+
+function ServiceCard({ service, typeName, projectName, expanded, onToggle, heartbeats, backups, latestHealth, showCosts }: {
+  service: Service; typeName: string; projectName: string | null; expanded: boolean; onToggle: () => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; latestHealth: ServiceHeartbeat | null; showCosts: boolean;
 }) {
   const title = service.business_name || service.name;
   const desc = service.business_description || service.description;
@@ -804,6 +828,7 @@ function ServiceCard({ service, typeName, projectName, expanded, onToggle, heart
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-base font-semibold text-gray-900 dark:text-white">{title}</h3>
+                <HealthDot hb={latestHealth} />
                 <span className="text-xs text-gray-400">{typeName}</span>
                 {projectName && <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-full">{projectName}</span>}
                 {!isActive && <span className="text-[10px] uppercase tracking-wider font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 rounded-full">{service.status}</span>}
