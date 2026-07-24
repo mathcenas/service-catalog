@@ -14,6 +14,7 @@ export function EditClientModal({ client, onClose, onSuccess }: Props) {
     contact_name: client.contact_name,
     email: client.email,
     alt_email: client.alt_email || '',
+    cc_emails: client.cc_emails || '',
     phone: client.phone || '',
     address: client.address || '',
     status: client.status,
@@ -29,7 +30,7 @@ export function EditClientModal({ client, onClose, onSuccess }: Props) {
 
     const { error: updateError } = await supabase
       .from('clients')
-      .update({ ...formData, alt_email: formData.alt_email.trim() || null })
+      .update({ ...formData, alt_email: formData.alt_email.trim() || null, cc_emails: formData.cc_emails.trim() || null })
       .eq('id', client.id);
 
     if (updateError) {
@@ -113,6 +114,20 @@ export function EditClientModal({ client, onClose, onSuccess }: Props) {
                 placeholder="Second contact email"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
               />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Additional Contacts (CC)
+              </label>
+              <input
+                type="text"
+                value={formData.cc_emails}
+                onChange={(e) => setFormData({ ...formData, cc_emails: e.target.value })}
+                placeholder="extra@empresa.com, otro@empresa.com"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              />
+              <p className="text-xs text-gray-400 mt-1">Separated by comma. These addresses receive a copy of every notification sent to this client.</p>
             </div>
 
             <div>

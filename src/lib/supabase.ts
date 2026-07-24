@@ -16,6 +16,7 @@ export type Client = {
   contact_name: string;
   email: string;
   alt_email?: string;
+  cc_emails?: string;
   phone?: string;
   address?: string;
   status: 'Active' | 'Inactive' | 'Pending';
