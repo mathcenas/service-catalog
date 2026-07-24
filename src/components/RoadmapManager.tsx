@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { Plus, Trash2, Eye, EyeOff, Save, Rocket, Sparkles, Database, CreditCard, Lightbulb, MapPin, User, Send, CalendarClock, BookOpen, Check, CheckCheck } from 'lucide-react';
+import { Plus, Trash2, Eye, EyeOff, Save, Rocket, Sparkles, Database, CreditCard, Lightbulb, MapPin, User, Send, CalendarClock, BookOpen, Check, CheckCheck, CheckCircle2, AlertTriangle, AlertCircle, Wrench } from 'lucide-react';
 import { supabase, Client, Service, RoadmapItem, ROADMAP_STATUSES, RoadmapStatus, ROADMAP_CATEGORIES, RoadmapCategory } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -8,6 +8,8 @@ const CATEGORY_META: Record<RoadmapCategory, { icon: typeof Rocket; color: strin
   payment: { icon: CreditCard, color: 'text-blue-600 bg-blue-50' },
   backup: { icon: Database, color: 'text-teal-600 bg-teal-50' },
   visit: { icon: MapPin, color: 'text-rose-600 bg-rose-50' },
+  problem: { icon: AlertCircle, color: 'text-red-600 bg-red-50' },
+  change_request: { icon: Wrench, color: 'text-violet-600 bg-violet-50' },
 };
 
 type Props = {
@@ -29,7 +31,10 @@ export function RoadmapManager({ clients, services }: Props) {
   const [filterClientId, setFilterClientId] = useState<string>('all');
   const [notifying, setNotifying] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | undefined>();
+  const [webhookUrl, setWebhookUrl] = useState<string | undefined>();
+  const [webhookToken, setWebhookToken] = useState<string | undefined>();
   const [emailOpens, setEmailOpens] = useState<Record<string, { opened_at: string | null; open_count: number }>>({});
+  const [closePublishResult, setClosePublishResult] = useState<{ itemId: string; closed: 'ok' | 'err'; webhook: 'ok' | 'err' | 'skip'; email: 'ok' | 'err' | 'skip' } | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -44,8 +49,12 @@ export function RoadmapManager({ clients, services }: Props) {
 
   useEffect(() => {
     load();
-    supabase.from('user_settings').select('logo_url').eq('user_id', user!.id).maybeSingle()
-      .then(({ data }) => { if (data?.logo_url) setLogoUrl(data.logo_url); });
+    supabase.from('user_settings').select('logo_url, webhook_url, webhook_token').eq('user_id', user!.id).maybeSingle()
+      .then(({ data }) => {
+        if (data?.logo_url) setLogoUrl(data.logo_url);
+        if (data?.webhook_url) setWebhookUrl(data.webhook_url);
+        if (data?.webhook_token) setWebhookToken(data.webhook_token);
+      });
     supabase.from('email_opens').select('roadmap_item_id, opened_at, open_count')
       .not('roadmap_item_id', 'is', null)
       .then(({ data }) => {
@@ -227,6 +236,67 @@ export function RoadmapManager({ clients, services }: Props) {
     }
 
     setNotifying(null);
+  };
+
+  const closeAndPublish = async (item: RoadmapItem) => {
+    setClosePublishResult(null);
+    const result = { itemId: item.id, closed: 'ok' as 'ok'|'err', webhook: 'skip' as 'ok'|'err'|'skip', email: 'skip' as 'ok'|'err'|'skip' };
+
+    // 1. Mark as Released
+    const { error: closeErr } = await supabase.from('roadmap_items').update({ status: 'Released' }).eq('id', item.id);
+    if (closeErr) { result.closed = 'err'; setClosePublishResult({ ...result }); return; }
+    await load();
+
+    // 2. Webhook
+    if (webhookUrl) {
+      const body = {
+        id: item.id,
+        type: item.category,
+        title: item.title,
+        description: item.description || null,
+        status: 'Released',
+        client: item.client_id ? clients.find(c => c.id === item.client_id)?.company_name : null,
+        closed_at: new Date().toISOString(),
+      };
+      try {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (webhookToken) headers['Authorization'] = `Bearer ${webhookToken}`;
+        const res = await fetch(webhookUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+        result.webhook = res.ok ? 'ok' : 'err';
+      } catch { result.webhook = 'err'; }
+    }
+
+    // 3. Email
+    const client = item.client_id ? clients.find(c => c.id === item.client_id) : null;
+    if (client?.email) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const { data: tokens } = await supabase.from('client_share_tokens').select('token').eq('client_id', client.id).limit(1);
+        const shareUrl = tokens?.[0]?.token ? `${window.location.origin}/share/${tokens[0].token}` : undefined;
+        if (session?.access_token) {
+          const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-client`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              client_email: client.email,
+              alt_email: client.alt_email || undefined,
+              cc_emails: client.cc_emails || undefined,
+              client_name: client.contact_name || client.company_name,
+              subject: `${item.category === 'problem' ? 'Incident resolved' : 'Change completed'}: ${item.title}`,
+              title: `✅ ${item.category === 'problem' ? 'Incident resolved' : 'Change completed'}: ${item.title}`,
+              description: item.description || undefined,
+              share_url: shareUrl,
+              sender_name: user?.email,
+              logo_url: logoUrl,
+              roadmap_item_id: item.id,
+            }),
+          });
+          result.email = res.ok ? 'ok' : 'err';
+        }
+      } catch { result.email = 'err'; }
+    }
+
+    setClosePublishResult({ ...result });
   };
 
   const getClientName = (id?: string) => id ? clients.find(c => c.id === id)?.company_name || '--' : null;
@@ -438,6 +508,8 @@ export function RoadmapManager({ clients, services }: Props) {
               onDelete={deleteItem}
               onNotify={notifyClient}
               onMarkReleased={markReleased}
+              onClosePublish={closeAndPublish}
+              closePublishResult={closePublishResult?.itemId === item.id ? closePublishResult : null}
             />)}
           </div>
         )}
@@ -446,7 +518,7 @@ export function RoadmapManager({ clients, services }: Props) {
   );
 }
 
-function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpdate, onDelete, onNotify, onMarkReleased }: {
+function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpdate, onDelete, onNotify, onMarkReleased, onClosePublish, closePublishResult }: {
   item: RoadmapItem;
   clients: Client[];
   services: Service[];
@@ -459,11 +531,15 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
   onDelete: (id: string) => void;
   onNotify: (item: RoadmapItem) => void;
   onMarkReleased: (item: RoadmapItem) => void;
+  onClosePublish: (item: RoadmapItem) => void;
+  closePublishResult: { closed: 'ok'|'err'; webhook: 'ok'|'err'|'skip'; email: 'ok'|'err'|'skip' } | null;
 }) {
   const meta = CATEGORY_META[item.category] || CATEGORY_META.idea;
   const CatIcon = meta.icon;
   const canNotify = !!item.client_id && !notifying;
   const client = clients.find(c => c.id === item.client_id);
+  const isTicket = item.category === 'problem' || item.category === 'change_request';
+  const isOpen = item.status !== 'Released';
 
   const [localTitle, setLocalTitle] = useState(item.title);
   const [localDesc, setLocalDesc] = useState(item.description || '');
@@ -626,7 +702,37 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
             <Trash2 className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Close & Publish — only for problem/change_request not yet Released */}
+        {isTicket && isOpen && (
+          <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => onClosePublish(item)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold transition-colors"
+            >
+              <CheckCheck className="w-3.5 h-3.5" />
+              Close &amp; Publish
+            </button>
+            {closePublishResult && (
+              <div className="flex items-center gap-1.5 text-xs">
+                <ResultChip label="Closed" status={closePublishResult.closed} />
+                <ResultChip label="Webhook" status={closePublishResult.webhook} />
+                <ResultChip label="Email" status={closePublishResult.email} />
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function ResultChip({ label, status }: { label: string; status: 'ok' | 'err' | 'skip' }) {
+  if (status === 'skip') return <span className="text-gray-400">{label}: —</span>;
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-medium ${status === 'ok' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+      {status === 'ok' ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+      {label}
+    </span>
   );
 }
