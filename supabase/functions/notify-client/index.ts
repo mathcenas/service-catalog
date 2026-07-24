@@ -82,12 +82,15 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const TZ = "America/Montevideo";
+
     const formattedDate = scheduled_date
-      ? new Date(scheduled_date + "T00:00:00").toLocaleDateString("en-US", {
+      ? new Date(scheduled_date + "T12:00:00Z").toLocaleDateString("en-US", {
           weekday: "long",
           year: "numeric",
           month: "long",
           day: "numeric",
+          timeZone: TZ,
         })
       : null;
 
@@ -99,6 +102,7 @@ Deno.serve(async (req: Request) => {
       hour: "2-digit",
       minute: "2-digit",
       timeZoneName: "short",
+      timeZone: TZ,
     });
 
     const logoHtml = logo_url
