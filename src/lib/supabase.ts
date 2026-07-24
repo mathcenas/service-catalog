@@ -189,6 +189,7 @@ export type RoadmapItem = {
   service_id?: string;
   client_id?: string;
   amount?: number;
+  amount_type?: 'money' | 'hours';
   scheduled_date?: string;
   notified_at?: string;
   publish_to_changelog: boolean;
