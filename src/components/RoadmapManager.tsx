@@ -21,7 +21,7 @@ export function RoadmapManager({ clients, services }: Props) {
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState({
     title: '', description: '', eta: '', status: 'Planned' as RoadmapStatus,
-    category: 'idea' as RoadmapCategory, requested_by: '', amount: '',
+    category: 'idea' as RoadmapCategory, requested_by: '', amount: '', amount_type: 'money' as 'money' | 'hours',
     scheduled_date: '', client_id: '', service_id: '', publish_to_changelog: false,
   });
   const [saving, setSaving] = useState(false);
@@ -85,6 +85,7 @@ export function RoadmapManager({ clients, services }: Props) {
       category: draft.category,
       requested_by: draft.requested_by.trim() || null,
       amount: draft.amount ? parseFloat(draft.amount) : null,
+      amount_type: draft.amount ? draft.amount_type : null,
       scheduled_date: draft.scheduled_date || null,
       client_id: draft.client_id || null,
       service_id: draft.service_id || null,
@@ -92,7 +93,7 @@ export function RoadmapManager({ clients, services }: Props) {
       sort_order: items.length,
       is_public: draft.category === 'idea',
     });
-    setDraft({ title: '', description: '', eta: '', status: 'Planned', category: 'idea', requested_by: '', amount: '', scheduled_date: '', client_id: '', service_id: '', publish_to_changelog: false });
+    setDraft({ title: '', description: '', eta: '', status: 'Planned', category: 'idea', requested_by: '', amount: '', amount_type: 'money', scheduled_date: '', client_id: '', service_id: '', publish_to_changelog: false });
     setSaving(false);
     load();
   };
@@ -341,13 +342,23 @@ export function RoadmapManager({ clients, services }: Props) {
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Amount</label>
-              <input
-                type="number"
-                value={draft.amount}
-                onChange={e => setDraft({ ...draft, amount: e.target.value })}
-                placeholder="0.00"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-              />
+              <div className="flex rounded-lg border border-gray-300 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500">
+                <select
+                  value={draft.amount_type}
+                  onChange={e => setDraft({ ...draft, amount_type: e.target.value as 'money' | 'hours' })}
+                  className="px-2 py-2 text-xs bg-gray-50 border-r border-gray-300 text-gray-600 outline-none"
+                >
+                  <option value="money">$</option>
+                  <option value="hours">hs</option>
+                </select>
+                <input
+                  type="number"
+                  value={draft.amount}
+                  onChange={e => setDraft({ ...draft, amount: e.target.value })}
+                  placeholder="0"
+                  className="flex-1 px-3 py-2 text-sm outline-none"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -550,7 +561,7 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
           />
           {item.amount != null && item.amount > 0 && (
             <div className="text-xs text-emerald-700 font-medium mt-1 px-1">
-              ${item.amount.toLocaleString()}
+              {item.amount_type === 'hours' ? `${item.amount} hs` : `$${item.amount.toLocaleString()}`}
             </div>
           )}
           {item.scheduled_date && (
