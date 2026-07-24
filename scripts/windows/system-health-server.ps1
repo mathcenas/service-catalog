@@ -233,3 +233,51 @@ try {
 } catch {
     Write-Log "❌ rdp Error: $($_.Exception.Message)"
 }
+
+# ---------- 4. LOG LOCAL DE PROCESOS (CSV, no va a Supabase) ----------
+# Retención: archivos de más de 7 días se eliminan automáticamente
+$ProcessLogFile = "$LogDir\processes-$(Get-Date -Format 'yyyy-MM-dd').csv"
+Get-ChildItem "$LogDir\processes-*.csv" |
+    Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-7) } |
+    Remove-Item -Force
+
+# Top 10 procesos por CPU
+try {
+    $topCpuProcesses = Get-Process |
+        Where-Object { $_.CPU -ne $null } |
+        Sort-Object CPU -Descending |
+        Select-Object -First 10 `
+            @{ Name = 'Timestamp';   Expression = { Get-Date -Format 'yyyy-MM-dd HH:mm:ss' } },
+            @{ Name = 'Type';        Expression = { 'cpu' } },
+            ProcessName,
+            Id,
+            @{ Name = 'CPU';         Expression = { [math]::Round($_.CPU, 1) } },
+            @{ Name = 'MemoryMB';    Expression = { [math]::Round($_.WorkingSet64 / 1MB, 1) } },
+            @{ Name = 'IOReadMB';    Expression = { [math]::Round($_.IOReadBytes / 1MB, 2) } },
+            @{ Name = 'IOWriteMB';   Expression = { [math]::Round($_.IOWriteBytes / 1MB, 2) } }
+
+    $topCpuProcesses | Export-Csv $ProcessLogFile -Append -NoTypeInformation -Encoding UTF8
+    Write-Log "✅ process-log → Top CPU: $($topCpuProcesses[0].ProcessName) ($($topCpuProcesses[0].CPU)s)"
+} catch {
+    Write-Log "⚠️ process-log CPU Error: $($_.Exception.Message)"
+}
+
+# Top 10 procesos por Disk IO
+try {
+    $topIOProcesses = Get-Process |
+        Sort-Object { $_.IOReadBytes + $_.IOWriteBytes } -Descending |
+        Select-Object -First 10 `
+            @{ Name = 'Timestamp';   Expression = { Get-Date -Format 'yyyy-MM-dd HH:mm:ss' } },
+            @{ Name = 'Type';        Expression = { 'io' } },
+            ProcessName,
+            Id,
+            @{ Name = 'CPU';         Expression = { [math]::Round($_.CPU, 1) } },
+            @{ Name = 'MemoryMB';    Expression = { [math]::Round($_.WorkingSet64 / 1MB, 1) } },
+            @{ Name = 'IOReadMB';    Expression = { [math]::Round($_.IOReadBytes / 1MB, 2) } },
+            @{ Name = 'IOWriteMB';   Expression = { [math]::Round($_.IOWriteBytes / 1MB, 2) } }
+
+    $topIOProcesses | Export-Csv $ProcessLogFile -Append -NoTypeInformation -Encoding UTF8
+    Write-Log "✅ process-log → Top IO: $($topIOProcesses[0].ProcessName) (R:$($topIOProcesses[0].IOReadMB)MB W:$($topIOProcesses[0].IOWriteMB)MB)"
+} catch {
+    Write-Log "⚠️ process-log IO Error: $($_.Exception.Message)"
+}
