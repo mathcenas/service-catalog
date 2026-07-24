@@ -33,20 +33,41 @@ $headers = @{
 }
 
 # ---------- 1. HARDWARE (CPU / RAM / Disco C:) ----------
+# Get-Counter usa nombres en el idioma del SO — fallback a CimInstance que es neutral
 try {
-    $cpuUsage   = [math]::Round(
-        (Get-Counter '\Processor(_Total)\% Processor Time').CounterSamples.CookedValue, 1)
-    $ramAvailMB = (Get-Counter '\Memory\Available MBytes').CounterSamples.CookedValue
+    $cpuUsage = [math]::Round(
+        (Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction Stop).CounterSamples.CookedValue, 1)
+} catch {
+    try {
+        $cpuUsage = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
+    } catch {
+        $cpuUsage = 0
+    }
+}
+
+try {
+    $ramAvailMB = (Get-Counter '\Memory\Available MBytes' -ErrorAction Stop).CounterSamples.CookedValue
     $os         = Get-CimInstance Win32_OperatingSystem
     $ramTotalMB = $os.TotalVisibleMemorySize / 1KB
     $ramUsePct  = [math]::Round((($ramTotalMB - $ramAvailMB) / $ramTotalMB) * 100, 1)
     $ramTotalGB = [math]::Round($ramTotalMB / 1024, 1)
+} catch {
+    try {
+        $os         = Get-CimInstance Win32_OperatingSystem
+        $ramTotalMB = $os.TotalVisibleMemorySize / 1KB
+        $ramUsePct  = [math]::Round((($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100, 1)
+        $ramTotalGB = [math]::Round($ramTotalMB / 1024, 1)
+    } catch {
+        $ramUsePct = 0; $ramTotalGB = 0
+    }
+}
 
+try {
     $diskC      = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
     $diskUsePct = [math]::Round((($diskC.Size - $diskC.FreeSpace) / $diskC.Size) * 100, 1)
     $diskFreeGB = [math]::Round($diskC.FreeSpace / 1GB, 1)
 } catch {
-    $cpuUsage = 0; $ramUsePct = 0; $ramTotalGB = 0; $diskUsePct = 0; $diskFreeGB = 0
+    $diskUsePct = 0; $diskFreeGB = 0
 }
 
 $hwStatus = if   ($diskUsePct -gt 90 -or $ramUsePct -gt 92 -or $cpuUsage -gt 95) { "error" }
@@ -159,10 +180,10 @@ try {
     $disconnects = 0
 }
 
-# Latencia de disco C: (segundos por operación)
+# Latencia de disco C: (segundos por operación) — contador en inglés, puede fallar en SO en español
 try {
     $diskLatency = [math]::Round(
-        (Get-Counter '\LogicalDisk(C:)\Avg. Disk sec/Transfer').CounterSamples.CookedValue, 3)
+        (Get-Counter '\LogicalDisk(C:)\Avg. Disk sec/Transfer' -ErrorAction Stop).CounterSamples.CookedValue, 3)
 } catch {
     $diskLatency = 0
 }
