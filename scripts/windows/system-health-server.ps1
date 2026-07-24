@@ -33,20 +33,41 @@ $headers = @{
 }
 
 # ---------- 1. HARDWARE (CPU / RAM / Disco C:) ----------
+# Get-Counter usa nombres en el idioma del SO — fallback a CimInstance que es neutral
 try {
-    $cpuUsage   = [math]::Round(
-        (Get-Counter '\Processor(_Total)\% Processor Time').CounterSamples.CookedValue, 1)
-    $ramAvailMB = (Get-Counter '\Memory\Available MBytes').CounterSamples.CookedValue
+    $cpuUsage = [math]::Round(
+        (Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction Stop).CounterSamples.CookedValue, 1)
+} catch {
+    try {
+        $cpuUsage = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
+    } catch {
+        $cpuUsage = 0
+    }
+}
+
+try {
+    $ramAvailMB = (Get-Counter '\Memory\Available MBytes' -ErrorAction Stop).CounterSamples.CookedValue
     $os         = Get-CimInstance Win32_OperatingSystem
     $ramTotalMB = $os.TotalVisibleMemorySize / 1KB
     $ramUsePct  = [math]::Round((($ramTotalMB - $ramAvailMB) / $ramTotalMB) * 100, 1)
     $ramTotalGB = [math]::Round($ramTotalMB / 1024, 1)
+} catch {
+    try {
+        $os         = Get-CimInstance Win32_OperatingSystem
+        $ramTotalMB = $os.TotalVisibleMemorySize / 1KB
+        $ramUsePct  = [math]::Round((($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100, 1)
+        $ramTotalGB = [math]::Round($ramTotalMB / 1024, 1)
+    } catch {
+        $ramUsePct = 0; $ramTotalGB = 0
+    }
+}
 
+try {
     $diskC      = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
     $diskUsePct = [math]::Round((($diskC.Size - $diskC.FreeSpace) / $diskC.Size) * 100, 1)
     $diskFreeGB = [math]::Round($diskC.FreeSpace / 1GB, 1)
 } catch {
-    $cpuUsage = 0; $ramUsePct = 0; $ramTotalGB = 0; $diskUsePct = 0; $diskFreeGB = 0
+    $diskUsePct = 0; $diskFreeGB = 0
 }
 
 $hwStatus = if   ($diskUsePct -gt 90 -or $ramUsePct -gt 92 -or $cpuUsage -gt 95) { "error" }
@@ -74,7 +95,21 @@ try {
     Write-Log "❌ system-health Error: $($_.Exception.Message)"
 }
 
-# ---------- 2. RED (Ping / Latencia / Pérdida) ----------
+# ---------- 2. RED (Gateway + Internet + Latencia / Pérdida) ----------
+
+# Detectar gateway automáticamente
+try {
+    $GatewayIP = (Get-NetRoute -DestinationPrefix "0.0.0.0/0" |
+                  Sort-Object RouteMetric |
+                  Select-Object -First 1).NextHop
+} catch {
+    $GatewayIP = $null
+}
+
+$gatewayOk  = if ($GatewayIP) { Test-Connection $GatewayIP   -Count 1 -Quiet } else { $false }
+$internetOk = Test-Connection $TargetHost -Count 1 -Quiet
+
+# Latencia e internet con múltiples pings solo si hay conectividad
 try {
     $pingResults = Test-Connection -ComputerName $TargetHost -Count $PingCount -ErrorAction Stop
     $avgLatency  = [math]::Round(
@@ -85,16 +120,24 @@ try {
     $avgLatency = 9999; $packetLoss = 100
 }
 
-$netStatus = if   ($packetLoss -gt 10 -or $avgLatency -gt 200) { "error" }
-             elseif ($packetLoss -gt 2  -or $avgLatency -gt 100) { "warning" }
+# error = sin internet; warning = gateway ok pero internet lento/perdida; ok = todo bien
+$netStatus = if   (-not $gatewayOk)                                        { "error" }
+             elseif (-not $internetOk)                                      { "error" }
+             elseif ($packetLoss -gt 10 -or $avgLatency -gt 200)           { "warning" }
+             elseif ($packetLoss -gt 2  -or $avgLatency -gt 100)           { "warning" }
              else { "ok" }
+
+$netMsg = "GW: $(if ($gatewayOk) {'ok'} else {'❌'}) | Internet: $(if ($internetOk) {'ok'} else {'❌'}) | Ping: ${avgLatency}ms | Loss: ${packetLoss}%"
 
 $netBody = @{
     service_id = $SERVICE_ID
     source     = "network"
     status     = $netStatus
-    message    = "Ping: ${avgLatency}ms | Loss: ${packetLoss}%"
+    message    = $netMsg
     payload    = @{
+        gateway_ip      = $GatewayIP
+        gateway_ok      = $gatewayOk
+        internet_ok     = $internetOk
         ping_ms         = $avgLatency
         packet_loss_pct = $packetLoss
     }
@@ -102,7 +145,7 @@ $netBody = @{
 
 try {
     Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $netBody | Out-Null
-    Write-Log "✅ network → $netStatus | Ping: ${avgLatency}ms | Loss: ${packetLoss}%"
+    Write-Log "✅ network → $netStatus | $netMsg"
 } catch {
     Write-Log "❌ network Error: $($_.Exception.Message)"
 }
@@ -137,16 +180,27 @@ try {
     $disconnects = 0
 }
 
-# Latencia de disco C: (segundos por operación)
+# Latencia de disco C: (segundos por operación) — contador en inglés, puede fallar en SO en español
 try {
     $diskLatency = [math]::Round(
-        (Get-Counter '\LogicalDisk(C:)\Avg. Disk sec/Transfer').CounterSamples.CookedValue, 3)
+        (Get-Counter '\LogicalDisk(C:)\Avg. Disk sec/Transfer' -ErrorAction Stop).CounterSamples.CookedValue, 3)
 } catch {
     $diskLatency = 0
 }
 
-$rdpStatus = if   ($sessions -ge $RdpSessionWarning -or $disconnects -gt 3) { "warning" }
-             elseif ($rdpConnections -eq 0 -and $sessions -gt 0)             { "warning" }
+# Límite de sesiones: leer del sistema, fallback a $RdpSessionWarning del config
+try {
+    $maxAllowed = (Get-WmiObject -Namespace "root\cimv2\TerminalServices" `
+        -Class Win32_TerminalServiceSetting -ErrorAction Stop).MaxConnectionAllowed
+    if (-not $maxAllowed -or $maxAllowed -eq 0) { $maxAllowed = $RdpSessionWarning }
+} catch {
+    $maxAllowed = $RdpSessionWarning
+}
+$rdpWarnThreshold = [math]::Floor($maxAllowed * 0.85)
+
+$rdpStatus = if   ($sessions -ge $maxAllowed -or $disconnects -gt 3)    { "error" }
+             elseif ($sessions -ge $rdpWarnThreshold)                    { "warning" }
+             elseif ($rdpConnections -eq 0 -and $sessions -gt 0)        { "warning" }
              else { "ok" }
 
 $diskIOStatus = if   ($diskLatency -gt 0.050) { "error" }
@@ -162,9 +216,10 @@ $rdpBody = @{
     service_id = $SERVICE_ID
     source     = "rdp"
     status     = $rdpOverallStatus
-    message    = "Sessions: $sessions | TCP 3389: $rdpConnections | Disconnects (${RdpEventWindow}m): $disconnects | DiskIO: ${diskLatency}s"
+    message    = "Sessions: $sessions/$maxAllowed | TCP 3389: $rdpConnections | Disconnects (${RdpEventWindow}m): $disconnects | DiskIO: ${diskLatency}s"
     payload    = @{
         rdp_sessions        = $sessions
+        rdp_max_allowed     = $maxAllowed
         rdp_tcp_connections = $rdpConnections
         rdp_disconnects     = $disconnects
         disk_latency_sec    = $diskLatency
