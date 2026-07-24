@@ -134,6 +134,7 @@ export function RoadmapManager({ clients, services }: Props) {
             body: JSON.stringify({
               client_email: client.email,
               alt_email: client.alt_email || undefined,
+              cc_emails: client.cc_emails || undefined,
               client_name: client.contact_name || client.company_name,
               subject: `Released: ${item.title}`,
               title: `✅ Released: ${item.title}`,

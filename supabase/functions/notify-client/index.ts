@@ -11,6 +11,7 @@ const corsHeaders = {
 interface NotifyPayload {
   client_email: string;
   alt_email?: string;
+  cc_emails?: string;
   client_name: string;
   subject: string;
   title: string;
@@ -54,6 +55,7 @@ Deno.serve(async (req: Request) => {
     const {
       client_email,
       alt_email,
+      cc_emails,
       client_name,
       subject,
       title,
@@ -177,6 +179,9 @@ Deno.serve(async (req: Request) => {
     const recipients = [client_email];
     if (alt_email && alt_email !== client_email) {
       recipients.push(alt_email);
+    }
+    if (cc_emails) {
+      cc_emails.split(',').map(e => e.trim()).filter(e => e && e !== client_email && e !== alt_email).forEach(e => recipients.push(e));
     }
 
     const replyTo = Deno.env.get("RESEND_REPLY_TO") || "mathias@cenas.uy";
