@@ -74,7 +74,21 @@ try {
     Write-Log "❌ system-health Error: $($_.Exception.Message)"
 }
 
-# ---------- 2. RED (Ping / Latencia / Pérdida) ----------
+# ---------- 2. RED (Gateway + Internet + Latencia / Pérdida) ----------
+
+# Detectar gateway automáticamente
+try {
+    $GatewayIP = (Get-NetRoute -DestinationPrefix "0.0.0.0/0" |
+                  Sort-Object RouteMetric |
+                  Select-Object -First 1).NextHop
+} catch {
+    $GatewayIP = $null
+}
+
+$gatewayOk  = if ($GatewayIP) { Test-Connection $GatewayIP   -Count 1 -Quiet } else { $false }
+$internetOk = Test-Connection $TargetHost -Count 1 -Quiet
+
+# Latencia e internet con múltiples pings solo si hay conectividad
 try {
     $pingResults = Test-Connection -ComputerName $TargetHost -Count $PingCount -ErrorAction Stop
     $avgLatency  = [math]::Round(
@@ -85,16 +99,24 @@ try {
     $avgLatency = 9999; $packetLoss = 100
 }
 
-$netStatus = if   ($packetLoss -gt 10 -or $avgLatency -gt 200) { "error" }
-             elseif ($packetLoss -gt 2  -or $avgLatency -gt 100) { "warning" }
+# error = sin internet; warning = gateway ok pero internet lento/perdida; ok = todo bien
+$netStatus = if   (-not $gatewayOk)                                        { "error" }
+             elseif (-not $internetOk)                                      { "error" }
+             elseif ($packetLoss -gt 10 -or $avgLatency -gt 200)           { "warning" }
+             elseif ($packetLoss -gt 2  -or $avgLatency -gt 100)           { "warning" }
              else { "ok" }
+
+$netMsg = "GW: $(if ($gatewayOk) {'ok'} else {'❌'}) | Internet: $(if ($internetOk) {'ok'} else {'❌'}) | Ping: ${avgLatency}ms | Loss: ${packetLoss}%"
 
 $netBody = @{
     service_id = $SERVICE_ID
     source     = "network"
     status     = $netStatus
-    message    = "Ping: ${avgLatency}ms | Loss: ${packetLoss}%"
+    message    = $netMsg
     payload    = @{
+        gateway_ip      = $GatewayIP
+        gateway_ok      = $gatewayOk
+        internet_ok     = $internetOk
         ping_ms         = $avgLatency
         packet_loss_pct = $packetLoss
     }
@@ -102,7 +124,7 @@ $netBody = @{
 
 try {
     Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $netBody | Out-Null
-    Write-Log "✅ network → $netStatus | Ping: ${avgLatency}ms | Loss: ${packetLoss}%"
+    Write-Log "✅ network → $netStatus | $netMsg"
 } catch {
     Write-Log "❌ network Error: $($_.Exception.Message)"
 }
