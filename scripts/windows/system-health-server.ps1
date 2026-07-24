@@ -188,8 +188,19 @@ try {
     $diskLatency = 0
 }
 
-$rdpStatus = if   ($sessions -ge $RdpSessionWarning -or $disconnects -gt 3) { "warning" }
-             elseif ($rdpConnections -eq 0 -and $sessions -gt 0)             { "warning" }
+# Límite de sesiones: leer del sistema, fallback a $RdpSessionWarning del config
+try {
+    $maxAllowed = (Get-WmiObject -Namespace "root\cimv2\TerminalServices" `
+        -Class Win32_TerminalServiceSetting -ErrorAction Stop).MaxConnectionAllowed
+    if (-not $maxAllowed -or $maxAllowed -eq 0) { $maxAllowed = $RdpSessionWarning }
+} catch {
+    $maxAllowed = $RdpSessionWarning
+}
+$rdpWarnThreshold = [math]::Floor($maxAllowed * 0.85)
+
+$rdpStatus = if   ($sessions -ge $maxAllowed -or $disconnects -gt 3)    { "error" }
+             elseif ($sessions -ge $rdpWarnThreshold)                    { "warning" }
+             elseif ($rdpConnections -eq 0 -and $sessions -gt 0)        { "warning" }
              else { "ok" }
 
 $diskIOStatus = if   ($diskLatency -gt 0.050) { "error" }
@@ -205,9 +216,10 @@ $rdpBody = @{
     service_id = $SERVICE_ID
     source     = "rdp"
     status     = $rdpOverallStatus
-    message    = "Sessions: $sessions | TCP 3389: $rdpConnections | Disconnects (${RdpEventWindow}m): $disconnects | DiskIO: ${diskLatency}s"
+    message    = "Sessions: $sessions/$maxAllowed | TCP 3389: $rdpConnections | Disconnects (${RdpEventWindow}m): $disconnects | DiskIO: ${diskLatency}s"
     payload    = @{
         rdp_sessions        = $sessions
+        rdp_max_allowed     = $maxAllowed
         rdp_tcp_connections = $rdpConnections
         rdp_disconnects     = $disconnects
         disk_latency_sec    = $diskLatency
