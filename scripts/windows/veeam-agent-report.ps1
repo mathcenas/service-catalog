@@ -6,13 +6,27 @@
 
 . "$PSScriptRoot\config.ps1"
 
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+# ---------- Log local con retención mensual ----------
+$LogDir  = "$PSScriptRoot\logs"
+if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir | Out-Null }
+$LogFile = "$LogDir\veeam-agent-report-$(Get-Date -Format 'yyyy-MM').log"
+function Write-Log($msg) {
+    $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $msg"
+    Add-Content -Path $LogFile -Value $line
+    Write-Host $line
+}
+Get-ChildItem "$LogDir\veeam-agent-report-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-31) } | Remove-Item -Force
+
 Add-PSSnapin VeeamAgentPSSnapIn -ErrorAction SilentlyContinue
 
 $since    = (Get-Date).AddHours(-25)
 $sessions = Get-VBRComputerBackupJobSession | Where-Object { $_.State -eq "Stopped" -and $_.EndTime -gt $since } | Sort-Object EndTime -Descending
 
 if (-not $sessions) {
-    Write-Host "No completed sessions found in last 25 hours"
+    Write-Log "No completed sessions found in last 25 hours"
     exit
 }
 
@@ -49,8 +63,8 @@ foreach ($session in $sessions) {
 
     try {
         Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body | Out-Null
-        Write-Host "✅ $jobName → $status | $([math]::Round($sizeBytes/1GB,2)) GB | $([math]::Round($durationSecs/60,1)) min"
+        Write-Log "✅ $jobName → $status | $([math]::Round($sizeBytes/1GB,2)) GB | $([math]::Round($durationSecs/60,1)) min"
     } catch {
-        Write-Host "❌ $jobName Error: $($_.Exception.Message)"
+        Write-Log "❌ $jobName Error: $($_.Exception.Message)"
     }
 }

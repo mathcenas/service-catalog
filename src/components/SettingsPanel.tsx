@@ -14,6 +14,9 @@ export function SettingsPanel() {
   const [digestEmail, setDigestEmail] = useState('');
   const [savingDigest, setSavingDigest] = useState(false);
   const [testingDigest, setTestingDigest] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookToken, setWebhookToken] = useState('');
+  const [savingWebhook, setSavingWebhook] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -28,6 +31,8 @@ export function SettingsPanel() {
         setCompanyName(data.company_name || '');
         setDigestEnabled(data.weekly_digest_enabled ?? false);
         setDigestEmail(data.weekly_digest_email || '');
+        setWebhookUrl(data.webhook_url || '');
+        setWebhookToken(data.webhook_token || '');
       }
       setLoading(false);
     };
@@ -122,6 +127,15 @@ export function SettingsPanel() {
       });
     }
     setTestingDigest(false);
+  };
+
+  const handleSaveWebhook = async () => {
+    setSavingWebhook(true);
+    await upsertSettings({
+      webhook_url: webhookUrl.trim() || undefined,
+      webhook_token: webhookToken.trim() || undefined,
+    });
+    setSavingWebhook(false);
   };
 
   if (loading) {
@@ -230,6 +244,30 @@ export function SettingsPanel() {
             {testingDigest ? 'Sending...' : 'Send test now'}
           </button>
         </div>
+      </div>
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800">External Portal Webhook</h3>
+          <p className="text-xs text-gray-500 mt-0.5">When a Problem or Change Request is closed, a JSON summary is POSTed to this URL. Optional — leave blank to skip.</p>
+        </div>
+        <div className="space-y-3 max-w-lg">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Webhook URL</label>
+            <input type="url" value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)}
+              placeholder="https://portal.example.com/api/webhook"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Bearer Token (optional)</label>
+            <input type="password" value={webhookToken} onChange={e => setWebhookToken(e.target.value)}
+              placeholder="sk-..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+          </div>
+        </div>
+        <button onClick={handleSaveWebhook} disabled={savingWebhook}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+          {savingWebhook ? 'Saving...' : 'Save'}
+        </button>
       </div>
     </div>
   );

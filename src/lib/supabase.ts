@@ -33,6 +33,8 @@ export type UserSettings = {
   weekly_digest_enabled: boolean;
   weekly_digest_day: number;
   weekly_digest_email?: string;
+  webhook_url?: string;
+  webhook_token?: string;
   created_at: string;
   updated_at: string;
 };
@@ -168,13 +170,15 @@ export type RoadmapStatus = 'Planned' | 'In Progress' | 'Next Release' | 'Releas
 
 export const ROADMAP_STATUSES: RoadmapStatus[] = ['Planned', 'In Progress', 'Next Release', 'Released'];
 
-export type RoadmapCategory = 'idea' | 'payment' | 'backup' | 'visit';
+export type RoadmapCategory = 'idea' | 'payment' | 'backup' | 'visit' | 'problem' | 'change_request';
 
 export const ROADMAP_CATEGORIES: { value: RoadmapCategory; label: string }[] = [
   { value: 'idea', label: 'New Service / Idea' },
   { value: 'payment', label: 'Pending Payment' },
   { value: 'backup', label: 'Backup Integration' },
   { value: 'visit', label: 'Visit / Coordination' },
+  { value: 'problem', label: 'Problem / Incident' },
+  { value: 'change_request', label: 'Change Request' },
 ];
 
 export type RoadmapItem = {
