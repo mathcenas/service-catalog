@@ -154,6 +154,7 @@ export function RoadmapManager({ clients, services }: Props) {
               sender_name: user?.email,
               logo_url: logoUrl,
               roadmap_item_id: item.id,
+              category: item.category,
             }),
           }).catch(() => {});
           await updateItem(item.id, { notified_at: new Date().toISOString() });
@@ -211,6 +212,7 @@ export function RoadmapManager({ clients, services }: Props) {
           sender_name: user?.email,
           logo_url: logoUrl,
           roadmap_item_id: item.id,
+          category: item.category,
         }),
       });
 
@@ -289,6 +291,7 @@ export function RoadmapManager({ clients, services }: Props) {
               sender_name: user?.email,
               logo_url: logoUrl,
               roadmap_item_id: item.id,
+              category: item.category,
             }),
           });
           result.email = res.ok ? 'ok' : 'err';
