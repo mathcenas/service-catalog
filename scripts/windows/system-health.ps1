@@ -6,6 +6,9 @@
 
 . "$PSScriptRoot\config.ps1"
 
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 # ---------- Log local con retención mensual ----------
 $LogDir  = "$PSScriptRoot\logs"
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir | Out-Null }

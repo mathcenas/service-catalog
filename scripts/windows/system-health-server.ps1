@@ -6,6 +6,9 @@
 
 . "$PSScriptRoot\config.ps1"
 
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 # ---------- Parámetros ----------
 $TargetHost        = "8.8.8.8"
 $PingCount         = 5

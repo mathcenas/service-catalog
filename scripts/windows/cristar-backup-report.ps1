@@ -7,11 +7,25 @@
 
 . "$PSScriptRoot\config.ps1"
 
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+# ---------- Log local con retención mensual ----------
+$LogDir  = "$PSScriptRoot\logs"
+if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir | Out-Null }
+$LogFile = "$LogDir\cristar-backup-$(Get-Date -Format 'yyyy-MM').log"
+function Write-Log($msg) {
+    $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $msg"
+    Add-Content -Path $LogFile -Value $line
+    Write-Host $line
+}
+Get-ChildItem "$LogDir\cristar-backup-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-31) } | Remove-Item -Force
+
 $LOG_PATH = "C:\Sistema\Temp\Backup_log"
 $today    = (Get-Date).ToString("dd/MM/yyyy")
 
 if (-not (Test-Path $LOG_PATH)) {
-    Write-Host "❌ Log no encontrado: $LOG_PATH"
+    Write-Log "❌ Log no encontrado: $LOG_PATH"
     exit 1
 }
 
@@ -19,7 +33,7 @@ if (-not (Test-Path $LOG_PATH)) {
 $lines = Get-Content $LOG_PATH | Where-Object { $_.StartsWith($today) }
 
 if (-not $lines) {
-    Write-Host "No hay entradas de hoy en el log"
+    Write-Log "No hay entradas de hoy en el log"
     exit
 }
 
@@ -61,7 +75,7 @@ $headers = @{
 
 try {
     Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body | Out-Null
-    Write-Host "✅ Cristar backup → $status | $($uploaded.Count) archivos | $([math]::Round($totalBytes/1MB,1)) MB"
+    Write-Log "✅ Cristar backup → $status | $($uploaded.Count) archivos | $([math]::Round($totalBytes/1MB,1)) MB"
 } catch {
-    Write-Host "❌ Error: $($_.Exception.Message)"
+    Write-Log "❌ Error: $($_.Exception.Message)"
 }
