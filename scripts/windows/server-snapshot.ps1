@@ -79,6 +79,12 @@ $headers = @{
     "X-Ingest-Secret" = $INGEST_SECRET
 }
 
+# Helper PS 5.1: primer valor no nulo/vacío de una lista
+function Coalesce {
+    foreach ($v in $args) { if ($v -ne $null -and $v -ne '') { return $v } }
+    return $null
+}
+
 # ---------- Enviar cada fila nueva ----------
 $sent = 0
 foreach ($rawLine in @($newLines)) {
@@ -91,21 +97,21 @@ foreach ($rawLine in @($newLines)) {
         $row[$header[$i].Trim()] = $cols[$i].Trim()
     }
 
-    # Extraer campos — se adaptan a los nombres de columna del CSV
-    $cpu_percent           = [double]($row['cpu_percent']           ?? $row['CPU_Percent']           ?? 0)
-    $disk_latency_ms       = [double]($row['disk_latency_ms']       ?? $row['Disk_Latency_ms']       ?? 0)
-    $disk_queue            = [int]   ($row['disk_queue']            ?? $row['Disk_Queue']            ?? 0)
-    $rdp_sessions          = [int]   ($row['rdp_sessions']          ?? $row['RDP_Sessions']          ?? 0)
-    $tcp3389               = [int]   ($row['tcp3389_connections']   ?? $row['TCP3389']               ?? 0)
-    $smb_sessions          = [int]   ($row['smb_sessions']          ?? $row['SMB_Sessions']          ?? 0)
-    $smb_open_files        = [int]   ($row['smb_open_files']        ?? $row['SMB_Open_Files']        ?? 0)
-    $rdp_disconnect_events = [int]   ($row['rdp_disconnect_events'] ?? $row['RDP_Disconnect_Events'] ?? 0)
-    $top_process           = [string]($row['top_process']           ?? $row['Top_Process']           ?? '')
-    $probable_cause        = [string]($row['probable_cause']        ?? $row['Probable_Cause']        ?? 'Normal')
-    $timestamp             = [string]($row['timestamp']             ?? $row['Timestamp']             ?? (Get-Date -Format "yyyy-MM-ddTHH:mm:ss"))
+    # Extraer campos — acepta mayúsculas o minúsculas en los headers
+    $cpu_percent           = [double](Coalesce $row['cpu_percent']           $row['CPU_Percent']           '0')
+    $disk_latency_ms       = [double](Coalesce $row['disk_latency_ms']       $row['Disk_Latency_ms']       '0')
+    $disk_queue            = [int]   (Coalesce $row['disk_queue']            $row['Disk_Queue']            '0')
+    $rdp_sessions          = [int]   (Coalesce $row['rdp_sessions']          $row['RDP_Sessions']          '0')
+    $tcp3389               = [int]   (Coalesce $row['tcp3389_connections']   $row['TCP3389']               '0')
+    $smb_sessions          = [int]   (Coalesce $row['smb_sessions']          $row['SMB_Sessions']          '0')
+    $smb_open_files        = [int]   (Coalesce $row['smb_open_files']        $row['SMB_Open_Files']        '0')
+    $rdp_disconnect_events = [int]   (Coalesce $row['rdp_disconnect_events'] $row['RDP_Disconnect_Events'] '0')
+    $top_process           = [string](Coalesce $row['top_process']           $row['Top_Process']           '')
+    $probable_cause        = [string](Coalesce $row['probable_cause']        $row['Probable_Cause']        'Normal')
+    $timestamp             = [string](Coalesce $row['timestamp']             $row['Timestamp']             (Get-Date -Format "yyyy-MM-ddTHH:mm:ss"))
 
-    $gateway_raw  = $row['gateway_ping']  ?? $row['Gateway_Ping']  ?? 'True'
-    $internet_raw = $row['internet_ping'] ?? $row['Internet_Ping'] ?? 'True'
+    $gateway_raw  = Coalesce $row['gateway_ping']  $row['Gateway_Ping']  'True'
+    $internet_raw = Coalesce $row['internet_ping'] $row['Internet_Ping'] 'True'
     $gateway_ping  = $gateway_raw  -notin 'False','0','false','no'
     $internet_ping = $internet_raw -notin 'False','0','false','no'
 
