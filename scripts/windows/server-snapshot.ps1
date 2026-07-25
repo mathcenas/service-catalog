@@ -22,7 +22,7 @@ function Write-Log($msg) {
 Get-ChildItem "$LogDir\server-snapshot-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-31) } | Remove-Item -Force
 
 # ---------- Fuentes ----------
-$CsvFile   = "C:\Monitor\RDS_Backup_Monitor.csv"
+$CsvFile   = "C:\Monitor\RDS_Telemetry.csv"
 $StateFile = "C:\Monitor\lastposition.txt"
 
 # ---------- Thresholds ----------
