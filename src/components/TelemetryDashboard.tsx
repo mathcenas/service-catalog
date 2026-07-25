@@ -22,6 +22,7 @@ function formatBytes(bytes: number): string {
 function staleThresholdForSource(source: string): number {
   if (source === 'rdp' || source === 'network') return 30 * 60 * 1000;
   if (source === 'speedtest') return 2 * 60 * 60 * 1000;
+  if (source === 'server-snapshot') return 25 * 60 * 60 * 1000; // runs once daily
   return 2 * 60 * 60 * 1000; // system-health
 }
 
@@ -61,6 +62,16 @@ function MetricChips({ hb }: { hb: ServiceHeartbeat }) {
     if (p.packet_loss_pct != null) chips.push({ label: 'Loss', value: `${p.packet_loss_pct}%`, warn: Number(p.packet_loss_pct) > 2 });
     if (p.download_mbps != null) chips.push({ label: '↓', value: `${p.download_mbps} Mbps` });
     if (p.upload_mbps != null) chips.push({ label: '↑', value: `${p.upload_mbps} Mbps` });
+  } else if (hb.source === 'server-snapshot') {
+    if (p.cpu_percent != null) chips.push({ label: 'CPU', value: `${p.cpu_percent}%`, warn: Number(p.cpu_percent) > 80, error: Number(p.cpu_percent) > 95 });
+    if (p.disk_latency_ms != null) chips.push({ label: 'DiskIO', value: `${p.disk_latency_ms}ms`, warn: Number(p.disk_latency_ms) > 50, error: Number(p.disk_latency_ms) > 150 });
+    if (p.disk_queue != null) chips.push({ label: 'Queue', value: `${p.disk_queue}`, warn: Number(p.disk_queue) > 10, error: Number(p.disk_queue) > 30 });
+    if (p.rdp_sessions != null) chips.push({ label: 'RDP', value: `${p.rdp_sessions}`, warn: Number(p.rdp_sessions) > 15 });
+    if (p.smb_sessions != null && Number(p.smb_sessions) > 0) chips.push({ label: 'SMB', value: `${p.smb_sessions} / ${p.smb_open_files ?? 0}f` });
+    if (p.gateway_ping != null) chips.push({ label: 'GW', value: p.gateway_ping ? 'ok' : '✗', error: !p.gateway_ping });
+    if (p.internet_ping != null) chips.push({ label: 'Net', value: p.internet_ping ? 'ok' : '✗', error: !p.internet_ping });
+    if (p.rdp_disconnect_events != null && Number(p.rdp_disconnect_events) > 0) chips.push({ label: 'Disc', value: `${p.rdp_disconnect_events}`, warn: true });
+    if (p.probable_cause && p.probable_cause !== 'Normal') chips.push({ label: 'Cause', value: String(p.probable_cause), warn: true });
   } else {
     // Generic: show all numeric/boolean values
     for (const [k, v] of Object.entries(p)) {
@@ -91,6 +102,7 @@ const SOURCE_ICONS: Record<string, typeof Monitor> = {
   'network': Wifi,
   'rdp': Monitor,
   'speedtest': Wifi,
+  'server-snapshot': Server,
 };
 
 function SourceIcon({ source }: { source: string }) {
