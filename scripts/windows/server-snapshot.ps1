@@ -94,7 +94,7 @@ foreach ($rawLine in @($newLines)) {
     $cols = $rawLine -split ','
     $row  = @{}
     for ($i = 0; $i -lt $header.Count -and $i -lt $cols.Count; $i++) {
-        $row[$header[$i].Trim()] = $cols[$i].Trim()
+        $row[$header[$i].Trim().Trim('"')] = $cols[$i].Trim().Trim('"')
     }
 
     # Extraer campos — acepta mayúsculas o minúsculas en los headers
