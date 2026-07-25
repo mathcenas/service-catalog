@@ -21,6 +21,7 @@ interface NotifyPayload {
   sender_name?: string;
   logo_url?: string;
   roadmap_item_id?: string;
+  category?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -65,6 +66,7 @@ Deno.serve(async (req: Request) => {
       sender_name,
       logo_url,
       roadmap_item_id,
+      category,
     } = payload;
 
     if (!client_email || !subject || !title) {
@@ -109,11 +111,22 @@ Deno.serve(async (req: Request) => {
       ? `<img src="${logo_url}" alt="Logo" style="max-height: 40px; max-width: 160px; margin-bottom: 16px;" />`
       : "";
 
+    // Header label and accent color per category
+    const categoryMeta: Record<string, { label: string; color: string; footer: string }> = {
+      problem:        { label: "Notificación de Incidente", color: "#dc2626", footer: "Si tiene consultas sobre este incidente, responda a este correo." },
+      change_request: { label: "Solicitud de Cambio",       color: "#7c3aed", footer: "Si tiene consultas sobre este cambio, responda a este correo." },
+      visit:          { label: "Coordinación de Visita",    color: "#0284c7", footer: "Si necesita reprogramar, responda a este correo." },
+      payment:        { label: "Aviso de Pago",             color: "#0284c7", footer: "Si tiene consultas sobre este pago, responda a este correo." },
+      backup:         { label: "Integración de Backup",     color: "#0d9488", footer: "Si tiene consultas, responda a este correo." },
+      idea:           { label: "Nueva Propuesta de Servicio", color: "#2563eb", footer: "Si tiene consultas sobre esta propuesta, responda a este correo." },
+    };
+    const meta = categoryMeta[category || ""] ?? { label: "Acción Planificada", color: "#2563eb", footer: "Si tiene consultas sobre esta acción, responda a este correo." };
+
     const htmlBody = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 24px;">
-        <div style="border-bottom: 2px solid #2563eb; padding-bottom: 16px; margin-bottom: 24px;">
+        <div style="border-bottom: 2px solid ${meta.color}; padding-bottom: 16px; margin-bottom: 24px;">
           ${logoHtml}
-          <h2 style="color: #1e293b; margin: 0; font-size: 20px;">Planned Service Action</h2>
+          <h2 style="color: #1e293b; margin: 0; font-size: 20px;">${meta.label}</h2>
           ${sender_name ? `<p style="color: #64748b; margin: 4px 0 0; font-size: 13px;">From ${sender_name}</p>` : ""}
         </div>
 
@@ -140,7 +153,7 @@ Deno.serve(async (req: Request) => {
         ` : ""}
 
         <p style="color: #64748b; font-size: 13px; margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
-          Si tiene consultas sobre esta accion planificada, responda a este correo.
+          ${meta.footer}
         </p>
 
         <div style="margin-top: 32px; padding: 16px 20px; background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%); border-radius: 8px; text-align: center;">
