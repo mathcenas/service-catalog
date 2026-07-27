@@ -194,18 +194,18 @@ export function RoadmapManager({ clients, services }: Props) {
       console.log('[notify-client] Sending to:', client.email, client.alt_email || '(no alt)');
       console.log('[notify-client] URL:', apiUrl);
 
+      const subjectPrefix =
+        item.category === 'problem' ? 'Incidente' :
+        item.category === 'change_request' ? 'Solicitud de cambio' :
+        item.category === 'visit' ? 'Visita programada' :
+        item.category === 'payment' ? 'Aviso de pago' : 'Planificado';
+
       const res = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.session.access_token}`,
           'Content-Type': 'application/json',
         },
-        const subjectPrefix =
-          item.category === 'problem' ? 'Incidente' :
-          item.category === 'change_request' ? 'Solicitud de cambio' :
-          item.category === 'visit' ? 'Visita programada' :
-          item.category === 'payment' ? 'Aviso de pago' : 'Planificado';
-
         body: JSON.stringify({
           client_email: client.email,
           alt_email: client.alt_email || undefined,
