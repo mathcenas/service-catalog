@@ -23,6 +23,7 @@ function staleThresholdForSource(source: string): number {
   if (source === 'rdp' || source === 'network') return 30 * 60 * 1000;
   if (source === 'speedtest') return 2 * 60 * 60 * 1000;
   if (source === 'server-snapshot') return 25 * 60 * 60 * 1000; // runs once daily
+  if (source === 'mikrotik') return 5 * 60 * 1000; // every minute
   return 2 * 60 * 60 * 1000; // system-health
 }
 
@@ -62,6 +63,12 @@ function MetricChips({ hb }: { hb: ServiceHeartbeat }) {
     if (p.packet_loss_pct != null) chips.push({ label: 'Loss', value: `${p.packet_loss_pct}%`, warn: Number(p.packet_loss_pct) > 2 });
     if (p.download_mbps != null) chips.push({ label: '↓', value: `${p.download_mbps} Mbps` });
     if (p.upload_mbps != null) chips.push({ label: '↑', value: `${p.upload_mbps} Mbps` });
+  } else if (hb.source === 'mikrotik') {
+    if (p.cpu_pct != null) chips.push({ label: 'CPU', value: `${p.cpu_pct}%`, warn: Number(p.cpu_pct) > 80, error: Number(p.cpu_pct) > 95 });
+    if (p.ram_pct != null) chips.push({ label: 'RAM', value: `${p.ram_pct}%`, warn: Number(p.ram_pct) > 85, error: Number(p.ram_pct) > 92 });
+    if (p.wan_in_mbps != null) chips.push({ label: 'WAN', value: `${p.wan_in_mbps} Mbps` });
+    if (p.ipsec_status != null) chips.push({ label: 'IPsec', value: String(p.ipsec_status), warn: p.ipsec_status === 'OFFLINE', error: false });
+    if (p.client) chips.push({ label: 'Router', value: String(p.client) });
   } else if (hb.source === 'server-snapshot') {
     if (p.cpu_percent != null) chips.push({ label: 'CPU', value: `${p.cpu_percent}%`, warn: Number(p.cpu_percent) > 80, error: Number(p.cpu_percent) > 95 });
     if (p.disk_latency_ms != null) chips.push({ label: 'DiskIO', value: `${p.disk_latency_ms}ms`, warn: Number(p.disk_latency_ms) > 50, error: Number(p.disk_latency_ms) > 150 });
@@ -103,6 +110,7 @@ const SOURCE_ICONS: Record<string, typeof Monitor> = {
   'rdp': Monitor,
   'speedtest': Wifi,
   'server-snapshot': Server,
+  'mikrotik': Wifi,
 };
 
 function SourceIcon({ source }: { source: string }) {
