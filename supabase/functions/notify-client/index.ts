@@ -22,6 +22,7 @@ interface NotifyPayload {
   logo_url?: string;
   roadmap_item_id?: string;
   category?: string;
+  event_type?: 'notify' | 'released' | 'closed';
 }
 
 Deno.serve(async (req: Request) => {
@@ -67,6 +68,7 @@ Deno.serve(async (req: Request) => {
       logo_url,
       roadmap_item_id,
       category,
+      event_type,
     } = payload;
 
     if (!client_email || !subject || !title) {
@@ -111,16 +113,33 @@ Deno.serve(async (req: Request) => {
       ? `<img src="${logo_url}" alt="Logo" style="max-height: 40px; max-width: 160px; margin-bottom: 16px;" />`
       : "";
 
-    // Header label and accent color per category
-    const categoryMeta: Record<string, { label: string; color: string; footer: string }> = {
-      problem:        { label: "Notificación de Incidente", color: "#dc2626", footer: "Si tiene consultas sobre este incidente, responda a este correo." },
-      change_request: { label: "Solicitud de Cambio",       color: "#7c3aed", footer: "Si tiene consultas sobre este cambio, responda a este correo." },
-      visit:          { label: "Coordinación de Visita",    color: "#0284c7", footer: "Si necesita reprogramar, responda a este correo." },
-      payment:        { label: "Aviso de Pago",             color: "#0284c7", footer: "Si tiene consultas sobre este pago, responda a este correo." },
-      backup:         { label: "Integración de Backup",     color: "#0d9488", footer: "Si tiene consultas, responda a este correo." },
-      idea:           { label: "Nueva Propuesta de Servicio", color: "#2563eb", footer: "Si tiene consultas sobre esta propuesta, responda a este correo." },
+    // Header label and accent color — event_type overrides category when releasing/closing
+    type EmailMeta = { label: string; color: string; footer: string };
+
+    const releasedMeta: Record<string, EmailMeta> = {
+      problem:        { label: "✅ Incidente Resuelto",       color: "#16a34a", footer: "Si tiene alguna consulta adicional, responda a este correo." },
+      change_request: { label: "✅ Cambio Completado",         color: "#16a34a", footer: "Si tiene alguna consulta sobre el cambio, responda a este correo." },
+      visit:          { label: "✅ Visita Completada",         color: "#16a34a", footer: "Si necesita coordinar algo más, responda a este correo." },
+      payment:        { label: "✅ Pago Procesado",            color: "#16a34a", footer: "Puede responder este correo ante cualquier consulta." },
+      backup:         { label: "✅ Backup Configurado",        color: "#16a34a", footer: "Puede responder este correo ante cualquier consulta." },
+      idea:           { label: "✅ Servicio Activado",         color: "#16a34a", footer: "Su nuevo servicio ya está disponible. Responda ante cualquier consulta." },
     };
-    const meta = categoryMeta[category || ""] ?? { label: "Acción Planificada", color: "#2563eb", footer: "Si tiene consultas sobre esta acción, responda a este correo." };
+
+    const notifyMeta: Record<string, EmailMeta> = {
+      problem:        { label: "Notificación de Incidente",   color: "#dc2626", footer: "Si tiene consultas sobre este incidente, responda a este correo." },
+      change_request: { label: "Solicitud de Cambio",          color: "#7c3aed", footer: "Si tiene consultas sobre este cambio, responda a este correo." },
+      visit:          { label: "Coordinación de Visita",       color: "#0284c7", footer: "Si necesita reprogramar, responda a este correo." },
+      payment:        { label: "Aviso de Pago",                color: "#0284c7", footer: "Si tiene consultas sobre este pago, responda a este correo." },
+      backup:         { label: "Integración de Backup",        color: "#0d9488", footer: "Si tiene consultas, responda a este correo." },
+      idea:           { label: "Nueva Propuesta de Servicio",  color: "#2563eb", footer: "Si tiene consultas sobre esta propuesta, responda a este correo." },
+    };
+
+    const defaultMeta: EmailMeta = { label: "Acción Planificada", color: "#2563eb", footer: "Si tiene consultas sobre esta acción, responda a este correo." };
+
+    const meta: EmailMeta =
+      (event_type === 'released' || event_type === 'closed')
+        ? (releasedMeta[category || ""] ?? { label: "✅ Completado", color: "#16a34a", footer: "Si tiene alguna consulta, responda a este correo." })
+        : (notifyMeta[category || ""] ?? defaultMeta);
 
     const htmlBody = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 24px;">

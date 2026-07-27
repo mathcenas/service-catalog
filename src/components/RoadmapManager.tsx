@@ -146,8 +146,8 @@ export function RoadmapManager({ clients, services }: Props) {
               alt_email: client.alt_email || undefined,
               cc_emails: client.cc_emails || undefined,
               client_name: client.contact_name || client.company_name,
-              subject: `Released: ${item.title}`,
-              title: `✅ Released: ${item.title}`,
+              subject: `Publicado: ${item.title}`,
+              title: item.title,
               description: item.description || undefined,
               scheduled_date: item.scheduled_date || undefined,
               share_url: shareUrl,
@@ -155,6 +155,7 @@ export function RoadmapManager({ clients, services }: Props) {
               logo_url: logoUrl,
               roadmap_item_id: item.id,
               category: item.category,
+              event_type: 'released',
             }),
           }).catch(() => {});
           await updateItem(item.id, { notified_at: new Date().toISOString() });
@@ -199,12 +200,18 @@ export function RoadmapManager({ clients, services }: Props) {
           'Authorization': `Bearer ${session.session.access_token}`,
           'Content-Type': 'application/json',
         },
+        const subjectPrefix =
+          item.category === 'problem' ? 'Incidente' :
+          item.category === 'change_request' ? 'Solicitud de cambio' :
+          item.category === 'visit' ? 'Visita programada' :
+          item.category === 'payment' ? 'Aviso de pago' : 'Planificado';
+
         body: JSON.stringify({
           client_email: client.email,
           alt_email: client.alt_email || undefined,
           cc_emails: client.cc_emails || undefined,
           client_name: client.contact_name || client.company_name,
-          subject: `Planned: ${item.title}`,
+          subject: `${subjectPrefix}: ${item.title}`,
           title: item.title,
           description: item.description,
           scheduled_date: item.scheduled_date,
@@ -213,6 +220,7 @@ export function RoadmapManager({ clients, services }: Props) {
           logo_url: logoUrl,
           roadmap_item_id: item.id,
           category: item.category,
+          event_type: 'notify',
         }),
       });
 
@@ -284,14 +292,15 @@ export function RoadmapManager({ clients, services }: Props) {
               alt_email: client.alt_email || undefined,
               cc_emails: client.cc_emails || undefined,
               client_name: client.contact_name || client.company_name,
-              subject: `${item.category === 'problem' ? 'Incident resolved' : 'Change completed'}: ${item.title}`,
-              title: `✅ ${item.category === 'problem' ? 'Incident resolved' : 'Change completed'}: ${item.title}`,
+              subject: `${item.category === 'problem' ? 'Incidente resuelto' : 'Cambio completado'}: ${item.title}`,
+              title: item.title,
               description: item.description || undefined,
               share_url: shareUrl,
               sender_name: user?.email,
               logo_url: logoUrl,
               roadmap_item_id: item.id,
               category: item.category,
+              event_type: 'closed',
             }),
           });
           result.email = res.ok ? 'ok' : 'err';
@@ -621,7 +630,16 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
             }}
             className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
           >
-            {ROADMAP_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            {isTicket ? (
+              <>
+                <option value="Planned">Abierto</option>
+                <option value="In Progress">En proceso</option>
+                <option value="Next Release">Pendiente cierre</option>
+                <option value="Released">Resuelto</option>
+              </>
+            ) : (
+              ROADMAP_STATUSES.map(s => <option key={s} value={s}>{s}</option>)
+            )}
           </select>
           <input
             type="date"
@@ -706,15 +724,31 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
           </button>
         </div>
 
-        {/* Close & Publish — only for problem/change_request not yet Released */}
+        {/* Ticket actions — only for problem/change_request */}
         {isTicket && isOpen && (
           <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-2 flex-wrap">
+            {item.status === 'Planned' && (
+              <button
+                onClick={() => onUpdate(item.id, { status: 'In Progress' })}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-xs font-semibold transition-colors"
+              >
+                <Wrench className="w-3.5 h-3.5" /> Tomar
+              </button>
+            )}
+            {item.status === 'In Progress' && (
+              <button
+                onClick={() => onUpdate(item.id, { status: 'Next Release' })}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-xs font-semibold transition-colors"
+              >
+                <Check className="w-3.5 h-3.5" /> Pendiente cierre
+              </button>
+            )}
             <button
               onClick={() => onClosePublish(item)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold transition-colors"
             >
               <CheckCheck className="w-3.5 h-3.5" />
-              Close &amp; Publish
+              Cerrar y Publicar
             </button>
             {closePublishResult && (
               <div className="flex items-center gap-1.5 text-xs">
