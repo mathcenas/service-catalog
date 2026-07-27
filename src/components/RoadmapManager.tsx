@@ -146,8 +146,8 @@ export function RoadmapManager({ clients, services }: Props) {
               alt_email: client.alt_email || undefined,
               cc_emails: client.cc_emails || undefined,
               client_name: client.contact_name || client.company_name,
-              subject: `Released: ${item.title}`,
-              title: `✅ Released: ${item.title}`,
+              subject: `Publicado: ${item.title}`,
+              title: item.title,
               description: item.description || undefined,
               scheduled_date: item.scheduled_date || undefined,
               share_url: shareUrl,
@@ -155,6 +155,7 @@ export function RoadmapManager({ clients, services }: Props) {
               logo_url: logoUrl,
               roadmap_item_id: item.id,
               category: item.category,
+              event_type: 'released',
             }),
           }).catch(() => {});
           await updateItem(item.id, { notified_at: new Date().toISOString() });
@@ -219,6 +220,7 @@ export function RoadmapManager({ clients, services }: Props) {
           logo_url: logoUrl,
           roadmap_item_id: item.id,
           category: item.category,
+          event_type: 'notify',
         }),
       });
 
@@ -290,14 +292,15 @@ export function RoadmapManager({ clients, services }: Props) {
               alt_email: client.alt_email || undefined,
               cc_emails: client.cc_emails || undefined,
               client_name: client.contact_name || client.company_name,
-              subject: `${item.category === 'problem' ? 'Incident resolved' : 'Change completed'}: ${item.title}`,
-              title: `✅ ${item.category === 'problem' ? 'Incident resolved' : 'Change completed'}: ${item.title}`,
+              subject: `${item.category === 'problem' ? 'Incidente resuelto' : 'Cambio completado'}: ${item.title}`,
+              title: item.title,
               description: item.description || undefined,
               share_url: shareUrl,
               sender_name: user?.email,
               logo_url: logoUrl,
               roadmap_item_id: item.id,
               category: item.category,
+              event_type: 'closed',
             }),
           });
           result.email = res.ok ? 'ok' : 'err';
