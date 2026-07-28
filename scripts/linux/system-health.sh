@@ -6,15 +6,25 @@
 #   0 * * * * /srv/scripts/system-health.sh
 # =============================================================
 
-# ---------- Config (editar estos valores) ----------
-SUPABASE_URL="https://REEMPLAZAR.supabase.co"
-ANON_KEY="REEMPLAZAR_CON_ANON_KEY"
-INGEST_SECRET="REEMPLAZAR_CON_INGEST_SECRET"
-SERVICE_ID="REEMPLAZAR_CON_SERVICE_ID"
+# ---------- Cargar .env ----------
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENV_FILE="${1:-$SCRIPT_DIR/.env}"
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "ERROR: no se encontró el archivo de configuración: $ENV_FILE" >&2
+  exit 1
+fi
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+
+if [[ -z "$SUPABASE_URL" || -z "$ANON_KEY" || -z "$INGEST_SECRET" || -z "$SERVICE_ID" ]]; then
+  echo "ERROR: faltan variables en $ENV_FILE (SUPABASE_URL, ANON_KEY, INGEST_SECRET, SERVICE_ID)" >&2
+  exit 1
+fi
 
 # ---------- Internos ----------
 HEARTBEAT_URL="${SUPABASE_URL}/functions/v1/ingest-heartbeat"
-LOG_FILE="/var/log/system-health.log"
+LOG_FILE="${LOG_FILE:-/var/log/system-health.log}"
 MAX_LOG_BYTES=5242880  # 5 MB
 
 # ---------- Logger ----------

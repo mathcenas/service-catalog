@@ -21,6 +21,7 @@ scripts/
 │   ├── backup-ingest.env             # Configuración para report-backup.sh (rsnapshot standalone)
 │   ├── report-backup.sh              # Reporte individual de snapshot rsnapshot/rsync
 │   ├── system-health.sh              # CPU / RAM / Disco / Uptime de VPS → ingest-heartbeat
+│   ├── system-health.env.example     # Plantilla de configuración para system-health.sh
 │   └── mikrotik-heartbeat.sh         # Lee logs de Mikrotik por cliente → ingest-heartbeat
 └── nas/
     ├── backup-ingest.env             # Configuración NAS OpenMediaVault (con paths de snapshots)
@@ -153,10 +154,17 @@ Reporta CPU, RAM, disco `/` y uptime al heartbeat. Correr cada hora.
 
 ```bash
 cp system-health.sh /srv/scripts/system-health.sh
+cp system-health.env.example /srv/scripts/.env
 chmod +x /srv/scripts/system-health.sh
-# Editar: SUPABASE_URL, ANON_KEY, INGEST_SECRET, SERVICE_ID
+chmod 600 /srv/scripts/.env
+# Editar .env con SUPABASE_URL, ANON_KEY, INGEST_SECRET, SERVICE_ID
 # Crontab: cada hora
 0 * * * * /srv/scripts/system-health.sh
+```
+
+Para pasar un `.env` de otra ubicación:
+```bash
+0 * * * * /srv/scripts/system-health.sh /etc/service-catalog.env
 ```
 
 ---
