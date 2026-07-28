@@ -20,6 +20,7 @@ scripts/
 │   ├── backup.env.example            # Plantilla de configuración para backup.sh
 │   ├── backup-ingest.env             # Configuración para report-backup.sh (rsnapshot standalone)
 │   ├── report-backup.sh              # Reporte individual de snapshot rsnapshot/rsync
+│   ├── system-health.sh              # CPU / RAM / Disco / Uptime de VPS → ingest-heartbeat
 │   └── mikrotik-heartbeat.sh         # Lee logs de Mikrotik por cliente → ingest-heartbeat
 └── nas/
     ├── backup-ingest.env             # Configuración NAS OpenMediaVault (con paths de snapshots)
@@ -146,6 +147,20 @@ SERVICE_MAP["RegionalNorte"]="uuid-del-servicio"
 * * * * * /srv/network-monitor/mikrotik-heartbeat.sh
 ```
 
+## Linux — Sistema de salud VPS (`system-health.sh`)
+
+Reporta CPU, RAM, disco `/` y uptime al heartbeat. Correr cada hora.
+
+```bash
+cp system-health.sh /srv/scripts/system-health.sh
+chmod +x /srv/scripts/system-health.sh
+# Editar: SUPABASE_URL, ANON_KEY, INGEST_SECRET, SERVICE_ID
+# Crontab: cada hora
+0 * * * * /srv/scripts/system-health.sh
+```
+
+---
+
 ## NAS / OpenMediaVault (`report-all-backups.sh`)
 
 ```bash
@@ -173,4 +188,5 @@ chmod +x /usr/local/bin/report-all-backups.sh
 | `system-health.ps1` | `ingest-heartbeat` |
 | `system-health-server.ps1` | `ingest-heartbeat` |
 | `server-snapshot.ps1` | `ingest-heartbeat` |
+| `system-health.sh` | `ingest-heartbeat` |
 | `mikrotik-heartbeat.sh` | `ingest-heartbeat` |
