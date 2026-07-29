@@ -109,6 +109,7 @@ PAYLOAD=$(cat <<EOF
   "message": "$MESSAGE",
   "payload": {
     "cpu_pct": $CPU_PCT,
+    "load_avg": $LOAD1,
     "ram_pct": $RAM_PCT,
     "disk_pct": $DISK_PCT,
     "disk_free_gb": $DISK_FREE_GB,
