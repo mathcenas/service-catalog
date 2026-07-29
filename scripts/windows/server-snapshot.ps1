@@ -155,7 +155,7 @@ foreach ($rawLine in @($newLines)) {
     } | ConvertTo-Json -Depth 3
 
     try {
-        Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $body | Out-Null
+        Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $body -Proxy "" | Out-Null
         Write-Log "✅ server-snapshot → $status | $message"
         $sent++
     } catch {

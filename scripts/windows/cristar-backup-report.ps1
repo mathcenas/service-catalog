@@ -74,7 +74,7 @@ $headers = @{
 }
 
 try {
-    Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body | Out-Null
+    Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body -Proxy "" | Out-Null
     Write-Log "✅ Cristar backup → $status | $($uploaded.Count) archivos | $([math]::Round($totalBytes/1MB,1)) MB"
 } catch {
     Write-Log "❌ Error: $($_.Exception.Message)"
