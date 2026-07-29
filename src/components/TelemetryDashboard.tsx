@@ -48,6 +48,7 @@ function MetricChips({ hb }: { hb: ServiceHeartbeat }) {
     if (p.ram_pct != null) chips.push({ label: 'RAM', value: `${p.ram_pct}%`, warn: Number(p.ram_pct) > 80, error: Number(p.ram_pct) > 92 });
     if (p.disk_pct != null) chips.push({ label: 'Disk', value: `${p.disk_pct}%`, warn: Number(p.disk_pct) > 75, error: Number(p.disk_pct) > 90 });
     if (p.disk_free_gb != null) chips.push({ label: 'Free', value: `${p.disk_free_gb} GB` });
+    if (p.uptime_str != null) chips.push({ label: 'Up', value: String(p.uptime_str) });
   } else if (hb.source === 'network') {
     if (p.gateway_ok != null) chips.push({ label: 'GW', value: p.gateway_ok ? 'ok' : '✗', error: !p.gateway_ok });
     if (p.internet_ok != null) chips.push({ label: 'Internet', value: p.internet_ok ? 'ok' : '✗', error: !p.internet_ok });

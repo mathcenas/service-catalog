@@ -456,8 +456,10 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
             {healthEntries.map(h => {
               const svc = services.find(s => s.id === h.service_id);
               const payload = h.payload as Record<string, any>;
-              const disk = payload?.disk_pct != null ? payload.disk_pct : null;
-              const ram = payload?.ram_pct != null ? payload.ram_pct : null;
+              const cpu = payload?.cpu_pct != null ? Number(payload.cpu_pct) : null;
+              const disk = payload?.disk_pct != null ? Number(payload.disk_pct) : null;
+              const ram = payload?.ram_pct != null ? Number(payload.ram_pct) : null;
+              const uptime = payload?.uptime_str != null ? String(payload.uptime_str) : null;
               const dot = h.status === 'ok' ? 'bg-emerald-500' : h.status === 'warning' ? 'bg-amber-500' : 'bg-red-500';
               return (
                 <div key={h.service_id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center gap-3">
@@ -467,8 +469,10 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
                     {h.message && <p className="text-xs text-gray-400">{h.message}</p>}
                   </div>
                   <div className="flex gap-3 text-xs text-gray-500 shrink-0">
+                    {cpu != null && <span>CPU <span className={cpu > 95 ? 'text-red-500 font-semibold' : cpu > 80 ? 'text-amber-500 font-semibold' : 'text-gray-700 dark:text-gray-300'}>{cpu}%</span></span>}
+                    {ram != null && <span>RAM <span className={ram > 92 ? 'text-red-500 font-semibold' : ram > 80 ? 'text-amber-500 font-semibold' : 'text-gray-700 dark:text-gray-300'}>{ram}%</span></span>}
                     {disk != null && <span>Disk <span className={disk > 90 ? 'text-red-500 font-semibold' : disk > 75 ? 'text-amber-500 font-semibold' : 'text-gray-700 dark:text-gray-300'}>{disk}%</span></span>}
-                    {ram != null && <span>RAM <span className={ram > 90 ? 'text-red-500 font-semibold' : ram > 75 ? 'text-amber-500 font-semibold' : 'text-gray-700 dark:text-gray-300'}>{ram}%</span></span>}
+                    {uptime != null && <span className="text-gray-400">↑{uptime}</span>}
                   </div>
                 </div>
               );
