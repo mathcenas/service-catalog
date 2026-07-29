@@ -187,6 +187,12 @@ Deno.serve(async (req: Request) => {
         <p style="color: #94a3b8; font-size: 10px; font-style: italic; margin-top: 12px; text-align: center;">
           Correo generado por Task Tracker Pro, by Cenas Support
         </p>
+
+        <div style="margin-top: 16px; text-align: center;">
+          <a href="https://clientes.cenas-support.com/onboarding" style="display: inline-block; color: #64748b; font-size: 11px; text-decoration: none; border: 1px solid #e2e8f0; border-radius: 4px; padding: 6px 14px;">
+            🔐 Alta / Baja de servicios — clientes.cenas-support.com
+          </a>
+        </div>
       </div>
     `;
 
