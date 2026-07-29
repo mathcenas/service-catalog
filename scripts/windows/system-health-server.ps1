@@ -92,7 +92,7 @@ $hwBody = @{
 } | ConvertTo-Json -Depth 3
 
 try {
-    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $hwBody | Out-Null
+    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $hwBody -Proxy "" | Out-Null
     Write-Log "✅ system-health → $hwStatus | CPU: $cpuUsage% | RAM: $ramUsePct% | Disk: $diskUsePct%"
 } catch {
     Write-Log "❌ system-health Error: $($_.Exception.Message)"
@@ -147,7 +147,7 @@ $netBody = @{
 } | ConvertTo-Json -Depth 3
 
 try {
-    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $netBody | Out-Null
+    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $netBody -Proxy "" | Out-Null
     Write-Log "✅ network → $netStatus | $netMsg"
 } catch {
     Write-Log "❌ network Error: $($_.Exception.Message)"
@@ -231,7 +231,7 @@ $rdpBody = @{
 } | ConvertTo-Json -Depth 3
 
 try {
-    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $rdpBody | Out-Null
+    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $rdpBody -Proxy "" | Out-Null
     Write-Log "✅ rdp → $rdpOverallStatus | Sessions: $sessions | Disconnects: $disconnects | DiskIO: ${diskLatency}s"
 } catch {
     Write-Log "❌ rdp Error: $($_.Exception.Message)"

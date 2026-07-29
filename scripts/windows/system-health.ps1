@@ -61,7 +61,7 @@ $hwBody = @{
 } | ConvertTo-Json -Depth 3
 
 try {
-    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $hwBody | Out-Null
+    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $hwBody -Proxy "" | Out-Null
     Write-Log "✅ system-health → $hwStatus | CPU: $cpuUsage% | RAM: $ramUsePct% | Disk: $diskUsePct%"
 } catch {
     Write-Log "❌ system-health Error: $($_.Exception.Message)"
@@ -116,7 +116,7 @@ $netBody = @{
 } | ConvertTo-Json -Depth 3
 
 try {
-    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $netBody | Out-Null
+    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $netBody -Proxy "" | Out-Null
     Write-Log "✅ speedtest → $netStatus | $netMsg"
 } catch {
     Write-Log "❌ speedtest Error: $($_.Exception.Message)"

@@ -64,7 +64,7 @@ foreach ($session in $sessions) {
     } | ConvertTo-Json
 
     try {
-        Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body | Out-Null
+        Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body -Proxy "" | Out-Null
         Write-Log "✅ $jobName → $status | $([math]::Round($sizeBytes/1GB,2)) GB | $([math]::Round($durationSecs/60,1)) min"
     } catch {
         Write-Log "❌ $jobName Error: $($_.Exception.Message)"

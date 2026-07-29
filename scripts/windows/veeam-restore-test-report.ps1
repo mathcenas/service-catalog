@@ -58,7 +58,7 @@ $body = @{
 } | ConvertTo-Json
 
 try {
-    Invoke-RestMethod -Uri $RESTORE_URL -Method POST -Headers $headers -Body $body | Out-Null
+    Invoke-RestMethod -Uri $RESTORE_URL -Method POST -Headers $headers -Body $body -Proxy "" | Out-Null
     Write-Log "✅ Restore test reported: $result | $details"
 } catch {
     Write-Log "❌ Error reporting restore test: $($_.Exception.Message)"
