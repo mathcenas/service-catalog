@@ -45,6 +45,7 @@ function MetricChips({ hb }: { hb: ServiceHeartbeat }) {
 
   if (hb.source === 'system-health') {
     if (p.cpu_pct != null) chips.push({ label: 'CPU', value: `${p.cpu_pct}%`, warn: Number(p.cpu_pct) > 80, error: Number(p.cpu_pct) > 95 });
+    if (p.load_avg != null) chips.push({ label: 'Load', value: String(p.load_avg) });
     if (p.ram_pct != null) chips.push({ label: 'RAM', value: `${p.ram_pct}%`, warn: Number(p.ram_pct) > 80, error: Number(p.ram_pct) > 92 });
     if (p.disk_pct != null) chips.push({ label: 'Disk', value: `${p.disk_pct}%`, warn: Number(p.disk_pct) > 75, error: Number(p.disk_pct) > 90 });
     if (p.disk_free_gb != null) chips.push({ label: 'Free', value: `${p.disk_free_gb} GB` });
