@@ -38,6 +38,9 @@ if [ -f "$LOG_FILE" ] && [ "$(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0)" -gt 
   mv "$LOG_FILE" "${LOG_FILE%.log}-$(date '+%Y%m').log"
 fi
 
+# Forzar locale C para que los decimales usen punto (evita coma en locales es/pt)
+export LC_ALL=C LANG=C
+
 # ---------- CPU ----------
 # Promedio de carga del último minuto normalizado por cantidad de cores
 CORES=$(nproc)
