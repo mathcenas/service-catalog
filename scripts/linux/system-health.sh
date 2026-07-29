@@ -17,8 +17,11 @@ fi
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 
+# Soporta tanto ANON_KEY (system-health.env) como SUPABASE_ANON_KEY (backup.env)
+ANON_KEY="${ANON_KEY:-$SUPABASE_ANON_KEY}"
+
 if [[ -z "$SUPABASE_URL" || -z "$ANON_KEY" || -z "$INGEST_SECRET" || -z "$SERVICE_ID" ]]; then
-  echo "ERROR: faltan variables en $ENV_FILE (SUPABASE_URL, ANON_KEY, INGEST_SECRET, SERVICE_ID)" >&2
+  echo "ERROR: faltan variables en $ENV_FILE (SUPABASE_URL, ANON_KEY o SUPABASE_ANON_KEY, INGEST_SECRET, SERVICE_ID)" >&2
   exit 1
 fi
 
