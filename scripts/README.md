@@ -35,8 +35,9 @@ scripts/
 
 1. Copiar carpeta `windows/` al servidor (ej: `C:\Scripts\`)
 2. Editar `config.ps1` con los valores del cliente:
-   - `SUPABASE_URL`, `ANON_KEY`, `INGEST_SECRET`, `SERVICE_ID`
-3. Schedulear con Task Scheduler (ver sección por script)
+   - `INGEST_URL`, `HEARTBEAT_URL`, `ANON_KEY`, `INGEST_SECRET`, `SERVICE_ID`
+3. Si un servidor tiene **múltiples servicios** en el portal (ej: Veeam + Kopia con SERVICE_IDs distintos), crear un `config-nombre.ps1` por cada uno y ajustar el dot-source en cada script.
+4. Schedulear con Task Scheduler (ver sección por script)
 
 ### system-health.ps1 — Métricas de hardware cada 1 hora
 
@@ -100,7 +101,42 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Scripts\veeam-report
 
 O schedulear en Task Scheduler una vez por día después de que terminen los jobs:
 ```powershell
+$Action = New-ScheduledTaskAction `
+  -Execute "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" `
+  -Argument '-NoProfile -ExecutionPolicy Bypass -File "C:\Scripts\veeam-report.ps1"'
+
 $Trigger = New-ScheduledTaskTrigger -Daily -At "07:00"
+
+$Settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
+
+Register-ScheduledTask `
+  -TaskName "Veeam Report" `
+  -Action $Action -Trigger $Trigger -Settings $Settings `
+  -User "SYSTEM" -RunLevel Highest -Force
+```
+
+### kopia-report.ps1 — Reporte de snapshots Kopia (una vez por día)
+
+Lee los snapshots de las últimas 25 horas vía `kopia snapshot list --all --json`.
+No requiere hooks de Kopia — funciona con repositorios S3/RustFS donde los hooks están deshabilitados.
+
+> Si el servidor tiene dos servicios en el portal (ej: Kopia en nube + Veeam local), usar
+> `config-cloud-backup.ps1` para Kopia y `config.ps1` para Veeam, y ajustar el dot-source
+> en la línea 13 de `kopia-report.ps1`.
+
+```powershell
+$Action = New-ScheduledTaskAction `
+  -Execute "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" `
+  -Argument '-NoProfile -ExecutionPolicy Bypass -File "C:\Scripts\kopia-report.ps1"'
+
+$Trigger = New-ScheduledTaskTrigger -Daily -At "07:00"
+
+$Settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
+
+Register-ScheduledTask `
+  -TaskName "Kopia Report" `
+  -Action $Action -Trigger $Trigger -Settings $Settings `
+  -User "SYSTEM" -RunLevel Highest -Force
 ```
 
 ---
