@@ -11,6 +11,7 @@ scripts/
 │   ├── veeam-report.ps1              # Veeam Backup & Replication (servidor central)
 │   ├── veeam-agent-report.ps1        # Veeam Agent for Windows (standalone)
 │   ├── veeam-restore-test-report.ps1 # Resultado de prueba de restauración
+│   ├── kopia-report.ps1              # Kopia Backup — hook after-snapshot → ingest-backup
 │   ├── system-health.ps1             # CPU / RAM / Disco C: + speedtest → ingest-heartbeat
 │   ├── system-health-server.ps1      # Windows Server: hardware + red + RDP → ingest-heartbeat
 │   ├── server-snapshot.ps1           # Lee RDS_Telemetry.csv → ingest-heartbeat (source: server-snapshot)
@@ -187,6 +188,7 @@ chmod +x /usr/local/bin/report-all-backups.sh
 | Script | Edge Function |
 |--------|--------------|
 | `backup.sh` | `ingest-backup` |
+| `kopia-report.ps1` | `ingest-backup` |
 | `veeam-report.ps1` | `ingest-backup` |
 | `veeam-agent-report.ps1` | `ingest-backup` |
 | `veeam-restore-test-report.ps1` | `ingest-backup` |
