@@ -176,8 +176,8 @@ Deno.serve(async (req: Request) => {
         </p>
 
         <div style="margin-top: 32px; padding: 16px 20px; background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%); border-radius: 8px; text-align: center;">
-          <p style="color: #94a3b8; font-size: 11px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 1px;">Proximamente</p>
-          <p style="color: #ffffff; font-size: 13px; margin: 0 0 8px; font-weight: 600;">Su Portal de Servicios estara disponible en breve</p>
+          <p style="color: #94a3b8; font-size: 11px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 1px;">Portal de Servicios</p>
+          <p style="color: #ffffff; font-size: 13px; margin: 0 0 8px; font-weight: 600;">Consulte el estado de sus servicios en linea</p>
           <p style="color: #cbd5e1; font-size: 11px; margin: 0; line-height: 1.5;">
             Servicios gestionados &bull; Soporte &bull; Backups &bull; Informacion IT
           </p>
