@@ -38,6 +38,13 @@ foreach ($k in $kandidatos) {
     if (Test-Path $k -ErrorAction SilentlyContinue) { $kopiaExe = $k; break }
     try { if (Get-Command $k -ErrorAction Stop) { $kopiaExe = $k; break } } catch {}
 }
+# Búsqueda dinámica en Downloads de todos los usuarios si no se encontró
+if (-not $kopiaExe) {
+    $found = Get-ChildItem "C:\Users" -Recurse -Filter "kopia.exe" -ErrorAction SilentlyContinue |
+             Where-Object { $_.FullName -notlike "*\cache\*" } |
+             Select-Object -First 1
+    if ($found) { $kopiaExe = $found.FullName }
+}
 if (-not $kopiaExe) {
     Write-Log "ERROR: no se encontró kopia.exe"
     exit 1
