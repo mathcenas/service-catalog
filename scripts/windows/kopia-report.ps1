@@ -78,7 +78,7 @@ if ($contentCount) { $details += " files=$contentCount" }
 
 $backedUpAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
-Write-Log "Kopia snapshot → $status | $jobName | ${durationSeconds}s | $sizeBytes bytes"
+Write-Log "Kopia snapshot - $status | $jobName | ${durationSeconds}s | $sizeBytes bytes"
 
 # ---------- Enviar a ingest-backup ----------
 $body = @{
