@@ -68,7 +68,7 @@ else
 fi
 
 # ---------- Status ----------
-STATUS="ok"
+STATUS="success"
 ISSUES=""
 
 CPU_INT=${CPU_PCT%.*}
@@ -76,22 +76,22 @@ RAM_INT=${RAM_PCT%.*}
 DISK_INT=${DISK_PCT%.*}
 
 if [ "${CPU_INT:-0}" -ge 95 ]; then
-  STATUS="error"; ISSUES="CPU alta (${CPU_PCT}%) "
+  STATUS="failed"; ISSUES="CPU alta (${CPU_PCT}%) "
 elif [ "${CPU_INT:-0}" -ge 80 ]; then
   STATUS="warning"; ISSUES="CPU alta (${CPU_PCT}%) "
 fi
 
 if [ "${RAM_INT:-0}" -ge 92 ]; then
-  STATUS="error"; ISSUES="${ISSUES}RAM alta (${RAM_PCT}%) "
+  STATUS="failed"; ISSUES="${ISSUES}RAM alta (${RAM_PCT}%) "
 elif [ "${RAM_INT:-0}" -ge 80 ]; then
-  [ "$STATUS" = "ok" ] && STATUS="warning"
+  [ "$STATUS" = "success" ] && STATUS="warning"
   ISSUES="${ISSUES}RAM alta (${RAM_PCT}%) "
 fi
 
 if [ "${DISK_INT:-0}" -ge 90 ]; then
-  STATUS="error"; ISSUES="${ISSUES}Disco lleno (${DISK_PCT}%) "
+  STATUS="failed"; ISSUES="${ISSUES}Disco lleno (${DISK_PCT}%) "
 elif [ "${DISK_INT:-0}" -ge 75 ]; then
-  [ "$STATUS" = "ok" ] && STATUS="warning"
+  [ "$STATUS" = "success" ] && STATUS="warning"
   ISSUES="${ISSUES}Disco alto (${DISK_PCT}%) "
 fi
 
