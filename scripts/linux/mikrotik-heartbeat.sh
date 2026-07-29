@@ -73,23 +73,23 @@ for LOG_FILE in "$LOG_DIR"/*.log; do
   CPU=${CPU:-0}; RAM=${RAM:-0}; WAN=${WAN:-0}; IPSEC=${IPSEC:-UNKNOWN}
 
   # ---------- Status ----------
-  STATUS="ok"
+  STATUS="success"
   ISSUES=""
 
   if (( $(echo "$CPU > $ERROR_CPU" | bc -l) )); then
-    STATUS="error"; ISSUES="CPU alta (${CPU}%) "
+    STATUS="failed"; ISSUES="CPU alta (${CPU}%) "
   elif (( $(echo "$CPU > $WARN_CPU" | bc -l) )); then
-    [ "$STATUS" = "ok" ] && STATUS="warning"; ISSUES="CPU alta (${CPU}%) "
+    [ "$STATUS" = "success" ] && STATUS="warning"; ISSUES="CPU alta (${CPU}%) "
   fi
 
   if (( $(echo "$RAM > $ERROR_RAM" | bc -l) )); then
-    STATUS="error"; ISSUES="${ISSUES}RAM alta (${RAM}%) "
+    STATUS="failed"; ISSUES="${ISSUES}RAM alta (${RAM}%) "
   elif (( $(echo "$RAM > $WARN_RAM" | bc -l) )); then
-    [ "$STATUS" = "ok" ] && STATUS="warning"; ISSUES="${ISSUES}RAM alta (${RAM}%) "
+    [ "$STATUS" = "success" ] && STATUS="warning"; ISSUES="${ISSUES}RAM alta (${RAM}%) "
   fi
 
   if [ "$IPSEC" = "OFFLINE" ]; then
-    [ "$STATUS" = "ok" ] && STATUS="warning"
+    [ "$STATUS" = "success" ] && STATUS="warning"
     ISSUES="${ISSUES}IPsec OFFLINE "
   fi
 
