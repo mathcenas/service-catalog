@@ -661,11 +661,24 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
             className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
             title="Sort order (lower = higher)"
           />
-          {item.amount != null && item.amount > 0 && (
-            <div className="text-xs text-emerald-700 font-medium mt-1 px-1">
-              {item.amount_type === 'hours' ? `${item.amount} hs` : `$${item.amount.toLocaleString()}`}
-            </div>
-          )}
+          <div className="flex rounded-md border border-gray-200 overflow-hidden mt-1 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-300">
+            <select
+              value={item.amount_type || 'money'}
+              onChange={e => onUpdate(item.id, { amount_type: e.target.value as 'money' | 'hours' })}
+              className="px-1.5 py-1 text-[10px] bg-gray-50 border-r border-gray-200 text-gray-500 outline-none"
+            >
+              <option value="money">$</option>
+              <option value="hours">hs</option>
+            </select>
+            <input
+              type="number"
+              value={item.amount ?? ''}
+              onChange={e => onUpdate(item.id, { amount: e.target.value ? parseFloat(e.target.value) : undefined })}
+              placeholder="0"
+              className="w-full px-1.5 py-1 text-xs outline-none"
+              title="Amount (cost or hours)"
+            />
+          </div>
           {item.scheduled_date && (
             <div className="flex items-center gap-1 mt-1 text-xs text-blue-600">
               <CalendarClock className="w-3 h-3" />
