@@ -370,6 +370,9 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
   // Resolved incidents from support_hours
   const incidents = supportHours.filter(h => h.type === 'incident').slice(0, 5);
   const totalAllocated = services.reduce((sum, s) => sum + (s.confirmed_hours_monthly || 0), 0);
+  const completedHours = roadmap
+    .filter(r => r.status === 'Released' && r.amount_type === 'hours' && r.amount && r.amount > 0)
+    .reduce((sum, r) => sum + (r.amount ?? 0), 0);
 
   return (
     <div className="space-y-6">
@@ -377,7 +380,10 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
         <StatCard label="Active Services" value={services.length.toString()} />
         <StatCard label="Upcoming Updates" value={upcoming.length.toString()} accent={upcoming.length > 0} />
         <StatCard label="Recent Changes" value={recentChanges.length.toString()} />
-        {totalAllocated > 0 && <StatCard label="Hours/month" value={`${totalAllocated}h`} />}
+        {completedHours > 0
+          ? <StatCard label="Hours worked" value={`${completedHours}h`} />
+          : totalAllocated > 0 && <StatCard label="Hours/month" value={`${totalAllocated}h`} />
+        }
       </div>
 
       <BackupStatus services={services} backups={backups} />
@@ -582,9 +588,14 @@ function CompletedUpdates({ items }: { items: RoadmapItem[] }) {
               <span className="text-sm font-medium text-gray-900 dark:text-white">{item.title}</span>
               {item.description && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">{item.description}</p>}
             </div>
-            {item.scheduled_date && (
-              <span className="text-xs text-gray-400 shrink-0">{new Date(item.scheduled_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-            )}
+            <div className="flex items-center gap-2 shrink-0">
+              {item.amount_type === 'hours' && item.amount && item.amount > 0 && (
+                <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded-full">{item.amount}h</span>
+              )}
+              {item.scheduled_date && (
+                <span className="text-xs text-gray-400">{new Date(item.scheduled_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+              )}
+            </div>
           </div>
         ))}
       </div>

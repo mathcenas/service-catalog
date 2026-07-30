@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { Plus, Trash2, Eye, EyeOff, Save, Rocket, Sparkles, Database, CreditCard, Lightbulb, MapPin, User, Send, CalendarClock, BookOpen, Check, CheckCheck, CheckCircle2, AlertTriangle, AlertCircle, Wrench } from 'lucide-react';
+import { Plus, Trash2, Eye, EyeOff, Save, Rocket, Sparkles, Database, CreditCard, Lightbulb, MapPin, User, Send, CalendarClock, BookOpen, Check, CheckCheck, CheckCircle2, AlertTriangle, AlertCircle, Wrench, RefreshCw, History } from 'lucide-react';
 import { supabase, Client, Service, RoadmapItem, ROADMAP_STATUSES, RoadmapStatus, ROADMAP_CATEGORIES, RoadmapCategory } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -164,87 +164,89 @@ export function RoadmapManager({ clients, services }: Props) {
     }
   };
 
-  const notifyClient = async (item: RoadmapItem) => {
-    if (!item.client_id) return;
+  const sendNotifyEmail = async (item: RoadmapItem, isUpdate = false) => {
+    if (!item.client_id) return false;
     const client = clients.find(c => c.id === item.client_id);
-    if (!client?.email) return;
+    if (!client?.email) return false;
 
-    setNotifying(item.id);
+    const { data: tokens } = await supabase
+      .from('client_share_tokens')
+      .select('token')
+      .eq('client_id', client.id)
+      .limit(1);
 
-    try {
-      const { data: tokens } = await supabase
-        .from('client_share_tokens')
-        .select('token')
-        .eq('client_id', client.id)
-        .limit(1);
+    const shareUrl = tokens && tokens.length > 0
+      ? `${window.location.origin}/share/${tokens[0].token}`
+      : undefined;
 
-      const shareUrl = tokens && tokens.length > 0
-        ? `${window.location.origin}/share/${tokens[0].token}`
-        : undefined;
-
-      const { data: session } = await supabase.auth.getSession();
-      if (!session?.session?.access_token) {
-        alert('Session expired. Please sign in again.');
-        setNotifying(null);
-        return;
-      }
-
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-client`;
-
-      console.log('[notify-client] Sending to:', client.email, client.alt_email || '(no alt)');
-      console.log('[notify-client] URL:', apiUrl);
-
-      const subjectPrefix =
-        item.category === 'problem' ? 'Incidente' :
-        item.category === 'change_request' ? 'Solicitud de cambio' :
-        item.category === 'visit' ? 'Visita programada' :
-        item.category === 'payment' ? 'Aviso de pago' : 'Planificado';
-
-      const res = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          client_email: client.email,
-          alt_email: client.alt_email || undefined,
-          cc_emails: client.cc_emails || undefined,
-          client_name: client.contact_name || client.company_name,
-          subject: `${subjectPrefix}: ${item.title}`,
-          title: item.title,
-          description: item.description,
-          scheduled_date: item.scheduled_date,
-          share_url: shareUrl,
-          sender_name: user?.email,
-          logo_url: logoUrl,
-          roadmap_item_id: item.id,
-          category: item.category,
-          event_type: 'notify',
-        }),
-      });
-
-      console.log('[notify-client] Response status:', res.status);
-
-      if (res.ok) {
-        const data = await res.json();
-        console.log('[notify-client] Success:', data);
-        await updateItem(item.id, { notified_at: new Date().toISOString() });
-      } else {
-        const errText = await res.text();
-        console.error('[notify-client] Error response:', res.status, errText);
-        let errMsg = `HTTP ${res.status}`;
-        try {
-          const errJson = JSON.parse(errText);
-          errMsg = errJson.error || errJson.details || errMsg;
-        } catch { /* use status */ }
-        alert(`Failed to send notification:\n${errMsg}`);
-      }
-    } catch (err) {
-      console.error('[notify-client] Network error:', err);
-      alert(`Network error sending notification: ${err instanceof Error ? err.message : String(err)}`);
+    const { data: session } = await supabase.auth.getSession();
+    if (!session?.session?.access_token) {
+      alert('Session expired. Please sign in again.');
+      return false;
     }
 
+    const subjectPrefix =
+      isUpdate ? 'Actualización' :
+      item.category === 'problem' ? 'Incidente' :
+      item.category === 'change_request' ? 'Solicitud de cambio' :
+      item.category === 'visit' ? 'Visita programada' :
+      item.category === 'payment' ? 'Aviso de pago' : 'Planificado';
+
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-client`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        client_email: client.email,
+        alt_email: client.alt_email || undefined,
+        cc_emails: client.cc_emails || undefined,
+        client_name: client.contact_name || client.company_name,
+        subject: `${subjectPrefix}: ${item.title}`,
+        title: item.title,
+        description: item.description,
+        scheduled_date: item.scheduled_date,
+        share_url: shareUrl,
+        sender_name: user?.email,
+        logo_url: logoUrl,
+        roadmap_item_id: item.id,
+        category: item.category,
+        event_type: 'notify',
+      }),
+    });
+
+    if (res.ok) {
+      await updateItem(item.id, { notified_at: new Date().toISOString() });
+      return true;
+    } else {
+      const errText = await res.text();
+      let errMsg = `HTTP ${res.status}`;
+      try { const j = JSON.parse(errText); errMsg = j.error || j.details || errMsg; } catch { /* use status */ }
+      alert(`Failed to send notification:\n${errMsg}`);
+      return false;
+    }
+  };
+
+  const notifyClient = async (item: RoadmapItem) => {
+    if (!item.client_id) return;
+    setNotifying(item.id);
+    try {
+      await sendNotifyEmail(item, false);
+    } catch (err) {
+      alert(`Network error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    setNotifying(null);
+  };
+
+  const sendUpdateEmail = async (item: RoadmapItem) => {
+    if (!item.client_id) return;
+    setNotifying(item.id);
+    try {
+      await sendNotifyEmail(item, true);
+    } catch (err) {
+      alert(`Network error: ${err instanceof Error ? err.message : String(err)}`);
+    }
     setNotifying(null);
   };
 
@@ -519,6 +521,7 @@ export function RoadmapManager({ clients, services }: Props) {
               onUpdate={updateItem}
               onDelete={deleteItem}
               onNotify={notifyClient}
+              onSendUpdate={sendUpdateEmail}
               onMarkReleased={markReleased}
               onClosePublish={closeAndPublish}
               closePublishResult={closePublishResult?.itemId === item.id ? closePublishResult : null}
@@ -530,7 +533,7 @@ export function RoadmapManager({ clients, services }: Props) {
   );
 }
 
-function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpdate, onDelete, onNotify, onMarkReleased, onClosePublish, closePublishResult }: {
+function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpdate, onDelete, onNotify, onSendUpdate, onMarkReleased, onClosePublish, closePublishResult }: {
   item: RoadmapItem;
   clients: Client[];
   services: Service[];
@@ -542,6 +545,7 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
   onUpdate: (id: string, patch: Partial<RoadmapItem>) => void;
   onDelete: (id: string) => void;
   onNotify: (item: RoadmapItem) => void;
+  onSendUpdate: (item: RoadmapItem) => void;
   onMarkReleased: (item: RoadmapItem) => void;
   onClosePublish: (item: RoadmapItem) => void;
   closePublishResult: { closed: 'ok'|'err'; webhook: 'ok'|'err'|'skip'; email: 'ok'|'err'|'skip' } | null;
@@ -657,11 +661,24 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
             className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
             title="Sort order (lower = higher)"
           />
-          {item.amount != null && item.amount > 0 && (
-            <div className="text-xs text-emerald-700 font-medium mt-1 px-1">
-              {item.amount_type === 'hours' ? `${item.amount} hs` : `$${item.amount.toLocaleString()}`}
-            </div>
-          )}
+          <div className="flex rounded-md border border-gray-200 overflow-hidden mt-1 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-300">
+            <select
+              value={item.amount_type || 'money'}
+              onChange={e => onUpdate(item.id, { amount_type: e.target.value as 'money' | 'hours' })}
+              className="px-1.5 py-1 text-[10px] bg-gray-50 border-r border-gray-200 text-gray-500 outline-none"
+            >
+              <option value="money">$</option>
+              <option value="hours">hs</option>
+            </select>
+            <input
+              type="number"
+              value={item.amount ?? ''}
+              onChange={e => onUpdate(item.id, { amount: e.target.value ? parseFloat(e.target.value) : undefined })}
+              placeholder="0"
+              className="w-full px-1.5 py-1 text-xs outline-none"
+              title="Amount (cost or hours)"
+            />
+          </div>
           {item.scheduled_date && (
             <div className="flex items-center gap-1 mt-1 text-xs text-blue-600">
               <CalendarClock className="w-3 h-3" />
@@ -679,25 +696,40 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
             />
             <BookOpen className="w-3 h-3" />
           </label>
-          {canNotify && (
+          {canNotify && !item.notified_at && (
             <button
               onClick={() => onNotify(item)}
               disabled={notifying}
-              className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                item.notified_at
-                  ? 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
-                  : 'text-blue-700 bg-blue-50 hover:bg-blue-100'
-              }`}
-              title={item.notified_at ? `Last notified: ${new Date(item.notified_at).toLocaleString()}` : `Send notification to ${client?.email}`}
+              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors text-blue-700 bg-blue-50 hover:bg-blue-100"
+              title={`Send notification to ${client?.email}`}
             >
-              {notifying ? (
-                <span className="animate-pulse">Sending...</span>
-              ) : item.notified_at ? (
-                <><Check className="w-3 h-3" /> Sent</>
-              ) : (
-                <><Send className="w-3 h-3" /> Notify</>
-              )}
+              {notifying ? <span className="animate-pulse">Sending...</span> : <><Send className="w-3 h-3" /> Notify</>}
             </button>
+          )}
+          {item.notified_at && (
+            <div className="flex flex-col items-end gap-0.5">
+              <div className="flex items-center gap-1">
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium text-emerald-700 bg-emerald-50"
+                  title={`Enviado: ${new Date(item.notified_at).toLocaleString()}`}
+                >
+                  <Check className="w-3 h-3" /> Enviado
+                </span>
+                {canNotify && (
+                  <button
+                    onClick={() => onNotify(item)}
+                    disabled={notifying}
+                    className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md text-[10px] font-medium transition-colors text-gray-500 hover:text-blue-700 hover:bg-blue-50"
+                    title="Reenviar notificación inicial"
+                  >
+                    {notifying ? '...' : <><RefreshCw className="w-2.5 h-2.5" /></>}
+                  </button>
+                )}
+              </div>
+              <span className="text-[9px] text-gray-400">
+                {new Date(item.notified_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </div>
           )}
           {emailOpen?.opened_at && (
             <span
@@ -726,7 +758,7 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
 
         {/* Ticket actions — only for problem/change_request */}
         {isTicket && isOpen && (
-          <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-2 flex-wrap">
+          <div className="col-span-full mt-2 pt-2 border-t border-gray-100 flex items-center gap-2 flex-wrap">
             {item.status === 'Planned' && (
               <button
                 onClick={() => onUpdate(item.id, { status: 'In Progress' })}
@@ -741,6 +773,16 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-xs font-semibold transition-colors"
               >
                 <Check className="w-3.5 h-3.5" /> Pendiente cierre
+              </button>
+            )}
+            {item.client_id && (
+              <button
+                onClick={() => onSendUpdate(item)}
+                disabled={notifying}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
+                title="Envía el título y descripción actuales al cliente como 'Actualización'"
+              >
+                {notifying ? <span className="animate-pulse">Enviando...</span> : <><History className="w-3.5 h-3.5" /> Enviar actualización</>}
               </button>
             )}
             <button
