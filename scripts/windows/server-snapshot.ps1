@@ -6,6 +6,7 @@
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"
+[System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -155,7 +156,7 @@ foreach ($rawLine in @($newLines)) {
     } | ConvertTo-Json -Depth 3
 
     try {
-        Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $body -Proxy "" | Out-Null
+        Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $body | Out-Null
         Write-Log "✅ server-snapshot → $status | $message"
         $sent++
     } catch {

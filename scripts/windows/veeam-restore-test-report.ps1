@@ -6,6 +6,7 @@
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"
+[System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -58,7 +59,7 @@ $body = @{
 } | ConvertTo-Json
 
 try {
-    Invoke-RestMethod -Uri $RESTORE_URL -Method POST -Headers $headers -Body $body -Proxy "" | Out-Null
+    Invoke-RestMethod -Uri $RESTORE_URL -Method POST -Headers $headers -Body $body | Out-Null
     Write-Log "✅ Restore test reported: $result | $details"
 } catch {
     Write-Log "❌ Error reporting restore test: $($_.Exception.Message)"

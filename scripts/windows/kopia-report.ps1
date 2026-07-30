@@ -11,6 +11,7 @@
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"
+[System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -114,7 +115,7 @@ foreach ($snap in $byPath) {
     } | ConvertTo-Json -Compress
 
     try {
-        Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body -Proxy "" -ErrorAction Stop | Out-Null
+        Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body -ErrorAction Stop | Out-Null
         Write-Log "  Reporte enviado OK"
     } catch {
         Write-Log "  ERROR al enviar: $_"
