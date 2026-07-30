@@ -5,6 +5,7 @@
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"
+[System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -42,9 +43,9 @@ try {
     $cpuUsage = 0; $ramUsePct = 0; $ramTotalGB = 0; $diskUsePct = 0; $diskFreeGB = 0
 }
 
-$hwStatus = if   ($diskUsePct -gt 90 -or $ramUsePct -gt 92 -or $cpuUsage -gt 95) { "error" }
+$hwStatus = if   ($diskUsePct -gt 90 -or $ramUsePct -gt 92 -or $cpuUsage -gt 95) { "failed" }
             elseif ($diskUsePct -gt 75 -or $ramUsePct -gt 80 -or $cpuUsage -gt 80) { "warning" }
-            else { "ok" }
+            else { "success" }
 
 $hwBody = @{
     service_id = $SERVICE_ID
@@ -61,7 +62,7 @@ $hwBody = @{
 } | ConvertTo-Json -Depth 3
 
 try {
-    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $hwBody -Proxy "" | Out-Null
+    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $hwBody | Out-Null
     Write-Log "✅ system-health → $hwStatus | CPU: $cpuUsage% | RAM: $ramUsePct% | Disk: $diskUsePct%"
 } catch {
     Write-Log "❌ system-health Error: $($_.Exception.Message)"
@@ -80,9 +81,9 @@ if ($pingResult) {
     $packetLoss = 100; $avgPing = 0
 }
 
-$netStatus = if ($packetLoss -eq 100) { "error" }
+$netStatus = if ($packetLoss -eq 100) { "failed" }
              elseif ($packetLoss -gt 15 -or $avgPing -gt 150) { "warning" }
-             else { "ok" }
+             else { "success" }
 
 # Speedtest (opcional — requiere speedtest.exe en C:\Scripts\)
 $downloadMbps = 0; $uploadMbps = 0
@@ -116,7 +117,7 @@ $netBody = @{
 } | ConvertTo-Json -Depth 3
 
 try {
-    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $netBody -Proxy "" | Out-Null
+    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $netBody | Out-Null
     Write-Log "✅ speedtest → $netStatus | $netMsg"
 } catch {
     Write-Log "❌ speedtest Error: $($_.Exception.Message)"
