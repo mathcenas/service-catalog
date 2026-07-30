@@ -8,7 +8,7 @@
 
 # ---------- Config global ----------
 SUPABASE_URL="https://REEMPLAZAR.supabase.co"
-ANON_KEY="REEMPLAZAR_CON_ANON_KEY"
+SUPABASE_ANON_KEY="REEMPLAZAR_CON_ANON_KEY"
 INGEST_SECRET="REEMPLAZAR_CON_INGEST_SECRET"
 HEARTBEAT_URL="${SUPABASE_URL}/functions/v1/ingest-heartbeat"
 
@@ -122,8 +122,8 @@ EOF
   HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
     -X POST "$HEARTBEAT_URL" \
     -H "Content-Type: application/json" \
-    -H "apikey: $ANON_KEY" \
-    -H "Authorization: Bearer $ANON_KEY" \
+    -H "apikey: $SUPABASE_ANON_KEY" \
+    -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
     -H "X-Ingest-Secret: $INGEST_SECRET" \
     -d "$PAYLOAD")
 
