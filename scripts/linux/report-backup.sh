@@ -8,6 +8,11 @@
 
 source /etc/backup-ingest.env
 
+# Derivar INGEST_URL de SUPABASE_URL si no está definida
+if [[ -z "$INGEST_URL" && -n "$SUPABASE_URL" ]]; then
+  INGEST_URL="${SUPABASE_URL}/functions/v1/ingest-backup"
+fi
+
 JOB_NAME="${1:-unknown}"
 EXIT_CODE="${2:-1}"
 SNAPSHOT_DIR="$3"

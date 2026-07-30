@@ -7,6 +7,10 @@
 
 source /etc/backup-ingest.env
 
+if [[ -z "$INGEST_URL" && -n "$SUPABASE_URL" ]]; then
+  INGEST_URL="${SUPABASE_URL}/functions/v1/ingest-backup"
+fi
+
 report() {
   local JOB_NAME="$1"
   local SNAP_DIR="$2"

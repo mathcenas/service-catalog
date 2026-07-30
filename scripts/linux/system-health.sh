@@ -17,11 +17,11 @@ fi
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 
-# Soporta tanto ANON_KEY (system-health.env) como SUPABASE_ANON_KEY (backup.env)
-ANON_KEY="${ANON_KEY:-$SUPABASE_ANON_KEY}"
+# Compatibilidad: acepta ANON_KEY como alias de SUPABASE_ANON_KEY
+SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY:-$ANON_KEY}"
 
-if [[ -z "$SUPABASE_URL" || -z "$ANON_KEY" || -z "$INGEST_SECRET" || -z "$SERVICE_ID" ]]; then
-  echo "ERROR: faltan variables en $ENV_FILE (SUPABASE_URL, ANON_KEY o SUPABASE_ANON_KEY, INGEST_SECRET, SERVICE_ID)" >&2
+if [[ -z "$SUPABASE_URL" || -z "$SUPABASE_ANON_KEY" || -z "$INGEST_SECRET" || -z "$SERVICE_ID" ]]; then
+  echo "ERROR: faltan variables en $ENV_FILE (SUPABASE_URL, SUPABASE_ANON_KEY, INGEST_SECRET, SERVICE_ID)" >&2
   exit 1
 fi
 
@@ -128,8 +128,8 @@ EOF
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
   -X POST "$HEARTBEAT_URL" \
   -H "Content-Type: application/json" \
-  -H "apikey: $ANON_KEY" \
-  -H "Authorization: Bearer $ANON_KEY" \
+  -H "apikey: $SUPABASE_ANON_KEY" \
+  -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
   -H "X-Ingest-Secret: $INGEST_SECRET" \
   -d "$PAYLOAD")
 
