@@ -559,22 +559,38 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
 
   const [localTitle, setLocalTitle] = useState(item.title);
   const [localDesc, setLocalDesc] = useState(item.description || '');
+  const [savedFlash, setSavedFlash] = useState(false);
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const descTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const descTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const titleDirty = useRef(false);
+  const descDirty  = useRef(false);
 
-  useEffect(() => { setLocalTitle(item.title); }, [item.title]);
-  useEffect(() => { setLocalDesc(item.description || ''); }, [item.description]);
+  // Only sync from props when not actively editing to avoid resetting mid-type
+  useEffect(() => { if (!titleDirty.current) setLocalTitle(item.title); }, [item.title]);
+  useEffect(() => { if (!descDirty.current)  setLocalDesc(item.description || ''); }, [item.description]);
+
+  const flashSaved = () => { setSavedFlash(true); setTimeout(() => setSavedFlash(false), 1500); };
 
   const handleTitleChange = useCallback((val: string) => {
+    titleDirty.current = true;
     setLocalTitle(val);
     if (titleTimer.current) clearTimeout(titleTimer.current);
-    titleTimer.current = setTimeout(() => onUpdate(item.id, { title: val }), 600);
+    titleTimer.current = setTimeout(() => {
+      onUpdate(item.id, { title: val });
+      titleDirty.current = false;
+      flashSaved();
+    }, 700);
   }, [item.id, onUpdate]);
 
   const handleDescChange = useCallback((val: string) => {
+    descDirty.current = true;
     setLocalDesc(val);
     if (descTimer.current) clearTimeout(descTimer.current);
-    descTimer.current = setTimeout(() => onUpdate(item.id, { description: val }), 600);
+    descTimer.current = setTimeout(() => {
+      onUpdate(item.id, { description: val });
+      descDirty.current = false;
+      flashSaved();
+    }, 700);
   }, [item.id, onUpdate]);
 
   return (
@@ -589,6 +605,7 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
               onChange={e => handleTitleChange(e.target.value)}
               className="flex-1 px-2 py-1 border border-transparent hover:border-gray-200 focus:border-blue-300 rounded-md text-sm font-medium text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
             />
+            {savedFlash && <span className="text-[10px] text-emerald-500 shrink-0 animate-pulse">✓ guardado</span>}
           </div>
           <textarea
             value={localDesc}
@@ -756,7 +773,7 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
           </button>
         </div>
 
-        {/* Ticket actions — only for problem/change_request */}
+        {/* Ticket actions — problem/change_request abiertos */}
         {isTicket && isOpen && (
           <div className="col-span-full mt-2 pt-2 border-t border-gray-100 flex items-center gap-2 flex-wrap">
             {item.status === 'Planned' && (
@@ -780,7 +797,7 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
                 onClick={() => onSendUpdate(item)}
                 disabled={notifying}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
-                title="Envía el título y descripción actuales al cliente como 'Actualización'"
+                title="Envía título y descripción actuales al cliente como 'Actualización'"
               >
                 {notifying ? <span className="animate-pulse">Enviando...</span> : <><History className="w-3.5 h-3.5" /> Enviar actualización</>}
               </button>
@@ -789,8 +806,7 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
               onClick={() => onClosePublish(item)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold transition-colors"
             >
-              <CheckCheck className="w-3.5 h-3.5" />
-              Cerrar y Publicar
+              <CheckCheck className="w-3.5 h-3.5" /> Cerrar y Publicar
             </button>
             {closePublishResult && (
               <div className="flex items-center gap-1.5 text-xs">
@@ -798,6 +814,37 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
                 <ResultChip label="Webhook" status={closePublishResult.webhook} />
                 <ResultChip label="Email" status={closePublishResult.email} />
               </div>
+            )}
+          </div>
+        )}
+
+        {/* Ticket cerrado — reabrir o reenviar notificación */}
+        {isTicket && !isOpen && (
+          <div className="col-span-full mt-2 pt-2 border-t border-gray-100 flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-600 mr-1">
+              <CheckCircle2 className="w-3 h-3 inline mr-0.5" />
+              {item.category === 'problem' ? 'Resuelto' : 'Completado'}
+            </span>
+            <button
+              onClick={() => onUpdate(item.id, { status: 'In Progress' })}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-amber-50 hover:text-amber-700 text-gray-600 rounded-md text-xs font-medium transition-colors"
+            >
+              <Wrench className="w-3 h-3" /> Reabrir
+            </button>
+            {item.client_id && (
+              <button
+                onClick={() => onSendUpdate(item)}
+                disabled={notifying}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-sky-50 hover:text-sky-700 text-gray-600 rounded-md text-xs font-medium transition-colors disabled:opacity-50"
+                title="Reenviar información actualizada al cliente"
+              >
+                {notifying ? <span className="animate-pulse">Enviando...</span> : <><History className="w-3 h-3" /> Reenviar al cliente</>}
+              </button>
+            )}
+            {item.is_public && (
+              <span className="text-[10px] text-gray-400 ml-auto flex items-center gap-1">
+                <Eye className="w-3 h-3" /> visible en portal del cliente
+              </span>
             )}
           </div>
         )}
