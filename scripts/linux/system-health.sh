@@ -45,7 +45,7 @@ export LC_ALL=C LANG=C
 # Promedio de carga del último minuto normalizado por cantidad de cores
 CORES=$(nproc)
 LOAD1=$(awk '{print $1}' /proc/loadavg)
-CPU_PCT=$(awk -v load="$LOAD1" -v cores="$CORES" 'BEGIN { pct = (load / cores) * 100; if (pct > 100) pct = 100; printf "%.1f", pct }')
+CPU_PCT=$(awk -v l="$LOAD1" -v cores="$CORES" 'BEGIN { pct = (l / cores) * 100; if (pct > 100) pct = 100; printf "%.1f", pct }')
 
 # ---------- RAM ----------
 RAM_INFO=$(free -b | awk '/^Mem:/ {print $2, $3}')
