@@ -11,38 +11,50 @@ if [[ -z "$INGEST_URL" && -n "$SUPABASE_URL" ]]; then
   INGEST_URL="${SUPABASE_URL}/functions/v1/ingest-backup"
 fi
 
+LOG_FILE="${LOG_FILE:-/var/log/nas-backup-report.log}"
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOG_FILE"; }
+
+log "=== inicio ==="
+log "INGEST_URL=$INGEST_URL"
+log "SERVICE_ID=$SERVICE_ID"
+
 report() {
   local JOB_NAME="$1"
   local SNAP_DIR="$2"
 
   if [ ! -d "$SNAP_DIR" ]; then
-    echo "[backup-report] SKIP $JOB_NAME — directorio no existe: $SNAP_DIR"
+    log "SKIP $JOB_NAME — directorio no existe: $SNAP_DIR"
     return
   fi
 
   # du en grandes directorios NAS puede tardar minutos; usamos cache de 25h
   local CACHE_FILE="/tmp/du_cache_$(echo "$SNAP_DIR" | md5sum | cut -c1-8)"
   local SIZE_BYTES=0
+  local CACHE_USED="no"
 
   if [ -f "$CACHE_FILE" ] && [ $(( $(date +%s) - $(stat -c %Y "$CACHE_FILE") )) -lt 90000 ]; then
     SIZE_BYTES=$(cat "$CACHE_FILE")
+    CACHE_USED="si (cache)"
   else
-    # -l cuenta cada hardlink como archivo independiente (rsnapshot usa hardlinks,
-    # sin -l los snapshots weekly/monthly aparecen como 0 bytes en el frontend)
+    log "$JOB_NAME — calculando du en $SNAP_DIR ..."
     RAW=$(timeout 600 du -sbl "$SNAP_DIR" 2>/dev/null | awk '{print $1}')
     SIZE_BYTES=${RAW:-0}
     echo "$SIZE_BYTES" > "$CACHE_FILE"
   fi
 
-  curl -s -X POST "$INGEST_URL" \
+  log "$JOB_NAME — size=$SIZE_BYTES bytes ($(numfmt --to=iec $SIZE_BYTES 2>/dev/null || echo ${SIZE_BYTES}B)) cache=$CACHE_USED"
+
+  local HTTP_CODE
+  HTTP_CODE=$(curl -s -o /tmp/nas_curl_body.txt -w "%{http_code}" -X POST "$INGEST_URL" \
     -H "Content-Type: application/json" \
     -H "apikey: $SUPABASE_ANON_KEY" \
     -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
     -H "X-Ingest-Secret: $INGEST_SECRET" \
-    -d "{\"service_id\":\"$SERVICE_ID\",\"job_name\":\"$JOB_NAME\",\"status\":\"success\",\"size_bytes\":$SIZE_BYTES,\"details\":\"snapshot=$SNAP_DIR\"}" \
-    > /dev/null
+    -d "{\"service_id\":\"$SERVICE_ID\",\"job_name\":\"$JOB_NAME\",\"status\":\"success\",\"size_bytes\":$SIZE_BYTES,\"details\":\"snapshot=$SNAP_DIR\"}")
 
-  echo "[backup-report] $JOB_NAME → success | $(numfmt --to=iec $SIZE_BYTES 2>/dev/null || echo ${SIZE_BYTES}B)"
+  local BODY
+  BODY=$(cat /tmp/nas_curl_body.txt 2>/dev/null)
+  log "$JOB_NAME — HTTP $HTTP_CODE | $BODY"
 }
 
 report "NAS Daily → RespaldoD"   "$SNAP_RESPALDOD_DAILY"
