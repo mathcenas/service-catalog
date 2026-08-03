@@ -172,6 +172,24 @@ export function SharePage({ token }: Props) {
       setLoading(false);
     };
     load();
+
+    // Refresh live data (backups, heartbeats) every 5 minutes without re-loading the full page
+    const refreshLive = async () => {
+      const { data: tokenRows } = await supabase.rpc('resolve_share_token', { p_token: token });
+      const tokenRow = tokenRows?.[0];
+      if (!tokenRow) return;
+      const { data: svcs } = await supabase.from('services').select('id').eq('client_id', tokenRow.client_id);
+      const serviceIds = (svcs || []).map((s: { id: string }) => s.id);
+      if (serviceIds.length === 0) return;
+      const [{ data: sysHbData }, { data: backupsData }] = await Promise.all([
+        supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).eq('source', 'system-health').gte('received_at', new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
+        supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(50),
+      ]);
+      if (sysHbData) setSystemHeartbeats(sysHbData);
+      if (backupsData) setBackups(backupsData);
+    };
+    const interval = setInterval(refreshLive, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, [token]);
 
   const getTypeName = (id: string) => serviceTypes.find(t => t.id === id)?.name || 'Service';
@@ -613,7 +631,7 @@ function StatCard({ label, value, accent = false }: { label: string; value: stri
 }
 
 function BackupStatus({ services, backups }: { services: Service[]; backups: ServiceBackup[] }) {
-  const withBackup = services.filter(s => s.last_backup_at);
+  const withBackup = services.filter(s => s.last_backup_at || backups.some(b => b.service_id === s.id));
   if (withBackup.length === 0) return null;
 
   return (
@@ -624,14 +642,15 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
       </div>
       <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
         {withBackup.map(s => {
-          const age = Date.now() - new Date(s.last_backup_at!).getTime();
+          // Prefer the most recent entry from history table; fall back to services.last_backup_at
+          const recent = backups.filter(b => b.service_id === s.id).slice(0, 7);
+          const lastBackup = recent[0];
+          const displayAt = lastBackup?.backed_up_at || s.last_backup_at!;
+          const age = Date.now() - new Date(displayAt).getTime();
           const hoursOld = age / (1000 * 60 * 60);
           const isStale = hoursOld > 48;
           const isWarning = hoursOld > 24 && hoursOld <= 48;
 
-          // Last few backups for this service (from history table)
-          const recent = backups.filter(b => b.service_id === s.id).slice(0, 7);
-          const lastBackup = recent[0];
           const lastStatus = lastBackup?.status || 'success';
           const dotColor = lastStatus === 'failed' ? 'bg-red-500' : lastStatus === 'warning' ? 'bg-amber-500'
             : isStale ? 'bg-red-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500';
@@ -653,7 +672,7 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
                     </span>
                   )}
                   <span className={`text-xs font-medium ${isStale || lastStatus === 'failed' ? 'text-red-600 dark:text-red-400' : isWarning || lastStatus === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-gray-600 dark:text-gray-300'}`}>
-                    {formatTimeAgo(s.last_backup_at!)}
+                    {formatTimeAgo(displayAt)}
                   </span>
                 </div>
               </div>
