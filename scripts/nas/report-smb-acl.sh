@@ -34,8 +34,9 @@ fi
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 
-# Siempre usar el endpoint propio — ignorar INGEST_URL del env (que apunta a ingest-backup)
-ACL_INGEST_URL="${SUPABASE_URL}/functions/v1/ingest-nas-acl"
+# Extraer URL base (quitar /functions/v1/... si el env ya lo incluye)
+_BASE_URL="${SUPABASE_URL%%/functions/v1*}"
+ACL_INGEST_URL="${_BASE_URL}/functions/v1/ingest-nas-acl"
 
 if [[ -z "${SUPABASE_URL:-}" || -z "${SUPABASE_ANON_KEY:-}" || -z "${INGEST_SECRET:-}" || -z "${SERVICE_ID:-}" ]]; then
   echo "ERROR: faltan variables (SUPABASE_URL, SUPABASE_ANON_KEY, INGEST_SECRET, SERVICE_ID)" >&2
