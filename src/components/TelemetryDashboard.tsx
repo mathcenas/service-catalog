@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, Fragment } from 'react';
-import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, ChevronDown, ChevronRight, Trash2, HardDrive, Wifi, Monitor, Server, LayoutGrid, List } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, ChevronDown, ChevronRight, Trash2, HardDrive, Wifi, Monitor, Server, LayoutGrid, List, Users, Download, FolderOpen } from 'lucide-react';
 import { supabase, Service, Client, ServiceHeartbeat } from '../lib/supabase';
 
 interface ServiceBackup {
@@ -10,6 +10,20 @@ interface ServiceBackup {
   size_bytes: number | null;
   duration_seconds: number | null;
   backed_up_at: string;
+}
+
+interface AclUser { name: string; uid?: string; comment?: string; groups?: string[] }
+interface AclPrivilege { type: 'user' | 'group'; name: string; access: 'read/write' | 'read only' | 'no access'; perms: number }
+interface AclShare {
+  smb_name: string; folder_name: string; rel_path?: string; comment?: string;
+  readonly: boolean; guest_access: boolean; enabled: boolean;
+  users: AclPrivilege[]; groups: AclPrivilege[];
+}
+interface AclSnapshot {
+  id: string;
+  service_id: string;
+  generated_at: string;
+  snapshot: { shares: AclShare[]; users: AclUser[]; hostname?: string; generated_at: string };
 }
 
 function formatBytes(bytes: number): string {
@@ -123,6 +137,9 @@ function SourceIcon({ source }: { source: string }) {
 export function TelemetryDashboard({ services, clients }: Props) {
   const [heartbeats, setHeartbeats] = useState<ServiceHeartbeat[]>([]);
   const [backups, setBackups] = useState<ServiceBackup[]>([]);
+  const [aclSnapshots, setAclSnapshots] = useState<AclSnapshot[]>([]);
+  const [aclClientFilter, setAclClientFilter] = useState<string>('all');
+  const [expandedAcl, setExpandedAcl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [clientFilter, setClientFilter] = useState<string>('all');
@@ -135,12 +152,14 @@ export function TelemetryDashboard({ services, clients }: Props) {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: hbData }, { data: backupData }] = await Promise.all([
+    const [{ data: hbData }, { data: backupData }, { data: aclData }] = await Promise.all([
       supabase.from('service_heartbeats').select('*').order('received_at', { ascending: false }).limit(500),
       supabase.from('service_backups').select('*').order('backed_up_at', { ascending: false }).limit(200),
+      supabase.from('service_acl_snapshots').select('id,service_id,generated_at,snapshot').order('generated_at', { ascending: false }).limit(50),
     ]);
     setHeartbeats(hbData || []);
     setBackups(backupData || []);
+    setAclSnapshots((aclData as AclSnapshot[]) || []);
     setLoading(false);
   };
 
@@ -597,8 +616,210 @@ export function TelemetryDashboard({ services, clients }: Props) {
           );
         })()}
       </div>
+
+      {/* NAS SMB Access Control */}
+      {aclSnapshots.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-gray-500" />
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">NAS — Accesos SMB</h2>
+                <p className="text-sm text-gray-600 mt-0.5">Usuarios y permisos por carpeta compartida.</p>
+              </div>
+            </div>
+            <select value={aclClientFilter} onChange={e => setAclClientFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+              <option value="all">All services</option>
+              {services.map(s => <option key={s.id} value={s.id}>{s.business_name || s.name}</option>)}
+            </select>
+          </div>
+
+          <div className="space-y-3">
+            {aclSnapshots
+              .filter(snap => aclClientFilter === 'all' || snap.service_id === aclClientFilter)
+              .map(snap => {
+                const svc = services.find(s => s.id === snap.service_id);
+                const isExpanded = expandedAcl === snap.id;
+                const { shares, users, hostname } = snap.snapshot;
+                return (
+                  <div key={snap.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <button
+                      onClick={() => setExpandedAcl(isExpanded ? null : snap.id)}
+                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        {isExpanded ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+                        <div>
+                          <span className="font-semibold text-gray-900 text-sm">{svc?.business_name || svc?.name || snap.service_id.slice(0, 8)}</span>
+                          {hostname && <span className="text-xs text-gray-400 ml-2">({hostname})</span>}
+                        </div>
+                        <span className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full font-medium">{shares.length} shares</span>
+                        <span className="text-xs bg-gray-50 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full">{users.length} usuarios</span>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-xs text-gray-400">{new Date(snap.generated_at).toLocaleString('es-UY', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                        <button
+                          onClick={e => { e.stopPropagation(); exportAclHtml(snap, svc?.business_name || svc?.name || 'NAS'); }}
+                          className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-2 py-1 rounded-lg transition-colors"
+                        >
+                          <Download className="w-3 h-3" /> Exportar
+                        </button>
+                      </div>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="border-t border-gray-100 divide-y divide-gray-100">
+                        {shares.filter(s => s.enabled).map(share => (
+                          <div key={share.smb_name} className="px-4 py-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <FolderOpen className="w-4 h-4 text-amber-500" />
+                              <span className="font-medium text-gray-900 text-sm">{share.smb_name}</span>
+                              {share.comment && <span className="text-xs text-gray-400">{share.comment}</span>}
+                              {share.readonly && <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-medium uppercase">solo lectura</span>}
+                              {share.guest_access && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium uppercase">guest</span>}
+                            </div>
+                            {share.users.length === 0 && share.groups.length === 0 ? (
+                              <p className="text-xs text-gray-400 ml-6">Sin permisos explícitos configurados</p>
+                            ) : (
+                              <div className="ml-6 flex flex-wrap gap-2">
+                                {share.users.map(u => (
+                                  <span key={u.name} className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border font-medium ${
+                                    u.access === 'read/write' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                    u.access === 'read only' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                    'bg-gray-100 text-gray-500 border-gray-200 line-through'
+                                  }`}>
+                                    {u.name}
+                                    <span className="opacity-60 font-normal">{u.access === 'read/write' ? 'R/W' : u.access === 'read only' ? 'R' : '✗'}</span>
+                                  </span>
+                                ))}
+                                {share.groups.map(g => (
+                                  <span key={g.name} className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border font-medium ${
+                                    g.access === 'read/write' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                    g.access === 'read only' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                    'bg-gray-100 text-gray-500 border-gray-200'
+                                  }`}>
+                                    <Users className="w-2.5 h-2.5" />
+                                    {g.name}
+                                    <span className="opacity-60 font-normal">{g.access === 'read/write' ? 'R/W' : g.access === 'read only' ? 'R' : '✗'}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {/* Users summary */}
+                        <div className="px-4 py-3 bg-gray-50">
+                          <p className="text-xs font-medium text-gray-500 mb-2">Usuarios del sistema</p>
+                          <div className="flex flex-wrap gap-2">
+                            {users.map(u => (
+                              <span key={u.name} className="inline-flex items-center gap-1 text-xs bg-white border border-gray-200 text-gray-700 px-2 py-0.5 rounded-full">
+                                {u.name}
+                                {u.groups && u.groups.length > 0 && <span className="opacity-50">· {u.groups.join(', ')}</span>}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function exportAclHtml(snap: AclSnapshot, serviceName: string) {
+  const { shares, users, hostname, generated_at } = snap.snapshot;
+  const dateStr = new Date(generated_at).toLocaleString('es-UY', { dateStyle: 'long', timeStyle: 'short' });
+  const accessBadge = (access: string) => {
+    if (access === 'read/write') return `<span style="background:#d1fae5;color:#065f46;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;">R/W</span>`;
+    if (access === 'read only') return `<span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;">R</span>`;
+    return `<span style="background:#f3f4f6;color:#6b7280;padding:1px 6px;border-radius:4px;font-size:11px;">sin acceso</span>`;
+  };
+
+  const sharesHtml = shares.filter(s => s.enabled).map(share => {
+    const rows = [
+      ...share.users.map(u => `<tr><td style="padding:6px 12px;color:#374151;">${u.name}</td><td style="padding:6px 12px;color:#6b7280;">Usuario</td><td style="padding:6px 12px;">${accessBadge(u.access)}</td></tr>`),
+      ...share.groups.map(g => `<tr><td style="padding:6px 12px;color:#374151;">${g.name}</td><td style="padding:6px 12px;color:#6b7280;">Grupo</td><td style="padding:6px 12px;">${accessBadge(g.access)}</td></tr>`),
+    ].join('') || `<tr><td colspan="3" style="padding:6px 12px;color:#9ca3af;font-style:italic;">Sin permisos explícitos</td></tr>`;
+
+    const badges = [
+      share.readonly ? `<span style="background:#f3f4f6;color:#6b7280;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;margin-left:8px;">SOLO LECTURA</span>` : '',
+      share.guest_access ? `<span style="background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;margin-left:8px;">GUEST</span>` : '',
+    ].join('');
+
+    return `
+      <div style="margin-bottom:20px;">
+        <div style="background:#f9fafb;border-radius:8px 8px 0 0;padding:10px 16px;border:1px solid #e5e7eb;border-bottom:none;">
+          <span style="font-weight:700;color:#111827;font-size:14px;">📁 ${share.smb_name}</span>
+          ${badges}
+          ${share.comment ? `<span style="color:#6b7280;font-size:12px;margin-left:10px;">${share.comment}</span>` : ''}
+        </div>
+        <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:0 0 8px 8px;overflow:hidden;">
+          <thead><tr style="background:#f3f4f6;">
+            <th style="padding:6px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">Usuario / Grupo</th>
+            <th style="padding:6px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">Tipo</th>
+            <th style="padding:6px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">Acceso</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }).join('');
+
+  const usersHtml = users.map(u =>
+    `<tr><td style="padding:6px 12px;color:#374151;font-weight:500;">${u.name}</td><td style="padding:6px 12px;color:#6b7280;">${u.uid || ''}</td><td style="padding:6px 12px;color:#6b7280;">${(u.groups || []).join(', ')}</td><td style="padding:6px 12px;color:#6b7280;">${u.comment || ''}</td></tr>`
+  ).join('');
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Reporte de Accesos SMB — ${serviceName}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 32px 24px; background: #fff; color: #111827; }
+    @media print { body { padding: 16px; } }
+  </style>
+</head>
+<body>
+  <div style="max-width:700px;margin:0 auto;">
+    <!-- Header -->
+    <div style="border-bottom:2px solid #3b82f6;padding-bottom:16px;margin-bottom:28px;">
+      <h1 style="margin:0;font-size:22px;color:#1e293b;">Reporte de Accesos SMB</h1>
+      <p style="margin:4px 0 0;font-size:13px;color:#64748b;">${serviceName}${hostname ? ` — ${hostname}` : ''} &nbsp;·&nbsp; Generado: ${dateStr}</p>
+    </div>
+
+    <!-- Shares -->
+    <h2 style="font-size:15px;font-weight:700;color:#1e293b;margin:0 0 14px;">Carpetas Compartidas</h2>
+    ${sharesHtml}
+
+    <!-- Users -->
+    <h2 style="font-size:15px;font-weight:700;color:#1e293b;margin:24px 0 14px;">Usuarios del Sistema</h2>
+    <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+      <thead><tr style="background:#f3f4f6;">
+        <th style="padding:6px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">Usuario</th>
+        <th style="padding:6px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">UID</th>
+        <th style="padding:6px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">Grupos</th>
+        <th style="padding:6px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">Comentario</th>
+      </tr></thead>
+      <tbody>${usersHtml}</tbody>
+    </table>
+
+    <p style="color:#94a3b8;font-size:11px;text-align:center;margin-top:32px;">Cenas-Support — Reporte generado automáticamente</p>
+  </div>
+</body>
+</html>`;
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `smb-accesos-${serviceName.replace(/\s+/g, '-').toLowerCase()}-${new Date(generated_at).toISOString().slice(0, 10)}.html`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function StatBadge({ label, value, color, onClick, active }: { label: string; value: number; color: string; onClick: () => void; active: boolean }) {
