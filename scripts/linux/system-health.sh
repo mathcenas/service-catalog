@@ -7,11 +7,16 @@
 # =============================================================
 
 # ---------- Cargar .env ----------
+# Orden: arg CLI → /etc/backup-ingest.env → $SCRIPT_DIR/.env
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-ENV_FILE="${1:-$SCRIPT_DIR/.env}"
-
-if [[ ! -f "$ENV_FILE" ]]; then
-  echo "ERROR: no se encontró el archivo de configuración: $ENV_FILE" >&2
+if [[ -n "${1:-}" && -f "$1" ]]; then
+  ENV_FILE="$1"
+elif [[ -f /etc/backup-ingest.env ]]; then
+  ENV_FILE=/etc/backup-ingest.env
+elif [[ -f "$SCRIPT_DIR/.env" ]]; then
+  ENV_FILE="$SCRIPT_DIR/.env"
+else
+  echo "ERROR: no se encontró archivo de configuración (intentado: /etc/backup-ingest.env, $SCRIPT_DIR/.env)" >&2
   exit 1
 fi
 # shellcheck disable=SC1090
@@ -133,7 +138,7 @@ HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
   -H "X-Ingest-Secret: $INGEST_SECRET" \
   -d "$PAYLOAD")
 
-if [ "$HTTP_CODE" = "200" ]; then
+if [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "201" ]]; then
   log "✓ system-health → $STATUS | $MESSAGE"
 else
   log "✗ system-health → HTTP $HTTP_CODE"
