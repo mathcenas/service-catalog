@@ -7,8 +7,11 @@
 #   SUPABASE_URL, SUPABASE_ANON_KEY, INGEST_SECRET, SERVICE_ID
 #
 # Uso:
-#   ./report-smb-acl.sh                   # usa backup-ingest.env del mismo dir
+#   ./report-smb-acl.sh                   # detecta env automáticamente
 #   ./report-smb-acl.sh /ruta/custom.env  # env alternativo
+#
+# Orden de búsqueda del env:
+#   1. Arg CLI  2. /etc/backup-ingest.env  3. $SCRIPT_DIR/.env
 #
 # Schedulear (opcional, ej: semanalmente):
 #   0 6 * * 1 /usr/local/bin/report-smb-acl.sh
@@ -16,11 +19,16 @@
 
 set -euo pipefail
 
+# ---------- Cargar .env ----------
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-ENV_FILE="${1:-$SCRIPT_DIR/backup-ingest.env}"
-
-if [[ ! -f "$ENV_FILE" ]]; then
-  echo "ERROR: archivo de configuración no encontrado: $ENV_FILE" >&2
+if [[ -n "${1:-}" && -f "$1" ]]; then
+  ENV_FILE="$1"
+elif [[ -f /etc/backup-ingest.env ]]; then
+  ENV_FILE=/etc/backup-ingest.env
+elif [[ -f "$SCRIPT_DIR/.env" ]]; then
+  ENV_FILE="$SCRIPT_DIR/.env"
+else
+  echo "ERROR: no se encontró archivo de configuración (intentado: /etc/backup-ingest.env, $SCRIPT_DIR/.env)" >&2
   exit 1
 fi
 # shellcheck disable=SC1090

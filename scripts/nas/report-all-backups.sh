@@ -5,7 +5,21 @@
 # Requiere: /etc/backup-ingest.env con los paths configurados
 # =============================================================
 
-source /etc/backup-ingest.env
+# ---------- Cargar .env ----------
+# Orden: arg CLI → /etc/backup-ingest.env → $SCRIPT_DIR/.env
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+if [[ -n "${1:-}" && -f "$1" ]]; then
+  ENV_FILE="$1"
+elif [[ -f /etc/backup-ingest.env ]]; then
+  ENV_FILE=/etc/backup-ingest.env
+elif [[ -f "$SCRIPT_DIR/.env" ]]; then
+  ENV_FILE="$SCRIPT_DIR/.env"
+else
+  echo "ERROR: no se encontró archivo de configuración" >&2
+  exit 1
+fi
+# shellcheck disable=SC1090
+source "$ENV_FILE"
 
 if [[ -z "$INGEST_URL" && -n "$SUPABASE_URL" ]]; then
   INGEST_URL="${SUPABASE_URL}/functions/v1/ingest-backup"
