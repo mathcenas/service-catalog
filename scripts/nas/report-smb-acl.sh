@@ -147,43 +147,32 @@ if [[ -z "$PARSED" ]]; then
   exit 1
 fi
 
-SHARE_COUNT=$(echo "$PARSED" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d['shares']))")
-USER_COUNT=$(echo "$PARSED" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d['users']))")
+SHARE_COUNT=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(len(d['shares']))" "$PARSED")
+USER_COUNT=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(len(d['users']))" "$PARSED")
 log "Shares SMB: $SHARE_COUNT | Usuarios OMV: $USER_COUNT"
 
+# Escribir parsed JSON a temp file para evitar conflicto pipe+heredoc
+TMP_PARSED=$(mktemp /tmp/nas_acl_parsed.XXXXXX)
+echo "$PARSED" > "$TMP_PARSED"
+
 # ---------- Payload ----------
-PAYLOAD=$(python3 - "$SERVICE_ID" "$HOSTNAME_VAL" "$GENERATED_AT" <<PYEOF
-import sys, json
+PAYLOAD=$(python3 <<PYEOF
+import json, sys
 
-service_id = sys.argv[1]
-hostname   = sys.argv[2]
-gen_at     = sys.argv[3]
-
-import subprocess
-parsed_raw = subprocess.check_output(['cat', '/dev/stdin']).decode()
-
-PYEOF
-)
-
-# Construir payload final directamente
-PAYLOAD=$(echo "$PARSED" | python3 - "$SERVICE_ID" "$HOSTNAME_VAL" "$GENERATED_AT" <<'PYEOF'
-import sys, json
-
-service_id = sys.argv[1]
-hostname   = sys.argv[2]
-gen_at     = sys.argv[3]
-data       = json.load(sys.stdin)
+with open("$TMP_PARSED") as f:
+    data = json.load(f)
 
 payload = {
-    'service_id':    service_id,
-    'hostname':      hostname,
-    'generated_at':  gen_at,
+    'service_id':   "$SERVICE_ID",
+    'hostname':     "$HOSTNAME_VAL",
+    'generated_at': "$GENERATED_AT",
     'shares':        data['shares'],
     'users':         data['users'],
 }
 print(json.dumps(payload))
 PYEOF
 )
+rm -f "$TMP_PARSED"
 
 # ---------- Enviar ----------
 log "Enviando a $INGEST_URL ..."
