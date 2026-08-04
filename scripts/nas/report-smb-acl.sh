@@ -142,6 +142,31 @@ for u in root.findall('.//system/usermanagement/users/user'):
     if uname:
         users.append({'name': uname, 'uid': uid, 'comment': comment, 'groups': ugroups})
 
+# Último login por usuario via lastlog
+import subprocess, re
+try:
+    result = subprocess.run(['lastlog'], capture_output=True, text=True, timeout=15)
+    umap = {u['name']: u for u in users}
+    for line in result.stdout.strip().split('\n')[1:]:
+        parts = line.split()
+        if not parts:
+            continue
+        uname = parts[0]
+        if uname not in umap:
+            continue
+        if 'Never' in line or '**Never' in line:
+            umap[uname]['last_login'] = None
+        else:
+            # lastlog: Username Port From Day Mon DD HH:MM:SS +TZ YYYY
+            # Tomamos todo a partir de la columna 3 (después de Port y From)
+            try:
+                date_part = ' '.join(parts[3:]) if len(parts) > 3 else None
+                umap[uname]['last_login'] = date_part
+            except Exception:
+                umap[uname]['last_login'] = None
+except Exception:
+    pass
+
 print(json.dumps({'shares': shares, 'users': users}))
 PYEOF
 }

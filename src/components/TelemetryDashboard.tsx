@@ -149,17 +149,24 @@ export function TelemetryDashboard({ services, clients }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAllBackups, setShowAllBackups] = useState(false);
   const [viewMode, setViewMode] = useState<'cards' | 'log'>('cards');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState<string>('Cenas-Support');
 
   const load = async () => {
     setLoading(true);
-    const [{ data: hbData }, { data: backupData }, { data: aclData }] = await Promise.all([
+    const [{ data: hbData }, { data: backupData }, { data: aclData }, { data: settingsData }] = await Promise.all([
       supabase.from('service_heartbeats').select('*').order('received_at', { ascending: false }).limit(500),
       supabase.from('service_backups').select('*').order('backed_up_at', { ascending: false }).limit(200),
       supabase.from('service_acl_snapshots').select('id,service_id,generated_at,snapshot').order('generated_at', { ascending: false }).limit(50),
+      supabase.from('user_settings').select('logo_url,company_name').maybeSingle(),
     ]);
     setHeartbeats(hbData || []);
     setBackups(backupData || []);
     setAclSnapshots((aclData as AclSnapshot[]) || []);
+    if (settingsData) {
+      if (settingsData.logo_url) setLogoUrl(settingsData.logo_url);
+      if (settingsData.company_name) setCompanyName(settingsData.company_name);
+    }
     setLoading(false);
   };
 
@@ -660,7 +667,11 @@ export function TelemetryDashboard({ services, clients }: Props) {
                       <div className="flex items-center gap-3 shrink-0">
                         <span className="text-xs text-gray-400">{new Date(snap.generated_at).toLocaleString('es-UY', { dateStyle: 'short', timeStyle: 'short' })}</span>
                         <button
-                          onClick={e => { e.stopPropagation(); exportAclHtml(snap, svc?.business_name || svc?.name || 'NAS'); }}
+                          onClick={e => {
+                            e.stopPropagation();
+                            const client = clients.find(c => c.id === svc?.client_id);
+                            exportAclHtml(snap, svc?.business_name || svc?.name || 'NAS', client?.company_name || '', logoUrl, companyName);
+                          }}
                           className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-2 py-1 rounded-lg transition-colors"
                         >
                           <Download className="w-3 h-3" /> Exportar
@@ -732,83 +743,105 @@ export function TelemetryDashboard({ services, clients }: Props) {
   );
 }
 
-function exportAclHtml(snap: AclSnapshot, serviceName: string) {
+function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: string, logoUrl: string | null, companyName: string) {
   const { shares, users, hostname, generated_at } = snap.snapshot;
   const dateStr = new Date(generated_at).toLocaleString('es-UY', { dateStyle: 'long', timeStyle: 'short' });
+
   const accessBadge = (access: string) => {
-    if (access === 'read/write') return `<span style="background:#d1fae5;color:#065f46;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;">R/W</span>`;
-    if (access === 'read only') return `<span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;">R</span>`;
-    return `<span style="background:#f3f4f6;color:#6b7280;padding:1px 6px;border-radius:4px;font-size:11px;">sin acceso</span>`;
+    if (access === 'read/write') return `<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">R/W</span>`;
+    if (access === 'read only') return `<span style="background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">Solo lectura</span>`;
+    return `<span style="background:#f3f4f6;color:#6b7280;padding:2px 8px;border-radius:4px;font-size:11px;">Sin acceso</span>`;
   };
 
   const sharesHtml = shares.filter(s => s.enabled).map(share => {
-    const rows = [
-      ...share.users.map(u => `<tr><td style="padding:6px 12px;color:#374151;">${u.name}</td><td style="padding:6px 12px;color:#6b7280;">Usuario</td><td style="padding:6px 12px;">${accessBadge(u.access)}</td></tr>`),
-      ...share.groups.map(g => `<tr><td style="padding:6px 12px;color:#374151;">${g.name}</td><td style="padding:6px 12px;color:#6b7280;">Grupo</td><td style="padding:6px 12px;">${accessBadge(g.access)}</td></tr>`),
-    ].join('') || `<tr><td colspan="3" style="padding:6px 12px;color:#9ca3af;font-style:italic;">Sin permisos explícitos</td></tr>`;
+    const allPrivs = [
+      ...share.users.map(u => ({ name: u.name, access: u.access })),
+      ...share.groups.map(g => ({ name: `[${g.name}]`, access: g.access })),
+    ];
+    const rows = allPrivs.length
+      ? allPrivs.map(p => `<tr style="border-top:1px solid #f3f4f6;"><td style="padding:7px 14px;color:#374151;font-size:13px;">${p.name}</td><td style="padding:7px 14px;">${accessBadge(p.access)}</td></tr>`).join('')
+      : `<tr><td colspan="2" style="padding:7px 14px;color:#9ca3af;font-style:italic;font-size:12px;">Sin permisos explícitos configurados</td></tr>`;
 
     const badges = [
-      share.readonly ? `<span style="background:#f3f4f6;color:#6b7280;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;margin-left:8px;">SOLO LECTURA</span>` : '',
-      share.guest_access ? `<span style="background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;margin-left:8px;">GUEST</span>` : '',
+      share.readonly ? `<span style="background:#f3f4f6;color:#6b7280;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;margin-left:8px;vertical-align:middle;">SOLO LECTURA</span>` : '',
+      share.guest_access ? `<span style="background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;margin-left:8px;vertical-align:middle;">GUEST</span>` : '',
     ].join('');
 
     return `
-      <div style="margin-bottom:20px;">
-        <div style="background:#f9fafb;border-radius:8px 8px 0 0;padding:10px 16px;border:1px solid #e5e7eb;border-bottom:none;">
-          <span style="font-weight:700;color:#111827;font-size:14px;">📁 ${share.smb_name}</span>
-          ${badges}
-          ${share.comment ? `<span style="color:#6b7280;font-size:12px;margin-left:10px;">${share.comment}</span>` : ''}
+      <div style="margin-bottom:18px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+        <div style="background:#f8fafc;padding:9px 14px;border-bottom:1px solid #e5e7eb;">
+          <span style="font-weight:700;color:#111827;font-size:13px;">📁 ${share.smb_name}</span>${badges}
+          ${share.comment ? `<span style="color:#94a3b8;font-size:11px;margin-left:10px;">${share.comment}</span>` : ''}
         </div>
-        <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:0 0 8px 8px;overflow:hidden;">
-          <thead><tr style="background:#f3f4f6;">
-            <th style="padding:6px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">Usuario / Grupo</th>
-            <th style="padding:6px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">Tipo</th>
-            <th style="padding:6px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">Acceso</th>
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr style="background:#f9fafb;">
+            <th style="padding:6px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Usuario</th>
+            <th style="padding:6px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Acceso</th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>`;
   }).join('');
 
-  const usersHtml = users.map(u =>
-    `<tr><td style="padding:6px 12px;color:#374151;font-weight:500;">${u.name}</td><td style="padding:6px 12px;color:#6b7280;">${u.uid || ''}</td><td style="padding:6px 12px;color:#6b7280;">${(u.groups || []).join(', ')}</td><td style="padding:6px 12px;color:#6b7280;">${u.comment || ''}</td></tr>`
-  ).join('');
+  const usersHtml = (users as (AclUser & { last_login?: string | null })[]).map(u => {
+    const login = u.last_login ? `<span style="color:#374151;">${u.last_login}</span>` : `<span style="color:#d1d5db;font-style:italic;">Nunca</span>`;
+    return `<tr style="border-top:1px solid #f3f4f6;">
+      <td style="padding:7px 14px;color:#374151;font-size:13px;font-weight:500;">${u.name}</td>
+      <td style="padding:7px 14px;color:#6b7280;font-size:12px;">${(u.groups || []).join(', ') || '—'}</td>
+      <td style="padding:7px 14px;font-size:12px;">${login}</td>
+      <td style="padding:7px 14px;color:#94a3b8;font-size:12px;">${u.comment || ''}</td>
+    </tr>`;
+  }).join('');
+
+  const logoHtml = logoUrl
+    ? `<img src="${logoUrl}" alt="${companyName}" style="height:36px;object-fit:contain;margin-bottom:4px;" />`
+    : `<span style="font-weight:700;font-size:16px;color:#1e293b;">${companyName}</span>`;
 
   const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Reporte de Accesos SMB — ${serviceName}</title>
+  <title>Reporte de Accesos SMB — ${clientName || serviceName}</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 32px 24px; background: #fff; color: #111827; }
-    @media print { body { padding: 16px; } }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 40px 24px; background: #fff; color: #111827; }
+    @media print { body { padding: 20px; } }
   </style>
 </head>
 <body>
-  <div style="max-width:700px;margin:0 auto;">
-    <!-- Header -->
-    <div style="border-bottom:2px solid #3b82f6;padding-bottom:16px;margin-bottom:28px;">
-      <h1 style="margin:0;font-size:22px;color:#1e293b;">Reporte de Accesos SMB</h1>
-      <p style="margin:4px 0 0;font-size:13px;color:#64748b;">${serviceName}${hostname ? ` — ${hostname}` : ''} &nbsp;·&nbsp; Generado: ${dateStr}</p>
+  <div style="max-width:720px;margin:0 auto;">
+
+    <!-- Header al estilo emails -->
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding-bottom:20px;border-bottom:2px solid #3b82f6;margin-bottom:28px;">
+      <div>
+        ${logoHtml}
+        <h1 style="margin:8px 0 2px;font-size:20px;color:#1e293b;">Reporte de Accesos SMB</h1>
+        ${clientName ? `<p style="margin:0;font-size:13px;color:#64748b;">Cliente: <strong>${clientName}</strong>${hostname ? ` &nbsp;·&nbsp; Servidor: ${hostname}` : ''}</p>` : `<p style="margin:0;font-size:13px;color:#64748b;">${serviceName}${hostname ? ` &nbsp;·&nbsp; ${hostname}` : ''}</p>`}
+      </div>
+      <div style="text-align:right;font-size:12px;color:#64748b;white-space:nowrap;padding-top:4px;">
+        <div style="font-weight:600;color:#374151;">Generado</div>
+        <div>${dateStr}</div>
+      </div>
     </div>
 
-    <!-- Shares -->
-    <h2 style="font-size:15px;font-weight:700;color:#1e293b;margin:0 0 14px;">Carpetas Compartidas</h2>
+    <!-- Carpetas -->
+    <h2 style="font-size:14px;font-weight:700;color:#1e293b;margin:0 0 14px;text-transform:uppercase;letter-spacing:.5px;">Carpetas Compartidas</h2>
     ${sharesHtml}
 
-    <!-- Users -->
-    <h2 style="font-size:15px;font-weight:700;color:#1e293b;margin:24px 0 14px;">Usuarios del Sistema</h2>
-    <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-      <thead><tr style="background:#f3f4f6;">
-        <th style="padding:6px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">Usuario</th>
-        <th style="padding:6px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">UID</th>
-        <th style="padding:6px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">Grupos</th>
-        <th style="padding:6px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;">Comentario</th>
-      </tr></thead>
-      <tbody>${usersHtml}</tbody>
-    </table>
+    <!-- Usuarios -->
+    <h2 style="font-size:14px;font-weight:700;color:#1e293b;margin:28px 0 14px;text-transform:uppercase;letter-spacing:.5px;">Usuarios del Sistema</h2>
+    <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr style="background:#f9fafb;">
+          <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Usuario</th>
+          <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Grupos</th>
+          <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Último acceso</th>
+          <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Descripción</th>
+        </tr></thead>
+        <tbody>${usersHtml}</tbody>
+      </table>
+    </div>
 
-    <p style="color:#94a3b8;font-size:11px;text-align:center;margin-top:32px;">Cenas-Support — Reporte generado automáticamente</p>
+    <p style="color:#94a3b8;font-size:11px;text-align:center;margin-top:36px;padding-top:16px;border-top:1px solid #f1f5f9;">${companyName} &nbsp;·&nbsp; Reporte generado automáticamente &nbsp;·&nbsp; ${dateStr}</p>
   </div>
 </body>
 </html>`;
