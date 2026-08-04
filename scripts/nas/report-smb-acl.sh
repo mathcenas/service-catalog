@@ -34,10 +34,8 @@ fi
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 
-# Derivar INGEST_URL si no está seteada
-if [[ -z "${INGEST_URL:-}" && -n "${SUPABASE_URL:-}" ]]; then
-  INGEST_URL="${SUPABASE_URL}/functions/v1/ingest-nas-acl"
-fi
+# Siempre usar el endpoint propio — ignorar INGEST_URL del env (que apunta a ingest-backup)
+ACL_INGEST_URL="${SUPABASE_URL}/functions/v1/ingest-nas-acl"
 
 if [[ -z "${SUPABASE_URL:-}" || -z "${SUPABASE_ANON_KEY:-}" || -z "${INGEST_SECRET:-}" || -z "${SERVICE_ID:-}" ]]; then
   echo "ERROR: faltan variables (SUPABASE_URL, SUPABASE_ANON_KEY, INGEST_SECRET, SERVICE_ID)" >&2
@@ -179,8 +177,8 @@ print(json.dumps(payload))
 rm -f "$TMP_PARSED"
 
 # ---------- Enviar ----------
-log "Enviando a $INGEST_URL ..."
-HTTP_CODE=$(curl -s -o /tmp/nas_acl_body.txt -w "%{http_code}" -X POST "$INGEST_URL" \
+log "Enviando a $ACL_INGEST_URL ..."
+HTTP_CODE=$(curl -s -o /tmp/nas_acl_body.txt -w "%{http_code}" -X POST "$ACL_INGEST_URL" \
   -H "Content-Type: application/json" \
   -H "apikey: $SUPABASE_ANON_KEY" \
   -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
