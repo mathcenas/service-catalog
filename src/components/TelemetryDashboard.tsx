@@ -217,6 +217,16 @@ export function TelemetryDashboard({ services, clients }: Props) {
       // Auto-send email to client with review link
       if (client?.email) {
         const svcName = svc?.business_name || svc?.name || 'NAS';
+        // Find client's share token for portal link
+        const { data: shareToken } = await supabase
+          .from('share_tokens')
+          .select('token')
+          .eq('client_id', client.id)
+          .maybeSingle();
+        const portalUrl = shareToken?.token
+          ? `${window.location.origin}/share/${shareToken.token}`
+          : undefined;
+
         await supabase.functions.invoke('notify-client', {
           body: {
             client_email: client.email,
@@ -227,6 +237,8 @@ export function TelemetryDashboard({ services, clients }: Props) {
             title: `Auditoría de accesos SMB — ${svcName}`,
             description: `Le enviamos el siguiente enlace para que revise los usuarios con acceso a los archivos compartidos del servidor.\n\nPor favor indique para cada usuario si desea mantenerlo, eliminarlo o realizar algún cambio. El enlace tiene una validez de 15 días.\n\nEsta revisión se realiza cada 6 meses para garantizar que solo los usuarios correctos tengan acceso a sus archivos.`,
             share_url: link,
+            share_url_label: 'Iniciar revisión →',
+            portal_url: portalUrl,
             logo_url: logoUrl,
             sender_name: companyName,
             category: 'audit',

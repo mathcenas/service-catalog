@@ -18,6 +18,8 @@ interface NotifyPayload {
   description?: string;
   scheduled_date?: string;
   share_url?: string;
+  share_url_label?: string;
+  portal_url?: string;
   sender_name?: string;
   logo_url?: string;
   roadmap_item_id?: string;
@@ -64,6 +66,8 @@ Deno.serve(async (req: Request) => {
       description,
       scheduled_date,
       share_url,
+      share_url_label,
+      portal_url,
       sender_name,
       logo_url,
       roadmap_item_id,
@@ -166,8 +170,8 @@ Deno.serve(async (req: Request) => {
 
         ${share_url ? `
           <p style="margin: 24px 0;">
-            <a href="${share_url}" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;">
-              View Your Portal
+            <a href="${share_url}" style="display: inline-block; background: ${meta.color}; color: white; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 600;">
+              ${share_url_label || "Ver Portal"}
             </a>
           </p>
         ` : ""}
@@ -178,11 +182,15 @@ Deno.serve(async (req: Request) => {
 
         <div style="margin-top: 32px; padding: 16px 20px; background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%); border-radius: 8px; text-align: center;">
           <p style="color: #94a3b8; font-size: 11px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 1px;">Portal de Servicios</p>
-          <p style="color: #ffffff; font-size: 13px; margin: 0 0 8px; font-weight: 600;">Consulte el estado de sus servicios en linea</p>
+          <p style="color: #ffffff; font-size: 13px; margin: 0 0 8px; font-weight: 600;">Consulte el estado de sus servicios en línea</p>
           <p style="color: #cbd5e1; font-size: 11px; margin: 0; line-height: 1.5;">
-            Servicios gestionados &bull; Soporte &bull; Backups &bull; Informacion IT
+            Servicios gestionados &bull; Soporte &bull; Backups &bull; Información IT
           </p>
-          ${share_url ? `<a href="${share_url}" style="color: #60a5fa; font-size: 11px; text-decoration: none; display: inline-block; margin-top: 8px;">${share_url}</a>` : ""}
+          ${portal_url ? `
+            <a href="${portal_url}" style="display: inline-block; margin-top: 12px; background: rgba(255,255,255,0.1); color: #e2e8f0; font-size: 12px; font-weight: 500; text-decoration: none; padding: 8px 20px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2);">
+              Ver mis servicios →
+            </a>
+          ` : ""}
         </div>
 
         <div style="margin-top: 16px; text-align: center;">
