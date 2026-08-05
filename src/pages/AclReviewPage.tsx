@@ -24,7 +24,6 @@ export function AclReviewPage({ token }: Props) {
   const [data, setData] = useState<ReviewData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [responses, setResponses] = useState<Record<string, UserResponse>>({});
-  const [notes, setNotes] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
@@ -53,12 +52,17 @@ export function AclReviewPage({ token }: Props) {
     });
   }
 
+  function setResponse(name: string, patch: Partial<UserResponse>) {
+    setResponses(prev => ({ ...prev, [name]: { ...prev[name], ...patch } }));
+  }
+
   async function handleSubmit() {
     if (!data) return;
     setSubmitting(true);
     const payload = Object.values(responses).map(r => ({
-      ...r,
-      note: notes[r.name] || undefined,
+      name: r.name,
+      action: r.action,
+      ...(r.note ? { note: r.note } : {}),
     }));
     try {
       const res = await fetch(`${supabaseUrl}/functions/v1/submit-acl-review`, {
@@ -169,15 +173,15 @@ export function AclReviewPage({ token }: Props) {
                       <ActionButton current={resp.action} value="mantener" label="Mantener"
                         icon={<CheckCircle2 className="w-3.5 h-3.5" />}
                         color="emerald"
-                        onClick={() => setResponses(p => ({ ...p, [u.name]: { ...resp, action: 'mantener' } }))} />
+                        onClick={() => setResponse(u.name, { action: 'mantener' })} />
                       <ActionButton current={resp.action} value="eliminar" label="Eliminar"
                         icon={<Trash2 className="w-3.5 h-3.5" />}
                         color="red"
-                        onClick={() => setResponses(p => ({ ...p, [u.name]: { ...resp, action: 'eliminar' } }))} />
+                        onClick={() => setResponse(u.name, { action: 'eliminar' })} />
                       <ActionButton current={resp.action} value="cambiar" label="Cambiar"
                         icon={<Edit2 className="w-3.5 h-3.5" />}
                         color="amber"
-                        onClick={() => setResponses(p => ({ ...p, [u.name]: { ...resp, action: 'cambiar' } }))} />
+                        onClick={() => setResponse(u.name, { action: 'cambiar' })} />
                     </div>
                   </div>
                   {(resp.action === 'eliminar' || resp.action === 'cambiar') && (
@@ -185,8 +189,8 @@ export function AclReviewPage({ token }: Props) {
                       <input
                         type="text"
                         placeholder={resp.action === 'cambiar' ? 'Describir el cambio solicitado...' : 'Motivo de eliminación (opcional)...'}
-                        value={notes[u.name] || ''}
-                        onChange={e => setNotes(p => ({ ...p, [u.name]: e.target.value }))}
+                        value={resp.note || ''}
+                        onChange={e => setResponse(u.name, { note: e.target.value })}
                         className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 placeholder-slate-400"
                       />
                     </div>

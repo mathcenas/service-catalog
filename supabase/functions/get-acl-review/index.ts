@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "https://servicios.cenas-support.com",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, apikey",
 };
@@ -60,6 +60,12 @@ Deno.serve(async (req: Request) => {
   const snap = (reviewToken.service_acl_snapshots as any);
   const svc = (reviewToken.services as any);
   const client = (reviewToken.clients as any);
+
+  if (!snap?.snapshot) {
+    return new Response(JSON.stringify({ error: "Snapshot not found" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   return new Response(JSON.stringify({
     snapshot: snap?.snapshot,
