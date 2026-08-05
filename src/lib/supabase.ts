@@ -170,7 +170,7 @@ export type RoadmapStatus = 'Planned' | 'In Progress' | 'Next Release' | 'Releas
 
 export const ROADMAP_STATUSES: RoadmapStatus[] = ['Planned', 'In Progress', 'Next Release', 'Released'];
 
-export type RoadmapCategory = 'idea' | 'payment' | 'backup' | 'visit' | 'problem' | 'change_request';
+export type RoadmapCategory = 'idea' | 'payment' | 'backup' | 'visit' | 'problem' | 'change_request' | 'audit';
 
 export const ROADMAP_CATEGORIES: { value: RoadmapCategory; label: string }[] = [
   { value: 'idea', label: 'New Service / Idea' },
@@ -179,6 +179,7 @@ export const ROADMAP_CATEGORIES: { value: RoadmapCategory; label: string }[] = [
   { value: 'visit', label: 'Visit / Coordination' },
   { value: 'problem', label: 'Problem / Incident' },
   { value: 'change_request', label: 'Change Request' },
+  { value: 'audit', label: 'Auditoría de Accesos' },
 ];
 
 export type RoadmapItem = {

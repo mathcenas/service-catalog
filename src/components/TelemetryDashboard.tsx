@@ -151,6 +151,8 @@ export function TelemetryDashboard({ services, clients }: Props) {
   const [viewMode, setViewMode] = useState<'cards' | 'log'>('cards');
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState<string>('Cenas-Support');
+  const [sendingReview, setSendingReview] = useState<string | null>(null);
+  const [reviewLinks, setReviewLinks] = useState<Record<string, string>>({});
 
   const load = async () => {
     setLoading(true);
@@ -181,6 +183,30 @@ export function TelemetryDashboard({ services, clients }: Props) {
     const s = services.find(sv => sv.id === serviceId);
     if (!s) return null;
     return clients.find(c => c.id === s.client_id);
+  };
+
+  const sendReviewLink = async (snap: AclSnapshot) => {
+    setSendingReview(snap.id);
+    try {
+      const svc = services.find(s => s.id === snap.service_id);
+      const client = svc ? clients.find(c => c.id === svc.client_id) : null;
+      const { data, error } = await supabase
+        .from('acl_review_tokens')
+        .insert({
+          snapshot_id: snap.id,
+          service_id: snap.service_id,
+          client_id: client?.id || null,
+        })
+        .select('token')
+        .single();
+      if (error || !data) throw error;
+      const link = `${window.location.origin}/acl-review/${data.token}`;
+      setReviewLinks(p => ({ ...p, [snap.id]: link }));
+    } catch (e) {
+      alert('Error al generar el enlace de revisión.');
+    } finally {
+      setSendingReview(null);
+    }
   };
 
   // Latest heartbeat per service per source
@@ -676,6 +702,22 @@ export function TelemetryDashboard({ services, clients }: Props) {
                         >
                           <Download className="w-3 h-3" /> Exportar
                         </button>
+                        {reviewLinks[snap.id] ? (
+                          <button
+                            onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(reviewLinks[snap.id]); }}
+                            className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 border border-emerald-200 hover:border-emerald-400 px-2 py-1 rounded-lg transition-colors"
+                          >
+                            📋 Copiar enlace
+                          </button>
+                        ) : (
+                          <button
+                            onClick={e => { e.stopPropagation(); sendReviewLink(snap); }}
+                            disabled={sendingReview === snap.id}
+                            className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 border border-violet-200 hover:border-violet-400 px-2 py-1 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            {sendingReview === snap.id ? '...' : '📨 Enviar revisión'}
+                          </button>
+                        )}
                       </div>
                     </button>
 
