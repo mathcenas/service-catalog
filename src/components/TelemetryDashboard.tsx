@@ -190,6 +190,14 @@ export function TelemetryDashboard({ services, clients }: Props) {
     try {
       const svc = services.find(s => s.id === snap.service_id);
       const client = svc ? clients.find(c => c.id === svc.client_id) : null;
+
+      // Remove any previous unused token for this snapshot
+      await supabase
+        .from('acl_review_tokens')
+        .delete()
+        .eq('snapshot_id', snap.id)
+        .is('submitted_at', null);
+
       const { data, error } = await supabase
         .from('acl_review_tokens')
         .insert({
@@ -202,7 +210,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
       if (error || !data) throw error;
       const link = `${window.location.origin}/acl-review/${data.token}`;
       setReviewLinks(p => ({ ...p, [snap.id]: link }));
-    } catch (e) {
+    } catch {
       alert('Error al generar el enlace de revisión.');
     } finally {
       setSendingReview(null);
