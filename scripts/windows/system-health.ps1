@@ -122,3 +122,5 @@ try {
 } catch {
     Write-Log "❌ speedtest Error: $($_.Exception.Message)"
 }
+
+Invoke-Kuma -Status "up" -Msg "system-health OK"

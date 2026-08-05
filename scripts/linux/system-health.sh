@@ -32,11 +32,22 @@ fi
 
 # ---------- Internos ----------
 HEARTBEAT_URL="${SUPABASE_URL}/functions/v1/ingest-heartbeat"
+KUMA_PUSH_URL="${KUMA_PUSH_URL:-}"
 LOG_FILE="${LOG_FILE:-/var/log/system-health.log}"
 MAX_LOG_BYTES=5242880  # 5 MB
 
 # ---------- Logger ----------
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOG_FILE"; }
+
+notify_kuma() {
+  [[ -z "$KUMA_PUSH_URL" ]] && return 0
+  local base_url="${KUMA_PUSH_URL%%\?*}"
+  curl -fsS --max-time 10 -G "$base_url" \
+    --data-urlencode "status=${1}" \
+    --data-urlencode "msg=${2}" \
+    --data-urlencode "ping=0" \
+    >/dev/null 2>&1 || true
+}
 
 # Rotar log si pasa de 5 MB
 if [ -f "$LOG_FILE" ] && [ "$(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0)" -gt "$MAX_LOG_BYTES" ]; then
@@ -140,7 +151,9 @@ HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
 
 if [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "201" ]]; then
   log "✓ system-health → $STATUS | $MESSAGE"
+  notify_kuma "up" "system-health OK | $MESSAGE"
 else
   log "✗ system-health → HTTP $HTTP_CODE"
+  notify_kuma "down" "system-health error HTTP $HTTP_CODE"
   exit 1
 fi

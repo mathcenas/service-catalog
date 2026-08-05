@@ -44,7 +44,17 @@ if [[ -z "${SUPABASE_URL:-}" || -z "${SUPABASE_ANON_KEY:-}" || -z "${INGEST_SECR
 fi
 
 LOG_FILE="${LOG_FILE:-/var/log/nas-smb-acl.log}"
+KUMA_PUSH_URL="${KUMA_PUSH_URL:-}"
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOG_FILE"; }
+notify_kuma() {
+  [[ -z "$KUMA_PUSH_URL" ]] && return 0
+  local base_url="${KUMA_PUSH_URL%%\?*}"
+  curl -fsS --max-time 10 -G "$base_url" \
+    --data-urlencode "status=${1}" \
+    --data-urlencode "msg=${2}" \
+    --data-urlencode "ping=0" \
+    >/dev/null 2>&1 || true
+}
 
 OMV_CONFIG="${OMV_CONFIG:-/etc/openmediavault/config.xml}"
 
@@ -214,7 +224,9 @@ log "HTTP $HTTP_CODE | $BODY"
 
 if [[ "$HTTP_CODE" == "201" ]]; then
   log "=== OK: $SHARE_COUNT shares, $USER_COUNT usuarios enviados ==="
+  notify_kuma "up" "smb-acl OK | $SHARE_COUNT shares $USER_COUNT usuarios"
 else
   log "=== ERROR: respuesta inesperada ==="
+  notify_kuma "down" "smb-acl error HTTP $HTTP_CODE"
   exit 1
 fi
