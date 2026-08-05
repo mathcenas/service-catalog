@@ -215,7 +215,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
       setReviewLinks(p => ({ ...p, [snap.id]: link }));
 
       // Auto-send email to client with review link (disabled until endpoint is stable)
-      if (false && client?.email) {
+      if (client?.email) {
         const svcName = svc?.business_name || svc?.name || 'NAS';
         // Find client's share token for portal link
         const { data: shareToken } = await supabase
