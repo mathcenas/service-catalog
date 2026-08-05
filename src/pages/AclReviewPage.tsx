@@ -31,7 +31,10 @@ export function AclReviewPage({ token }: Props) {
 
   useEffect(() => {
     fetch(`${supabaseUrl}/functions/v1/get-acl-review?token=${token}`, {
-      headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY },
+      headers: {
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
     })
       .then(r => r.json())
       .then(d => {
@@ -67,7 +70,11 @@ export function AclReviewPage({ token }: Props) {
     try {
       const res = await fetch(`${supabaseUrl}/functions/v1/submit-acl-review`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: import.meta.env.VITE_SUPABASE_ANON_KEY },
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
         body: JSON.stringify({ token, responses: payload }),
       });
       const d = await res.json();
