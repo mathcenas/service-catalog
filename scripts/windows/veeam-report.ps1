@@ -67,7 +67,9 @@ foreach ($session in $sessions) {
     try {
         Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body | Out-Null
         Write-Log "✅ $jobName → $status | $([math]::Round($sizeBytes/1GB,2)) GB | $([math]::Round($durationSecs/60,1)) min"
+        Invoke-Kuma -Status "up" -Msg "veeam $jobName OK"
     } catch {
         Write-Log "❌ $jobName Error: $($_.Exception.Message)"
+        Invoke-Kuma -Status "down" -Msg "veeam $jobName error"
     }
 }
