@@ -784,7 +784,9 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
   }).join('');
 
   const usersHtml = (users as (AclUser & { last_login?: string | null })[]).map(u => {
-    const login = u.last_login ? `<span style="color:#374151;">${u.last_login}</span>` : `<span style="color:#d1d5db;font-style:italic;">Nunca</span>`;
+    const login = u.last_login
+      ? `<span style="color:#374151;">${u.last_login}</span>`
+      : `<span style="background:#f1f5f9;color:#94a3b8;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.4px;">EN DESARROLLO</span>`;
     return `<tr style="border-top:1px solid #f3f4f6;">
       <td style="padding:7px 14px;color:#374151;font-size:13px;font-weight:500;">${u.name}</td>
       <td style="padding:7px 14px;color:#6b7280;font-size:12px;">${(u.groups || []).join(', ') || '—'}</td>
@@ -841,7 +843,8 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
       </table>
     </div>
 
-    <p style="color:#94a3b8;font-size:11px;text-align:center;margin-top:36px;padding-top:16px;border-top:1px solid #f1f5f9;">${companyName} &nbsp;·&nbsp; Reporte generado automáticamente &nbsp;·&nbsp; ${dateStr}</p>
+    <p style="color:#cbd5e1;font-size:10px;margin-top:12px;margin-bottom:0;">* Último acceso vía SMB/Windows en desarrollo — requiere auditoría de Samba habilitada en el servidor.</p>
+    <p style="color:#94a3b8;font-size:11px;text-align:center;margin-top:20px;padding-top:16px;border-top:1px solid #f1f5f9;">${companyName} &nbsp;·&nbsp; Reporte generado automáticamente &nbsp;·&nbsp; ${dateStr}</p>
   </div>
 </body>
 </html>`;
