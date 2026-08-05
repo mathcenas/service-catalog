@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, Fragment } from 'react';
-import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, ChevronDown, ChevronRight, Trash2, HardDrive, Wifi, Monitor, Server, LayoutGrid, List, Users, Download, FolderOpen } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, Trash2, HardDrive, Wifi, Monitor, Server, LayoutGrid, List, Users, Download } from 'lucide-react';
 import { supabase, Service, Client, ServiceHeartbeat } from '../lib/supabase';
 
 interface ServiceBackup {
@@ -139,7 +139,6 @@ export function TelemetryDashboard({ services, clients }: Props) {
   const [backups, setBackups] = useState<ServiceBackup[]>([]);
   const [aclSnapshots, setAclSnapshots] = useState<AclSnapshot[]>([]);
   const [aclClientFilter, setAclClientFilter] = useState<string>('all');
-  const [expandedAcl, setExpandedAcl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [clientFilter, setClientFilter] = useState<string>('all');
@@ -198,12 +197,16 @@ export function TelemetryDashboard({ services, clients }: Props) {
         .eq('snapshot_id', snap.id)
         .is('submitted_at', null);
 
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
       const { data, error } = await supabase
         .from('acl_review_tokens')
         .insert({
           snapshot_id: snap.id,
           service_id: snap.service_id,
           client_id: client?.id || null,
+          user_id: user.id,
         })
         .select('token')
         .single();
@@ -696,116 +699,67 @@ export function TelemetryDashboard({ services, clients }: Props) {
             </select>
           </div>
 
-          <div className="space-y-3">
-            {aclSnapshots
-              .filter(snap => aclClientFilter === 'all' || snap.service_id === aclClientFilter)
-              .map(snap => {
-                const svc = services.find(s => s.id === snap.service_id);
-                const isExpanded = expandedAcl === snap.id;
-                const { shares, users, hostname } = snap.snapshot;
-                return (
-                  <div key={snap.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                    <button
-                      onClick={() => setExpandedAcl(isExpanded ? null : snap.id)}
-                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors text-left"
-                    >
-                      <div className="flex items-center gap-3">
-                        {isExpanded ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
-                        <div>
-                          <span className="font-semibold text-gray-900 text-sm">{svc?.business_name || svc?.name || snap.service_id.slice(0, 8)}</span>
-                          {hostname && <span className="text-xs text-gray-400 ml-2">({hostname})</span>}
-                        </div>
-                        <span className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full font-medium">{shares.length} shares</span>
-                        <span className="text-xs bg-gray-50 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full">{users.length} usuarios</span>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className="text-xs text-gray-400">{new Date(snap.generated_at).toLocaleString('es-UY', { dateStyle: 'short', timeStyle: 'short' })}</span>
-                        <button
-                          onClick={e => {
-                            e.stopPropagation();
-                            const client = clients.find(c => c.id === svc?.client_id);
-                            exportAclHtml(snap, svc?.business_name || svc?.name || 'NAS', client?.company_name || '', logoUrl, companyName);
-                          }}
-                          className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-2 py-1 rounded-lg transition-colors"
-                        >
-                          <Download className="w-3 h-3" /> Exportar
-                        </button>
-                        {reviewLinks[snap.id] ? (
-                          <button
-                            onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(reviewLinks[snap.id]); }}
-                            className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 border border-emerald-200 hover:border-emerald-400 px-2 py-1 rounded-lg transition-colors"
-                          >
-                            📋 Copiar enlace
-                          </button>
-                        ) : (
-                          <button
-                            onClick={e => { e.stopPropagation(); sendReviewLink(snap); }}
-                            disabled={sendingReview === snap.id}
-                            className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 border border-violet-200 hover:border-violet-400 px-2 py-1 rounded-lg transition-colors disabled:opacity-50"
-                          >
-                            {sendingReview === snap.id ? '...' : '📨 Enviar revisión'}
-                          </button>
-                        )}
-                      </div>
-                    </button>
-
-                    {isExpanded && (
-                      <div className="border-t border-gray-100 divide-y divide-gray-100">
-                        {shares.filter(s => s.enabled).map(share => (
-                          <div key={share.smb_name} className="px-4 py-3">
-                            <div className="flex items-center gap-2 mb-2">
-                              <FolderOpen className="w-4 h-4 text-amber-500" />
-                              <span className="font-medium text-gray-900 text-sm">{share.smb_name}</span>
-                              {share.comment && <span className="text-xs text-gray-400">{share.comment}</span>}
-                              {share.readonly && <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-medium uppercase">solo lectura</span>}
-                              {share.guest_access && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium uppercase">guest</span>}
-                            </div>
-                            {share.users.length === 0 && share.groups.length === 0 ? (
-                              <p className="text-xs text-gray-400 ml-6">Sin permisos explícitos configurados</p>
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">Servidor</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">Generado</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">Shares / Usuarios</th>
+                  <th className="px-4 py-2.5"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {aclSnapshots
+                  .filter(snap => aclClientFilter === 'all' || snap.service_id === aclClientFilter)
+                  .map(snap => {
+                    const svc = services.find(s => s.id === snap.service_id);
+                    const client = clients.find(c => c.id === svc?.client_id);
+                    const { shares, users, hostname } = snap.snapshot;
+                    return (
+                      <tr key={snap.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <span className="font-medium text-gray-900">{svc?.business_name || svc?.name || snap.service_id.slice(0, 8)}</span>
+                          {hostname && <span className="text-xs text-gray-400 ml-1.5">({hostname})</span>}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                          {new Date(snap.generated_at).toLocaleString('es-UY', { dateStyle: 'short', timeStyle: 'short' })}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full font-medium mr-1.5">{shares.length} shares</span>
+                          <span className="text-xs bg-gray-50 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full">{users.length} usuarios</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2 justify-end">
+                            <button
+                              onClick={() => exportAclHtml(snap, svc?.business_name || svc?.name || 'NAS', client?.company_name || '', logoUrl, companyName)}
+                              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-2 py-1 rounded-lg transition-colors"
+                            >
+                              <Download className="w-3 h-3" /> PDF
+                            </button>
+                            {reviewLinks[snap.id] ? (
+                              <button
+                                onClick={() => navigator.clipboard.writeText(reviewLinks[snap.id])}
+                                className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 border border-emerald-200 hover:border-emerald-400 px-2 py-1 rounded-lg transition-colors"
+                              >
+                                📋 Copiar enlace
+                              </button>
                             ) : (
-                              <div className="ml-6 flex flex-wrap gap-2">
-                                {share.users.map(u => (
-                                  <span key={u.name} className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border font-medium ${
-                                    u.access === 'read/write' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                    u.access === 'read only' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                    'bg-gray-100 text-gray-500 border-gray-200 line-through'
-                                  }`}>
-                                    {u.name}
-                                    <span className="opacity-60 font-normal">{u.access === 'read/write' ? 'R/W' : u.access === 'read only' ? 'R' : '✗'}</span>
-                                  </span>
-                                ))}
-                                {share.groups.map(g => (
-                                  <span key={g.name} className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border font-medium ${
-                                    g.access === 'read/write' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                    g.access === 'read only' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                                    'bg-gray-100 text-gray-500 border-gray-200'
-                                  }`}>
-                                    <Users className="w-2.5 h-2.5" />
-                                    {g.name}
-                                    <span className="opacity-60 font-normal">{g.access === 'read/write' ? 'R/W' : g.access === 'read only' ? 'R' : '✗'}</span>
-                                  </span>
-                                ))}
-                              </div>
+                              <button
+                                onClick={() => sendReviewLink(snap)}
+                                disabled={sendingReview === snap.id}
+                                className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 border border-violet-200 hover:border-violet-400 px-2 py-1 rounded-lg transition-colors disabled:opacity-50"
+                              >
+                                {sendingReview === snap.id ? '...' : '📨 Revisión'}
+                              </button>
                             )}
                           </div>
-                        ))}
-                        {/* Users summary */}
-                        <div className="px-4 py-3 bg-gray-50">
-                          <p className="text-xs font-medium text-gray-500 mb-2">Usuarios del sistema</p>
-                          <div className="flex flex-wrap gap-2">
-                            {users.map(u => (
-                              <span key={u.name} className="inline-flex items-center gap-1 text-xs bg-white border border-gray-200 text-gray-700 px-2 py-0.5 rounded-full">
-                                {u.name}
-                                {u.groups && u.groups.length > 0 && <span className="opacity-50">· {u.groups.join(', ')}</span>}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
