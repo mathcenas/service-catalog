@@ -214,8 +214,8 @@ export function TelemetryDashboard({ services, clients }: Props) {
       const link = `${window.location.origin}/acl-review/${data.token}`;
       setReviewLinks(p => ({ ...p, [snap.id]: link }));
 
-      // Auto-send email to client with review link
-      if (client?.email) {
+      // Auto-send email to client with review link (disabled until endpoint is stable)
+      if (false && client?.email) {
         const svcName = svc?.business_name || svc?.name || 'NAS';
         // Find client's share token for portal link
         const { data: shareToken } = await supabase
