@@ -142,28 +142,26 @@ for u in root.findall('.//system/usermanagement/users/user'):
     if uname:
         users.append({'name': uname, 'uid': uid, 'comment': comment, 'groups': ugroups})
 
-# Último login por usuario via lastlog
+# Último login Samba via pdbedit -L -v (registra logins Windows/SMB, no PAM)
 import subprocess, re
 try:
-    result = subprocess.run(['lastlog'], capture_output=True, text=True, timeout=15)
+    result = subprocess.run(['pdbedit', '-L', '-v'], capture_output=True, text=True, timeout=15)
     umap = {u['name']: u for u in users}
-    for line in result.stdout.strip().split('\n')[1:]:
-        parts = line.split()
-        if not parts:
+    current_user = None
+    for line in result.stdout.split('\n'):
+        m = re.match(r'^Unix username:\s+(\S+)', line)
+        if m:
+            current_user = m.group(1)
             continue
-        uname = parts[0]
-        if uname not in umap:
-            continue
-        if 'Never' in line or '**Never' in line:
-            umap[uname]['last_login'] = None
-        else:
-            # lastlog: Username Port From Day Mon DD HH:MM:SS +TZ YYYY
-            # Tomamos todo a partir de la columna 3 (después de Port y From)
-            try:
-                date_part = ' '.join(parts[3:]) if len(parts) > 3 else None
-                umap[uname]['last_login'] = date_part
-            except Exception:
-                umap[uname]['last_login'] = None
+        if current_user and current_user in umap:
+            m2 = re.match(r'^Logon time:\s+(.+)', line)
+            if m2:
+                val = m2.group(1).strip()
+                # pdbedit muestra "0" o epoch cuando nunca logueó
+                if val in ('0', '0 (0)', '') or val.startswith('Thu, 01 Jan 1970'):
+                    umap[current_user]['last_login'] = None
+                else:
+                    umap[current_user]['last_login'] = val
 except Exception:
     pass
 
