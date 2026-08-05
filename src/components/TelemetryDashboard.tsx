@@ -806,10 +806,13 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
   <title>Reporte de Accesos SMB — ${clientName || serviceName}</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 40px 24px; background: #fff; color: #111827; }
-    @media print { body { padding: 20px; } }
+    #print-btn { position:fixed;top:16px;right:16px;background:#3b82f6;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(59,130,246,.35);z-index:999; }
+    #print-btn:hover { background:#2563eb; }
+    @media print { #print-btn { display:none; } body { padding: 20px; } }
   </style>
 </head>
 <body>
+  <button id="print-btn" onclick="window.print()">⬇ Guardar PDF</button>
   <div style="max-width:720px;margin:0 auto;">
 
     <!-- Header al estilo emails -->
@@ -851,11 +854,9 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
 
   const blob = new Blob([html], { type: 'text/html' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `smb-accesos-${serviceName.replace(/\s+/g, '-').toLowerCase()}-${new Date(generated_at).toISOString().slice(0, 10)}.html`;
-  a.click();
-  URL.revokeObjectURL(url);
+  const win = window.open(url, '_blank');
+  // Liberar la URL del blob cuando la ventana cargue
+  if (win) win.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
 }
 
 function StatBadge({ label, value, color, onClick, active }: { label: string; value: number; color: string; onClick: () => void; active: boolean }) {
