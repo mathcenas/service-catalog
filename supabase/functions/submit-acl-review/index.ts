@@ -4,7 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://servicios.cenas-support.com",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, apikey",
+  "Access-Control-Allow-Headers": "Content-Type, apikey, authorization",
 };
 
 interface UserResponse {
