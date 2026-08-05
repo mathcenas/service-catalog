@@ -132,6 +132,7 @@ Deno.serve(async (req: Request) => {
       payment:        { label: "Aviso de Pago",                color: "#0284c7", footer: "Si tiene consultas sobre este pago, responda a este correo." },
       backup:         { label: "Integración de Backup",        color: "#0d9488", footer: "Si tiene consultas, responda a este correo." },
       idea:           { label: "Nueva Propuesta de Servicio",  color: "#2563eb", footer: "Si tiene consultas sobre esta propuesta, responda a este correo." },
+      audit:          { label: "Revisión de Usuarios SMB",     color: "#7c3aed", footer: "Por favor complete la revisión antes del vencimiento del enlace." },
     };
 
     const defaultMeta: EmailMeta = { label: "Acción Planificada", color: "#2563eb", footer: "Si tiene consultas sobre esta acción, responda a este correo." };

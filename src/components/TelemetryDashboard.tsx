@@ -210,6 +210,26 @@ export function TelemetryDashboard({ services, clients }: Props) {
       if (error || !data) throw error;
       const link = `${window.location.origin}/acl-review/${data.token}`;
       setReviewLinks(p => ({ ...p, [snap.id]: link }));
+
+      // Auto-send email to client with review link
+      if (client?.email) {
+        const svcName = svc?.business_name || svc?.name || 'NAS';
+        await supabase.functions.invoke('notify-client', {
+          body: {
+            client_email: client.email,
+            alt_email: client.alt_email,
+            cc_emails: client.cc_emails,
+            client_name: client.contact_name || client.company_name,
+            subject: `Revisión de usuarios — ${svcName}`,
+            title: `Auditoría de accesos SMB — ${svcName}`,
+            description: `Le enviamos el siguiente enlace para que revise los usuarios con acceso a los archivos compartidos del servidor.\n\nPor favor indique para cada usuario si desea mantenerlo, eliminarlo o realizar algún cambio. El enlace tiene una validez de 15 días.\n\nEsta revisión se realiza cada 6 meses para garantizar que solo los usuarios correctos tengan acceso a sus archivos.`,
+            share_url: link,
+            logo_url: logoUrl,
+            sender_name: companyName,
+            category: 'audit',
+          },
+        });
+      }
     } catch {
       alert('Error al generar el enlace de revisión.');
     } finally {

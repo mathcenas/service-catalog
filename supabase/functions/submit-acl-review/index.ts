@@ -50,21 +50,19 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    if (reviewToken.submitted_at) {
-      return new Response(JSON.stringify({ error: "Already submitted" }), {
-        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Save responses
-    const { error: updateErr } = await supabase
+    // Atomic update: only succeeds if not yet submitted — prevents race condition
+    const { data: updated, error: updateErr } = await supabase
       .from("acl_review_tokens")
       .update({ submitted_at: new Date().toISOString(), responses })
-      .eq("token", token);
+      .eq("token", token)
+      .is("submitted_at", null)
+      .select("id")
+      .single();
 
-    if (updateErr) {
-      return new Response(JSON.stringify({ error: "Failed to save responses" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    if (updateErr || !updated) {
+      // submitted_at was already set by a concurrent request
+      return new Response(JSON.stringify({ error: "Already submitted" }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
