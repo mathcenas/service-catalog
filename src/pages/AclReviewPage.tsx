@@ -33,7 +33,6 @@ export function AclReviewPage({ token }: Props) {
     fetch(`${supabaseUrl}/functions/v1/get-acl-review?token=${token}`, {
       headers: {
         apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
       },
     })
       .then(r => r.json())
@@ -73,7 +72,6 @@ export function AclReviewPage({ token }: Props) {
         headers: {
           'Content-Type': 'application/json',
           apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({ token, responses: payload }),
       });
