@@ -24,9 +24,10 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const { service_id, generated_at, shares, users, hostname } = body;
 
-    if (!service_id) {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!service_id || !UUID_RE.test(service_id)) {
       return new Response(
-        JSON.stringify({ error: "service_id is required" }),
+        JSON.stringify({ error: "service_id must be a valid UUID" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

@@ -151,6 +151,8 @@ export function TelemetryDashboard({ services, clients }: Props) {
   const [viewMode, setViewMode] = useState<'cards' | 'log'>('cards');
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState<string>('Cenas-Support');
+  const [sendingReview, setSendingReview] = useState<string | null>(null);
+  const [reviewLinks, setReviewLinks] = useState<Record<string, string>>({});
 
   const load = async () => {
     setLoading(true);
@@ -181,6 +183,58 @@ export function TelemetryDashboard({ services, clients }: Props) {
     const s = services.find(sv => sv.id === serviceId);
     if (!s) return null;
     return clients.find(c => c.id === s.client_id);
+  };
+
+  const sendReviewLink = async (snap: AclSnapshot) => {
+    setSendingReview(snap.id);
+    try {
+      const svc = services.find(s => s.id === snap.service_id);
+      const client = svc ? clients.find(c => c.id === svc.client_id) : null;
+
+      // Remove any previous unused token for this snapshot
+      await supabase
+        .from('acl_review_tokens')
+        .delete()
+        .eq('snapshot_id', snap.id)
+        .is('submitted_at', null);
+
+      const { data, error } = await supabase
+        .from('acl_review_tokens')
+        .insert({
+          snapshot_id: snap.id,
+          service_id: snap.service_id,
+          client_id: client?.id || null,
+        })
+        .select('token')
+        .single();
+      if (error || !data) throw error;
+      const link = `${window.location.origin}/acl-review/${data.token}`;
+      setReviewLinks(p => ({ ...p, [snap.id]: link }));
+
+      // Auto-send email to client with review link
+      if (client?.email) {
+        const svcName = svc?.business_name || svc?.name || 'NAS';
+        await supabase.functions.invoke('notify-client', {
+          body: {
+            client_email: client.email,
+            alt_email: client.alt_email,
+            cc_emails: client.cc_emails,
+            client_name: client.contact_name || client.company_name,
+            subject: `Revisión de usuarios — ${svcName}`,
+            title: `Auditoría de accesos SMB — ${svcName}`,
+            description: `Le enviamos el siguiente enlace para que revise los usuarios con acceso a los archivos compartidos del servidor.\n\nPor favor indique para cada usuario si desea mantenerlo, eliminarlo o realizar algún cambio. El enlace tiene una validez de 15 días.\n\nEsta revisión se realiza cada 6 meses para garantizar que solo los usuarios correctos tengan acceso a sus archivos.`,
+            share_url: link,
+            logo_url: logoUrl,
+            sender_name: companyName,
+            category: 'audit',
+          },
+        });
+      }
+    } catch {
+      alert('Error al generar el enlace de revisión.');
+    } finally {
+      setSendingReview(null);
+    }
   };
 
   // Latest heartbeat per service per source
@@ -676,6 +730,22 @@ export function TelemetryDashboard({ services, clients }: Props) {
                         >
                           <Download className="w-3 h-3" /> Exportar
                         </button>
+                        {reviewLinks[snap.id] ? (
+                          <button
+                            onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(reviewLinks[snap.id]); }}
+                            className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 border border-emerald-200 hover:border-emerald-400 px-2 py-1 rounded-lg transition-colors"
+                          >
+                            📋 Copiar enlace
+                          </button>
+                        ) : (
+                          <button
+                            onClick={e => { e.stopPropagation(); sendReviewLink(snap); }}
+                            disabled={sendingReview === snap.id}
+                            className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 border border-violet-200 hover:border-violet-400 px-2 py-1 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            {sendingReview === snap.id ? '...' : '📨 Enviar revisión'}
+                          </button>
+                        )}
                       </div>
                     </button>
 
@@ -806,10 +876,13 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
   <title>Reporte de Accesos SMB — ${clientName || serviceName}</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 40px 24px; background: #fff; color: #111827; }
-    @media print { body { padding: 20px; } }
+    #print-btn { position:fixed;top:16px;right:16px;background:#3b82f6;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(59,130,246,.35);z-index:999; }
+    #print-btn:hover { background:#2563eb; }
+    @media print { #print-btn { display:none; } body { padding: 20px; } }
   </style>
 </head>
 <body>
+  <button id="print-btn" onclick="window.print()">⬇ Guardar PDF</button>
   <div style="max-width:720px;margin:0 auto;">
 
     <!-- Header al estilo emails -->
@@ -851,11 +924,9 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
 
   const blob = new Blob([html], { type: 'text/html' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `smb-accesos-${serviceName.replace(/\s+/g, '-').toLowerCase()}-${new Date(generated_at).toISOString().slice(0, 10)}.html`;
-  a.click();
-  URL.revokeObjectURL(url);
+  const win = window.open(url, '_blank');
+  // Liberar la URL del blob cuando la ventana cargue
+  if (win) win.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
 }
 
 function StatBadge({ label, value, color, onClick, active }: { label: string; value: number; color: string; onClick: () => void; active: boolean }) {
