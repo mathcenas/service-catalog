@@ -100,14 +100,26 @@ Deno.serve(async (req: Request) => {
       is_public: false,
     });
 
-    // Fetch admin settings
-    const { data: settings } = await supabase
-      .from("user_settings")
-      .select("logo_url, company_name, weekly_digest_email")
-      .eq("user_id", reviewToken.user_id)
-      .maybeSingle();
+    // Fetch admin settings and client portal token in parallel
+    const [{ data: settings }, { data: shareToken }] = await Promise.all([
+      supabase
+        .from("user_settings")
+        .select("logo_url, company_name, weekly_digest_email")
+        .eq("user_id", reviewToken.user_id)
+        .maybeSingle(),
+      reviewToken.client_id
+        ? supabase
+            .from("share_tokens")
+            .select("token")
+            .eq("client_id", reviewToken.client_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
 
     const adminEmail = settings?.weekly_digest_email || Deno.env.get("RESEND_REPLY_TO") || "mathias@cenas.uy";
+    const portalUrl = shareToken?.token
+      ? `https://servicios.cenas-support.com/portal/${shareToken.token}`
+      : null;
     const logoUrl = settings?.logo_url || "";
     const companyName = settings?.company_name || "Cenas Support";
 
@@ -155,7 +167,13 @@ Deno.serve(async (req: Request) => {
             ? `<p style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px 16px;color:#854d0e;font-size:14px;margin:0;">⚠️ ${needsAction.length} usuario(s) requieren acción.</p>`
             : `<p style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px 16px;color:#166534;font-size:14px;margin:0;">✅ Sin cambios requeridos.</p>`
           }
-          <p style="color:#94a3b8;font-size:10px;text-align:center;margin-top:32px;">Correo generado por Task Tracker Pro, by ${companyName}</p>
+          <div style="margin-top:32px;padding:16px 20px;background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);border-radius:8px;text-align:center;">
+            <p style="color:#94a3b8;font-size:11px;margin:0 0 6px;text-transform:uppercase;letter-spacing:1px;">Portal de Servicios</p>
+            <p style="color:#ffffff;font-size:13px;margin:0 0 8px;font-weight:600;">Consulte el estado de sus servicios en línea</p>
+            <p style="color:#cbd5e1;font-size:11px;margin:0;line-height:1.5;">Servicios gestionados &bull; Soporte &bull; Backups &bull; Información IT</p>
+            ${portalUrl ? `<a href="${portalUrl}" style="display:inline-block;margin-top:12px;background:rgba(255,255,255,0.1);color:#e2e8f0;font-size:12px;font-weight:500;text-decoration:none;padding:8px 20px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);">Ver mis servicios →</a>` : ""}
+          </div>
+          <p style="color:#94a3b8;font-size:10px;text-align:center;margin-top:16px;">Correo generado por Task Tracker Pro, by ${companyName}</p>
         </div>`;
 
       const ccEmails: string[] = [];
