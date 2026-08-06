@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Upload, Trash2, Image } from 'lucide-react';
+import { Upload, Trash2, Image, Send, CheckCircle2 } from 'lucide-react';
 import { supabase, UserSettings } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -14,6 +14,11 @@ export function SettingsPanel() {
   const [digestEmail, setDigestEmail] = useState('');
   const [savingDigest, setSavingDigest] = useState(false);
   const [testingDigest, setTestingDigest] = useState(false);
+  const [testEmailAddr, setTestEmailAddr] = useState('');
+  const [testCategory, setTestCategory] = useState<string>('problem');
+  const [testEventType, setTestEventType] = useState<string>('notify');
+  const [sendingTest, setSendingTest] = useState(false);
+  const [testSent, setTestSent] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhookToken, setWebhookToken] = useState('');
   const [savingWebhook, setSavingWebhook] = useState(false);
@@ -127,6 +132,45 @@ export function SettingsPanel() {
       });
     }
     setTestingDigest(false);
+  };
+
+  const handleSendTestEmail = async () => {
+    const to = testEmailAddr.trim() || user?.email || '';
+    if (!to) return;
+    setSendingTest(true);
+    setTestSent(false);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      const categoryLabels: Record<string, string> = {
+        problem: 'Incidente en servidor',
+        change_request: 'Cambio de configuración',
+        visit: 'Visita técnica coordinada',
+        payment: 'Renovación de licencia',
+        backup: 'Integración de backup',
+        idea: 'Nueva propuesta de servicio',
+        audit: 'Revisión de usuarios SMB',
+      };
+      await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-client`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_email: to,
+          client_name: 'Cliente de Prueba',
+          subject: `[TEST] ${categoryLabels[testCategory] || testCategory}`,
+          title: categoryLabels[testCategory] || testCategory,
+          description: 'Este es un correo de prueba generado desde el panel de configuración para validar la plantilla y el envío.',
+          category: testCategory,
+          event_type: testEventType,
+          sender_name: settings?.company_name || user?.email,
+          logo_url: settings?.logo_url || undefined,
+          share_url: testEventType === 'notify' ? `${window.location.origin}/acl-review/token-de-prueba` : undefined,
+          share_url_label: testEventType === 'notify' ? 'Ver revisión →' : undefined,
+        }),
+      });
+      setTestSent(true);
+      setTimeout(() => setTestSent(false), 4000);
+    }
+    setSendingTest(false);
   };
 
   const handleSaveWebhook = async () => {
@@ -245,6 +289,51 @@ export function SettingsPanel() {
           </button>
         </div>
       </div>
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800">Test de email</h3>
+          <p className="text-xs text-gray-500 mt-0.5">Enviá un correo de prueba para validar la plantilla y el envío en Resend.</p>
+        </div>
+        <div className="space-y-3 max-w-lg">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Destinatario (vacío = tu email)</label>
+            <input type="email" value={testEmailAddr} onChange={e => setTestEmailAddr(e.target.value)}
+              placeholder={user?.email || 'correo@ejemplo.com'}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Categoría</label>
+              <select value={testCategory} onChange={e => setTestCategory(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                <option value="problem">Incidente</option>
+                <option value="change_request">Cambio</option>
+                <option value="visit">Visita</option>
+                <option value="payment">Pago</option>
+                <option value="backup">Backup</option>
+                <option value="idea">Nueva propuesta</option>
+                <option value="audit">Revisión SMB</option>
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Tipo</label>
+              <select value={testEventType} onChange={e => setTestEventType(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                <option value="notify">Notificación</option>
+                <option value="released">Completado ✅</option>
+                <option value="closed">Cerrado</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <button onClick={handleSendTestEmail} disabled={sendingTest}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium disabled:opacity-50">
+          {sendingTest ? <><Send className="w-4 h-4 animate-pulse" />Enviando...</> :
+           testSent   ? <><CheckCircle2 className="w-4 h-4" />Enviado</> :
+                        <><Send className="w-4 h-4" />Enviar test</>}
+        </button>
+      </div>
+
       <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm space-y-4">
         <div>
           <h3 className="text-sm font-semibold text-gray-800">External Portal Webhook</h3>
