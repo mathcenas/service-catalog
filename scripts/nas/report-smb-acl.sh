@@ -167,11 +167,27 @@ try:
             m2 = re.match(r'^Logon time:\s+(.+)', line)
             if m2:
                 val = m2.group(1).strip()
-                # pdbedit muestra "0" o epoch cuando nunca logueó
                 if val in ('0', '0 (0)', '') or val.startswith('Thu, 01 Jan 1970'):
                     umap[current_user]['last_login'] = None
                 else:
                     umap[current_user]['last_login'] = val
+except Exception:
+    pass
+
+# Sesiones activas via smbstatus -b (usuario → IP actual)
+try:
+    smb = subprocess.run(['smbstatus', '-b'], capture_output=True, text=True, timeout=10)
+    umap = {u['name']: u for u in users}
+    for line in smb.stdout.split('\n'):
+        # formato: PID  username  group  machine (ipv4:IP:port)  ...
+        m = re.match(r'^\d+\s+(\S+)\s+\S+\s+\S+\s+\(ipv4:([^:]+):\d+\)', line)
+        if not m:
+            continue
+        uname, ip = m.group(1), m.group(2)
+        if uname in umap:
+            sessions = umap[uname].setdefault('active_sessions', [])
+            if ip not in sessions:
+                sessions.append(ip)
 except Exception:
     pass
 

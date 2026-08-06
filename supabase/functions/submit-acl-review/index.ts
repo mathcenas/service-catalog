@@ -149,7 +149,7 @@ Deno.serve(async (req: Request) => {
         <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;">
           <div style="border-bottom:2px solid #7c3aed;padding-bottom:16px;margin-bottom:24px;">
             ${logoHtml}
-            <h2 style="color:#1e293b;margin:0;font-size:20px;">Revisión de Usuarios SMB</h2>
+            <h2 style="color:#1e293b;margin:0;font-size:20px;">Revisión de usuarios completada — acción requerida</h2>
             <p style="color:#64748b;margin:4px 0 0;font-size:13px;">${client?.company_name || ""} — ${svc?.business_name || svc?.name || "NAS"}</p>
           </div>
           <p style="color:#334155;font-size:15px;">El cliente completó la revisión de usuarios del servidor NAS${generatedDate ? ` (reporte del ${generatedDate})` : ""}.</p>
@@ -176,14 +176,8 @@ Deno.serve(async (req: Request) => {
           <p style="color:#94a3b8;font-size:10px;text-align:center;margin-top:16px;">Correo generado por Task Tracker Pro, by ${companyName}</p>
         </div>`;
 
+      // Este mail es interno (acción pendiente para el admin), no se copia al cliente
       const ccEmails: string[] = [];
-      if (client?.email) ccEmails.push(client.email);
-      if (client?.alt_email && client.alt_email !== client.email) ccEmails.push(client.alt_email);
-      if (client?.cc_emails) {
-        client.cc_emails.split(",").map((e: string) => e.trim()).filter((e: string) => e).forEach((e: string) => {
-          if (!ccEmails.includes(e)) ccEmails.push(e);
-        });
-      }
 
       await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -193,7 +187,7 @@ Deno.serve(async (req: Request) => {
           reply_to: adminEmail,
           to: [adminEmail],
           cc: ccEmails.length > 0 ? ccEmails : undefined,
-          subject: `Revisión SMB completada — ${client?.company_name || "cliente"}`,
+          subject: `Revisión de usuarios pendiente de acción — ${client?.company_name || "cliente"}`,
           html: htmlBody,
         }),
       });
