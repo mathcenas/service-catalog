@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, Fragment } from 'react';
-import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, Trash2, HardDrive, Wifi, Monitor, Server, LayoutGrid, List, Users, Download } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, Trash2, HardDrive, Wifi, Monitor, Server, LayoutGrid, List, Users, Download, ChevronRight, ChevronDown } from 'lucide-react';
 import { supabase, Service, Client, ServiceHeartbeat } from '../lib/supabase';
 
 interface ServiceBackup {
