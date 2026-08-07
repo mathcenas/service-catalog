@@ -163,8 +163,8 @@ export function SettingsPanel() {
           event_type: testEventType,
           sender_name: settings?.company_name || user?.email,
           logo_url: settings?.logo_url || undefined,
-          share_url: testEventType === 'notify' ? `${window.location.origin}/acl-review/token-de-prueba` : undefined,
-          share_url_label: testEventType === 'notify' ? 'Ver revisión →' : undefined,
+          share_url: testCategory === 'audit' ? `${window.location.origin}/acl-review/token-de-prueba` : undefined,
+          share_url_label: testCategory === 'audit' ? 'Iniciar revisión →' : undefined,
         }),
       });
       setTestSent(true);
