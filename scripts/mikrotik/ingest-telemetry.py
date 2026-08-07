@@ -37,12 +37,31 @@ SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")   # service_role, no an
 LOG_DIR   = Path(os.getenv("MIKROTIK_LOG_DIR", "/srv/network-monitor/network-monitor/historial"))
 STATE_DIR = Path(os.getenv("MIKROTIK_STATE_DIR", "/srv/scripts/mikrotik/state"))
 
-# Mapeo nombre_de_archivo (sin .log) → service_id en Supabase
-# Agregar una entrada por cada router
-SERVICE_MAP: dict[str, str] = {
-    # "RegionalSur":   "uuid-del-servicio",
-    # "RegionalNorte": "uuid-del-servicio",
-}
+# Mapeo nombre_de_archivo (sin .log) → service_id, leído desde map.env
+# Formato del archivo:
+#   RegionalSur=uuid-del-service-id
+#   RegionalNorte=uuid-del-service-id
+#   RegionalSur_kuma=https://...  (ignorado por este script, es para el heartbeat)
+_MAP_FILE = Path(os.getenv("MIKROTIK_MAP_FILE", "/etc/mikrotik-map.env"))
+_local_map = Path(__file__).parent / "map.env"
+if _local_map.exists():
+    _MAP_FILE = _local_map
+
+def _load_map(path: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    if not path.exists():
+        return result
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key, val = key.strip(), val.strip()
+        if not key.endswith("_kuma"):
+            result[key] = val
+    return result
+
+SERVICE_MAP: dict[str, str] = _load_map(_MAP_FILE)
 
 # Cuántas filas mandar por request (Supabase acepta hasta ~1000)
 BATCH_SIZE = 200
@@ -185,7 +204,7 @@ def main() -> None:
         sys.exit(1)
 
     if not SERVICE_MAP:
-        log("ERROR: SERVICE_MAP vacío — configurar en el script")
+        log(f"ERROR: SERVICE_MAP vacío — crear {_MAP_FILE} con entradas NombreLog=service_uuid")
         sys.exit(1)
 
     for log_file in sorted(LOG_DIR.glob("*.log")):
