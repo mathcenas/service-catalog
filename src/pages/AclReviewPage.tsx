@@ -94,6 +94,17 @@ export function AclReviewPage({ token }: Props) {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {/* Watermark logo */}
+      {logo_url && (
+        <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-30 flex items-end justify-center px-4 pb-5">
+          <img
+            src={logo_url}
+            alt=""
+            draggable={false}
+            className="h-auto w-full max-w-[8rem] select-none object-contain opacity-[0.18] drop-shadow-[0_1px_6px_rgba(255,255,255,0.6)]"
+          />
+        </div>
+      )}
       {/* Header */}
       <div className="bg-white border-b border-slate-200 shadow-sm">
         <div className="max-w-2xl mx-auto px-4 py-5">

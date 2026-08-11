@@ -42,10 +42,16 @@ export function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [, setLoading] = useState(true);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [showAddClient, setShowAddClient] = useState(false);
   const [showAddService, setShowAddService] = useState(false);
   const [showAddProject, setShowAddProject] = useState(false);
   const [showImport, setShowImport] = useState(false);
+
+  useEffect(() => {
+    supabase.from('user_settings').select('logo_url').maybeSingle()
+      .then(({ data }) => { if (data?.logo_url) setLogoUrl(data.logo_url); });
+  }, []);
 
   const fetchData = async () => {
     setLoading(true);
@@ -145,6 +151,17 @@ export function Dashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
+      {/* Watermark logo */}
+      {logoUrl && (
+        <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-30 flex items-end justify-center px-4 pb-5">
+          <img
+            src={logoUrl}
+            alt=""
+            draggable={false}
+            className="h-auto w-full max-w-[8rem] select-none object-contain opacity-[0.12] drop-shadow-[0_1px_6px_rgba(255,255,255,0.6)]"
+          />
+        </div>
+      )}
       {/* Sidebar */}
       <aside className="w-56 shrink-0 bg-white border-r border-gray-200 flex flex-col min-h-screen sticky top-0 h-screen">
         <div className="flex items-center gap-2.5 px-4 h-14 border-b border-gray-100">

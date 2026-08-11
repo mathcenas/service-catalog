@@ -236,6 +236,17 @@ export function SharePage({ token }: Props) {
   return (
     <div className={`${dark ? 'dark' : ''}`}>
       <div className="min-h-screen bg-slate-50 dark:bg-gray-950">
+        {/* Watermark logo */}
+        {userSettings?.logo_url && (
+          <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-30 flex items-end justify-center px-4 pb-5">
+            <img
+              src={userSettings.logo_url}
+              alt=""
+              draggable={false}
+              className="h-auto w-full max-w-[8rem] select-none object-contain opacity-[0.18] dark:opacity-[0.12] drop-shadow-[0_1px_6px_rgba(255,255,255,0.6)]"
+            />
+          </div>
+        )}
         {/* Header */}
         <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
           <div className="max-w-5xl mx-auto px-4 py-5">

@@ -27,6 +27,33 @@ function Write-Log($msg) {
 }
 Get-ChildItem "$LogDir\kopia-report-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-31) } | Remove-Item -Force
 
+# ---------- Chequeo Tailscale (opcional) ----------
+if ($TAILSCALE_IP) {
+    $ping = Test-Connection -ComputerName $TAILSCALE_IP -Count 2 -Quiet -ErrorAction SilentlyContinue
+    if (-not $ping) {
+        Write-Log "ERROR: Tailscale no responde en $TAILSCALE_IP — no se puede verificar el repo remoto"
+        $body = @{
+            service_id       = $SERVICE_ID
+            job_name         = "Tailscale VPN"
+            status           = "failed"
+            size_bytes       = 0
+            duration_seconds = 0
+            backed_up_at     = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            details          = "Sin conectividad Tailscale a $TAILSCALE_IP"
+        } | ConvertTo-Json -Compress
+        $headers = @{
+            "Content-Type"    = "application/json"
+            "apikey"          = $ANON_KEY
+            "Authorization"   = "Bearer $ANON_KEY"
+            "X-Ingest-Secret" = $INGEST_SECRET
+        }
+        try { Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body | Out-Null } catch {}
+        Invoke-Kuma -Status "down" -Msg "Tailscale $TAILSCALE_IP sin respuesta"
+        exit 1
+    }
+    Write-Log "Tailscale OK — $TAILSCALE_IP responde"
+}
+
 # ---------- Buscar kopia.exe ----------
 $kopiaExe = $null
 $kandidatos = @(
