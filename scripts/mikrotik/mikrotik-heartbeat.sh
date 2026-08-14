@@ -40,15 +40,32 @@ LOG_LOCAL="${LOG_FILE:-/var/log/mikrotik-heartbeat.log}"
 
 mkdir -p "$STATE_DIR"
 
-# ---------- Mapeo nombre_archivo → SERVICE_ID ----------
-declare -A SERVICE_MAP
-# SERVICE_MAP["RegionalSur"]="uuid-del-servicio"
-# SERVICE_MAP["RegionalNorte"]="uuid-del-servicio"
+# ---------- Mapeo desde archivo externo ----------
+# Formato de /etc/mikrotik-map.env (o MIKROTIK_MAP_FILE):
+#   RegionalSur=uuid-del-service-id
+#   RegionalNorte=uuid-del-service-id
+#   # Kuma opcional:
+#   RegionalSur_kuma=https://kuma.midominio.com/api/push/AbCdEfGhIj
+MAP_FILE="${MIKROTIK_MAP_FILE:-/etc/mikrotik-map.env}"
+[ -f "$SCRIPT_DIR/map.env" ] && MAP_FILE="$SCRIPT_DIR/map.env"
 
-# ---------- Mapeo nombre_archivo → KUMA_PUSH_URL (opcional) ----------
+declare -A SERVICE_MAP
 declare -A KUMA_MAP
-# KUMA_MAP["RegionalSur"]="https://kuma.midominio.com/api/push/AbCdEfGhIj"
-# KUMA_MAP["RegionalNorte"]="https://kuma.midominio.com/api/push/KlMnOpQrSt"
+
+if [[ -f "$MAP_FILE" ]]; then
+  while IFS='=' read -r key val; do
+    [[ "$key" =~ ^#|^[[:space:]]*$ ]] && continue
+    key=$(echo "$key" | xargs)
+    val=$(echo "$val" | xargs)
+    if [[ "$key" == *_kuma ]]; then
+      KUMA_MAP["${key%_kuma}"]="$val"
+    else
+      SERVICE_MAP["$key"]="$val"
+    fi
+  done < "$MAP_FILE"
+else
+  log "WARN: no se encontró map file ($MAP_FILE) — ningún router configurado"
+fi
 
 # ---------- Thresholds ----------
 WARN_CPU=80;  ERROR_CPU=95

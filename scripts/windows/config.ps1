@@ -9,6 +9,12 @@ $ANON_KEY      = "REEMPLAZAR_CON_SUPABASE_ANON_KEY"
 $INGEST_SECRET = "REEMPLAZAR_CON_INGEST_SECRET_DEL_SERVICIO"
 $SERVICE_ID    = "REEMPLAZAR_CON_UUID_DEL_SERVICIO"
 
+# IP privada de Tailscale del servidor de destino (cloud del cliente)
+# Si se configura, kopia-report.ps1 verifica conectividad antes de reportar
+# Dejar vacío para omitir el chequeo
+$TAILSCALE_IP  = ""
+
+$KUMA_PUSH_URL = ""
 # Uptime Kuma — Push Monitor (opcional)
 # Pegar la URL base del monitor tipo Push. Si está vacío, no se pinga.
 # Ejemplo: https://kuma.midominio.com/api/push/AbCdEfGhIj

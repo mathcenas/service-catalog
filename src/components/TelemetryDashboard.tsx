@@ -289,8 +289,9 @@ export function TelemetryDashboard({ services, clients }: Props) {
 
       const worstStatus = sources.reduce((worst, hb) => {
         if (isHbStale(hb)) return worst === 'error' ? 'error' : 'stale';
-        if (hb.status === 'error') return 'error';
-        if (hb.status === 'warning' && worst !== 'error') return 'warning';
+        const s = hb.status === 'success' ? 'ok' : hb.status === 'failed' ? 'error' : hb.status;
+        if (s === 'error') return 'error';
+        if (s === 'warning' && worst !== 'error') return 'warning';
         return worst;
       }, 'ok' as string);
 
@@ -371,17 +372,27 @@ export function TelemetryDashboard({ services, clients }: Props) {
     load();
   };
 
+  // Normalize status values from different sources:
+  // backup scripts send "success"/"failed", heartbeat scripts send "ok"/"warning"/"error"
+  const normalizeStatus = (status: string): string => {
+    if (status === 'success') return 'ok';
+    if (status === 'failed') return 'error';
+    return status;
+  };
+
   const statusDot = (status: string, stale: boolean) => {
     if (stale) return 'bg-gray-300';
-    if (status === 'ok') return 'bg-emerald-500';
-    if (status === 'warning') return 'bg-amber-500';
+    const s = normalizeStatus(status);
+    if (s === 'ok') return 'bg-emerald-500';
+    if (s === 'warning') return 'bg-amber-500';
     return 'bg-red-500';
   };
 
   const statusIcon = (status: string, isStale: boolean) => {
     if (isStale) return <Clock className="w-4 h-4 text-gray-400" />;
-    if (status === 'ok') return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
-    if (status === 'warning') return <AlertTriangle className="w-4 h-4 text-amber-500" />;
+    const s = normalizeStatus(status);
+    if (s === 'ok') return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
+    if (s === 'warning') return <AlertTriangle className="w-4 h-4 text-amber-500" />;
     return <AlertTriangle className="w-4 h-4 text-red-500" />;
   };
 
@@ -494,8 +505,8 @@ export function TelemetryDashboard({ services, clients }: Props) {
                             <span className={`w-1.5 h-1.5 rounded-full ${statusDot(hb.status, stale)}`} />
                             <span className={`text-[11px] font-semibold ${
                               stale ? 'text-gray-400' :
-                              hb.status === 'ok' ? 'text-emerald-700' :
-                              hb.status === 'warning' ? 'text-amber-700' : 'text-red-700'
+                              normalizeStatus(hb.status) === 'ok' ? 'text-emerald-700' :
+                              normalizeStatus(hb.status) === 'warning' ? 'text-amber-700' : 'text-red-700'
                             }`}>{stale ? 'stale' : hb.status}</span>
                           </div>
                         </div>
