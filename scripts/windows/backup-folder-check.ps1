@@ -13,6 +13,11 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
+# Invoke-Kuma puede no estar definida en todos los config.ps1
+if (-not (Get-Command Invoke-Kuma -ErrorAction SilentlyContinue)) {
+    function Invoke-Kuma { param([string]$Status, [string]$Msg) }
+}
+
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
