@@ -85,6 +85,11 @@ function MetricChips({ hb }: { hb: ServiceHeartbeat }) {
     if (p.wan_in_mbps != null) chips.push({ label: 'WAN', value: `${p.wan_in_mbps} Mbps` });
     if (p.ipsec_status != null) chips.push({ label: 'IPsec', value: String(p.ipsec_status), warn: p.ipsec_status === 'OFFLINE', error: false });
     if (p.client) chips.push({ label: 'Router', value: String(p.client) });
+  } else if (hb.source === 'backup-folder') {
+    if (p.latest_folder != null) chips.push({ label: 'Carpeta', value: String(p.latest_folder) });
+    if (p.age_hours != null) chips.push({ label: 'Edad', value: `${p.age_hours}h`, warn: Number(p.age_hours) > 25, error: Number(p.age_hours) > 48 });
+    if (p.size_mb != null) chips.push({ label: 'Tamaño', value: `${p.size_mb} MB`, warn: Number(p.size_mb) < 10 });
+    if (p.total_folders != null) chips.push({ label: 'Total', value: `${p.total_folders}` });
   } else if (hb.source === 'server-snapshot') {
     if (p.cpu_percent != null) chips.push({ label: 'CPU', value: `${p.cpu_percent}%`, warn: Number(p.cpu_percent) > 80, error: Number(p.cpu_percent) > 95 });
     if (p.disk_latency_ms != null) chips.push({ label: 'DiskIO', value: `${p.disk_latency_ms}ms`, warn: Number(p.disk_latency_ms) > 50, error: Number(p.disk_latency_ms) > 150 });
