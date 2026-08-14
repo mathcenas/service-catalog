@@ -144,8 +144,10 @@ try {
     $response = Invoke-RestMethod -Uri $AclIngestUrl -Method Post -Headers $headers -Body $payload -ErrorAction Stop
     Write-Log "OK: shares=$($response.shares) usuarios=$($response.users)"
     Write-Log "=== fin OK ==="
+    Invoke-Kuma -Status "up" -Msg "smb-acl OK | shares=$($response.shares) users=$($response.users)"
 } catch {
     $code = $_.Exception.Response.StatusCode.value__
     Write-Log "ERROR HTTP $code | $_"
+    Invoke-Kuma -Status "down" -Msg "smb-acl error HTTP $code"
     exit 1
 }

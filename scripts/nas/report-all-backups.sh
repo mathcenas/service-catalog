@@ -26,7 +26,17 @@ if [[ -z "$INGEST_URL" && -n "$SUPABASE_URL" ]]; then
 fi
 
 LOG_FILE="${LOG_FILE:-/var/log/nas-backup-report.log}"
+KUMA_PUSH_URL="${KUMA_PUSH_URL:-}"
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOG_FILE"; }
+notify_kuma() {
+  [[ -z "$KUMA_PUSH_URL" ]] && return 0
+  local base_url="${KUMA_PUSH_URL%%\?*}"
+  curl -fsS --max-time 10 -G "$base_url" \
+    --data-urlencode "status=${1}" \
+    --data-urlencode "msg=${2}" \
+    --data-urlencode "ping=0" \
+    >/dev/null 2>&1 || true
+}
 
 log "=== inicio ==="
 log "INGEST_URL=$INGEST_URL"
@@ -80,3 +90,5 @@ report "NAS Daily → Respaldo-B"  "$SNAP_RESPALDOB_DAILY"
 report "NAS Weekly → Respaldo-B" "$SNAP_RESPALDOB_WEEKLY"
 report "NAS Yearly → Respaldo-B" "$SNAP_RESPALDOB_YEARLY"
 report "NAS Sync"                "$SYNC_DIR"
+
+notify_kuma "up" "nas-backups OK"

@@ -44,7 +44,17 @@ if [[ -z "${SUPABASE_URL:-}" || -z "${SUPABASE_ANON_KEY:-}" || -z "${INGEST_SECR
 fi
 
 LOG_FILE="${LOG_FILE:-/var/log/nas-smb-acl.log}"
+KUMA_PUSH_URL="${KUMA_PUSH_URL:-}"
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOG_FILE"; }
+notify_kuma() {
+  [[ -z "$KUMA_PUSH_URL" ]] && return 0
+  local base_url="${KUMA_PUSH_URL%%\?*}"
+  curl -fsS --max-time 10 -G "$base_url" \
+    --data-urlencode "status=${1}" \
+    --data-urlencode "msg=${2}" \
+    --data-urlencode "ping=0" \
+    >/dev/null 2>&1 || true
+}
 
 OMV_CONFIG="${OMV_CONFIG:-/etc/openmediavault/config.xml}"
 
@@ -157,11 +167,27 @@ try:
             m2 = re.match(r'^Logon time:\s+(.+)', line)
             if m2:
                 val = m2.group(1).strip()
-                # pdbedit muestra "0" o epoch cuando nunca logueó
                 if val in ('0', '0 (0)', '') or val.startswith('Thu, 01 Jan 1970'):
                     umap[current_user]['last_login'] = None
                 else:
                     umap[current_user]['last_login'] = val
+except Exception:
+    pass
+
+# Sesiones activas via smbstatus -b (usuario → IP actual)
+try:
+    smb = subprocess.run(['smbstatus', '-b'], capture_output=True, text=True, timeout=10)
+    umap = {u['name']: u for u in users}
+    for line in smb.stdout.split('\n'):
+        # formato: PID  username  group  machine (ipv4:IP:port)  ...
+        m = re.match(r'^\d+\s+(\S+)\s+\S+\s+\S+\s+\(ipv4:([^:]+):\d+\)', line)
+        if not m:
+            continue
+        uname, ip = m.group(1), m.group(2)
+        if uname in umap:
+            sessions = umap[uname].setdefault('active_sessions', [])
+            if ip not in sessions:
+                sessions.append(ip)
 except Exception:
     pass
 
@@ -214,7 +240,9 @@ log "HTTP $HTTP_CODE | $BODY"
 
 if [[ "$HTTP_CODE" == "201" ]]; then
   log "=== OK: $SHARE_COUNT shares, $USER_COUNT usuarios enviados ==="
+  notify_kuma "up" "smb-acl OK | $SHARE_COUNT shares $USER_COUNT usuarios"
 else
   log "=== ERROR: respuesta inesperada ==="
+  notify_kuma "down" "smb-acl error HTTP $HTTP_CODE"
   exit 1
 fi

@@ -281,7 +281,6 @@ export function SharePage({ token }: Props) {
             <NavBtn active={section === 'overview'} onClick={() => setSection('overview')}>Overview</NavBtn>
             <NavBtn active={section === 'services'} onClick={() => setSection('services')}>Services</NavBtn>
             {licenses.length > 0 && <NavBtn active={section === 'licenses'} onClick={() => setSection('licenses')}>Licenses</NavBtn>}
-            {changes.length > 0 && <NavBtn active={section === 'changes'} onClick={() => setSection('changes')}>Changes</NavBtn>}
             {roadmap.some(r => r.category === 'problem' || r.category === 'change_request') && (
               <NavBtn active={section === 'tickets' as Section} onClick={() => setSection('tickets' as Section)}>Tickets</NavBtn>
             )}
@@ -294,7 +293,6 @@ export function SharePage({ token }: Props) {
           {section === 'overview' && <OverviewSection services={activeServices} roadmap={roadmap} changes={changes} getTypeName={getTypeName} backups={backups} uptimeEvents={uptimeEvents} supportHours={supportHours} systemHeartbeats={systemHeartbeats} clientApps={clientApps} />}
           {section === 'services' && <ServiceCatalog services={services} projects={projects} getTypeName={getTypeName} getProjectName={getProjectName} expandedService={expandedService} setExpandedService={setExpandedService} heartbeats={heartbeats} backups={backups} systemHeartbeats={systemHeartbeats} />}
           {section === 'licenses' && <LicensesSection licenses={licenses} services={services} />}
-          {section === 'changes' && <ChangesSection changes={changes} services={services} />}
           {section === ('tickets' as Section) && <TicketsSection items={roadmap.filter(r => r.category === 'problem' || r.category === 'change_request')} />}
           {section === 'hours' && <SupportHoursSection hours={supportHours} services={services} />}
           {section === 'support' && <SupportSection token={token} clientName={client!.company_name} services={services} />}
@@ -408,7 +406,7 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard label="Active Services" value={services.length.toString()} />
         <StatCard label="Upcoming Updates" value={upcoming.length.toString()} accent={upcoming.length > 0} />
-        <StatCard label="Recent Changes" value={recentChanges.length.toString()} />
+        <StatCard label="Completed Updates" value={roadmap.filter(r => r.status === 'Released').length.toString()} />
         {completedHours > 0
           ? <StatCard label="Hours worked" value={`${completedHours}h`} />
           : totalAllocated > 0 && <StatCard label="Hours/month" value={`${totalAllocated}h`} />
@@ -445,19 +443,6 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
         </section>
       )}
 
-      {recentChanges.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Recent Changes</h2>
-          <div className="space-y-2">
-            {recentChanges.map(c => (
-              <div key={c.id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3">
-                <div className="text-xs text-gray-400 mb-0.5">{new Date(c.change_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
-                <p className="text-sm text-gray-900 dark:text-white">{c.summary}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
 
       {upcomingRenewals.length > 0 && (
         <section>

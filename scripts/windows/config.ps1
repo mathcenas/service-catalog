@@ -15,6 +15,11 @@ $SERVICE_ID    = "REEMPLAZAR_CON_UUID_DEL_SERVICIO"
 $TAILSCALE_IP  = ""
 
 $KUMA_PUSH_URL = ""
+# Uptime Kuma — Push Monitor (opcional)
+# Pegar la URL base del monitor tipo Push. Si está vacío, no se pinga.
+# Ejemplo: https://kuma.midominio.com/api/push/AbCdEfGhIj
+$KUMA_PUSH_URL = ""
+
 function Invoke-Kuma {
     param([string]$Status, [string]$Msg)
     if (-not $KUMA_PUSH_URL) { return }

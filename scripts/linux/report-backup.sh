@@ -13,6 +13,17 @@ if [[ -z "$INGEST_URL" && -n "$SUPABASE_URL" ]]; then
   INGEST_URL="${SUPABASE_URL}/functions/v1/ingest-backup"
 fi
 
+KUMA_PUSH_URL="${KUMA_PUSH_URL:-}"
+notify_kuma() {
+  [[ -z "$KUMA_PUSH_URL" ]] && return 0
+  local base_url="${KUMA_PUSH_URL%%\?*}"
+  curl -fsS --max-time 10 -G "$base_url" \
+    --data-urlencode "status=${1}" \
+    --data-urlencode "msg=${2}" \
+    --data-urlencode "ping=0" \
+    >/dev/null 2>&1 || true
+}
+
 JOB_NAME="${1:-unknown}"
 EXIT_CODE="${2:-1}"
 SNAPSHOT_DIR="$3"
@@ -40,3 +51,4 @@ RESPONSE=$(curl -s -X POST "$INGEST_URL" \
   }")
 
 echo "[backup-report] $JOB_NAME → $STATUS size=$(numfmt --to=iec $SIZE_BYTES 2>/dev/null || echo ${SIZE_BYTES}B) | $RESPONSE"
+notify_kuma "$( [[ "$STATUS" == "success" ]] && echo "up" || echo "down" )" "backup $JOB_NAME → $STATUS"

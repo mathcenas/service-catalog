@@ -25,6 +25,23 @@ SERVICE_MAP["RegionalSur"]="UUID-DEL-SERVICIO-REGIONAL-SUR"
 SERVICE_MAP["RegionalNorte"]="UUID-DEL-SERVICIO-REGIONAL-NORTE"
 # SERVICE_MAP["NombreArchivo"]="UUID-DEL-SERVICIO"
 
+# ---------- Mapeo nombre_archivo → KUMA_PUSH_URL (opcional) ----------
+# Si no se configura para un cliente, no se pinga Kuma. Sin errores.
+declare -A KUMA_MAP
+# KUMA_MAP["RegionalSur"]="https://kuma.midominio.com/api/push/AbCdEfGhIj"
+# KUMA_MAP["RegionalNorte"]="https://kuma.midominio.com/api/push/KlMnOpQrSt"
+
+notify_kuma() {
+  local push_url="$1" status="$2" msg="$3"
+  [[ -z "$push_url" ]] && return 0
+  local base_url="${push_url%%\?*}"
+  curl -fsS --max-time 10 -G "$base_url" \
+    --data-urlencode "status=${status}" \
+    --data-urlencode "msg=${msg}" \
+    --data-urlencode "ping=0" \
+    >/dev/null 2>&1 || true
+}
+
 # ---------- Thresholds ----------
 WARN_CPU=80;  ERROR_CPU=95
 WARN_RAM=85;  ERROR_RAM=92
@@ -127,10 +144,13 @@ EOF
     -H "X-Ingest-Secret: $INGEST_SECRET" \
     -d "$PAYLOAD")
 
+  KUMA_URL="${KUMA_MAP[$CLIENT_NAME]:-}"
   if [ "$HTTP_CODE" = "200" ]; then
     echo "$LINE_TS" > "$STATE_FILE"
     log "✓ $CLIENT_NAME → $STATUS | $MESSAGE"
+    notify_kuma "$KUMA_URL" "up" "mikrotik $CLIENT_NAME | $MESSAGE"
   else
     log "✗ $CLIENT_NAME → HTTP $HTTP_CODE"
+    notify_kuma "$KUMA_URL" "down" "mikrotik $CLIENT_NAME error HTTP $HTTP_CODE"
   fi
 done

@@ -24,9 +24,13 @@ Get-ChildItem "$LogDir\veeam-report-*.log" | Where-Object { $_.LastWriteTime -lt
 
 Add-PSSnapin VeeamPSSnapIn -ErrorAction SilentlyContinue
 
-# Todos los jobs completados en las últimas 25 horas
+# Sesión más reciente por job, completadas en las últimas 25 horas
 $since    = (Get-Date).AddHours(-25)
-$sessions = Get-VBRBackupSession | Where-Object { $_.State -eq "Stopped" -and $_.EndTime -gt $since } | Sort-Object EndTime -Descending
+$sessions = Get-VBRBackupSession |
+    Where-Object { $_.State -eq "Stopped" -and $_.EndTime -gt $since } |
+    Sort-Object EndTime -Descending |
+    Group-Object JobName |
+    ForEach-Object { $_.Group | Select-Object -First 1 }
 
 if (-not $sessions) {
     Write-Log "No completed sessions found in last 25 hours"
@@ -67,7 +71,9 @@ foreach ($session in $sessions) {
     try {
         Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body | Out-Null
         Write-Log "✅ $jobName → $status | $([math]::Round($sizeBytes/1GB,2)) GB | $([math]::Round($durationSecs/60,1)) min"
+        Invoke-Kuma -Status "up" -Msg "veeam $jobName OK"
     } catch {
         Write-Log "❌ $jobName Error: $($_.Exception.Message)"
+        Invoke-Kuma -Status "down" -Msg "veeam $jobName error"
     }
 }

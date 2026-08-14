@@ -154,6 +154,8 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
                 share_url: shareUrl,
                 sender_name: settings?.company_name || user?.email,
                 logo_url: settings?.logo_url || undefined,
+                category: 'idea',
+                event_type: 'released',
               }),
             });
             if (!res.ok) {
