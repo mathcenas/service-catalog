@@ -104,10 +104,10 @@ if ($sizeMB -lt $MIN_SIZE_MB -and $sizeMB -gt 0) {
     $issues += "Carpeta muy pequeña: ${sizeMB} MB (mín ${MIN_SIZE_MB} MB)"
 }
 
-$message = if ($issues.Count -gt 0) {
-    $issues -join " | "
+if ($issues.Count -gt 0) {
+    $message = ($issues -join " | ")
 } else {
-    "Respaldo OK — $latestName (${ageHours}h, ${sizeMB} MB)"
+    $message = "Respaldo OK - $latestName (${ageHours}h, ${sizeMB} MB)"
 }
 
 $payload = @{
