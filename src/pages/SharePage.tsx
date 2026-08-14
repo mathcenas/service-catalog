@@ -155,7 +155,7 @@ export function SharePage({ token }: Props) {
 
         const [{ data: hbData }, { data: sysHbData }, { data: backupsData }, { data: uptimeData }] = await Promise.all([
           supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).eq('source', 'speedtest').gte('received_at', since48h).order('received_at', { ascending: true }),
-          supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).eq('source', 'system-health').gte('received_at', new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
+          supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder']).gte('received_at', new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
           supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(50),
           supabase.from('uptime_events').select('id,service_id,monitor_name,event_type,message,duration_seconds,occurred_at').in('service_id', serviceIds).gte('occurred_at', since30d).order('occurred_at', { ascending: false }),
         ]);
@@ -385,11 +385,12 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
     .filter(s => s.next_renewal_date && renewalCycles.has(s.billing_cycle ?? '') && new Date(s.next_renewal_date) <= in60days)
     .sort((a, b) => new Date(a.next_renewal_date!).getTime() - new Date(b.next_renewal_date!).getTime());
 
-  // Latest system-health heartbeat per service
+  // Latest heartbeat per service+source combo
   const latestHealth: Record<string, ServiceHeartbeat> = {};
   for (const h of systemHeartbeats) {
-    if (!latestHealth[h.service_id] || h.received_at > latestHealth[h.service_id].received_at) {
-      latestHealth[h.service_id] = h;
+    const key = `${h.service_id}|${h.source}`;
+    if (!latestHealth[key] || h.received_at > latestHealth[key].received_at) {
+      latestHealth[key] = h;
     }
   }
   const healthEntries = Object.values(latestHealth);
@@ -476,11 +477,31 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
             {healthEntries.map(h => {
               const svc = services.find(s => s.id === h.service_id);
               const payload = h.payload as Record<string, any>;
+              const dot = h.status === 'ok' ? 'bg-emerald-500' : h.status === 'warning' ? 'bg-amber-500' : 'bg-red-500';
+
+              if (h.source === 'backup-folder') {
+                const folder = payload?.latest_folder != null ? String(payload.latest_folder) : null;
+                const age = payload?.age_hours != null ? Number(payload.age_hours) : null;
+                const size = payload?.size_mb != null ? Number(payload.size_mb) : null;
+                return (
+                  <div key={h.service_id + '-backup'} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center gap-3">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{svc?.business_name || svc?.name || h.service_id}</p>
+                      {folder && <p className="text-xs text-gray-400">{folder}</p>}
+                    </div>
+                    <div className="flex gap-3 text-xs text-gray-500 shrink-0">
+                      {size != null && <span>{size} MB</span>}
+                      {age != null && <span className={age > 48 ? 'text-red-500 font-semibold' : age > 25 ? 'text-amber-500 font-semibold' : 'text-gray-400'}>{age}h ago</span>}
+                    </div>
+                  </div>
+                );
+              }
+
               const cpu = payload?.cpu_pct != null ? Number(payload.cpu_pct) : null;
               const disk = payload?.disk_pct != null ? Number(payload.disk_pct) : null;
               const ram = payload?.ram_pct != null ? Number(payload.ram_pct) : null;
               const uptime = payload?.uptime_str != null ? String(payload.uptime_str) : null;
-              const dot = h.status === 'ok' ? 'bg-emerald-500' : h.status === 'warning' ? 'bg-amber-500' : 'bg-red-500';
               return (
                 <div key={h.service_id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center gap-3">
                   <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
