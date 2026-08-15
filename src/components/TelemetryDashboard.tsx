@@ -215,7 +215,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
         })
         .select('token')
         .single();
-      if (error || !data) throw error;
+      if (error || !data) throw error ?? new Error('No token returned');
       const link = `${window.location.origin}/acl-review/${data.token}`;
       setReviewLinks(p => ({ ...p, [snap.id]: link }));
 
@@ -232,7 +232,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
           ? `${window.location.origin}/share/${shareToken.token}`
           : undefined;
 
-        await supabase.functions.invoke('notify-client', {
+        const { error: notifyError } = await supabase.functions.invoke('notify-client', {
           body: {
             client_email: client.email,
             alt_email: client.alt_email,
@@ -249,12 +249,21 @@ export function TelemetryDashboard({ services, clients }: Props) {
             category: 'audit',
           },
         });
+        if (notifyError) console.error('notify-client error:', notifyError);
       }
     } catch {
       alert('Error al generar el enlace de revisión.');
     } finally {
       setSendingReview(null);
     }
+  };
+
+  // Normalize status values: backup scripts send "success"/"failed",
+  // heartbeat scripts send "ok"/"warning"/"error"
+  const normalizeStatus = (status: string): string => {
+    if (status === 'success') return 'ok';
+    if (status === 'failed') return 'error';
+    return status;
   };
 
   // Latest heartbeat per service per source
@@ -294,7 +303,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
 
       const worstStatus = sources.reduce((worst, hb) => {
         if (isHbStale(hb)) return worst === 'error' ? 'error' : 'stale';
-        const s = hb.status === 'success' ? 'ok' : hb.status === 'failed' ? 'error' : hb.status;
+        const s = normalizeStatus(hb.status);
         if (s === 'error') return 'error';
         if (s === 'warning' && worst !== 'error') return 'warning';
         return worst;
@@ -907,8 +916,7 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
   const blob = new Blob([html], { type: 'text/html' });
   const url = URL.createObjectURL(blob);
   const win = window.open(url, '_blank');
-  // Liberar la URL del blob cuando la ventana cargue
-  if (win) win.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 function StatBadge({ label, value, color, onClick, active }: { label: string; value: number; color: string; onClick: () => void; active: boolean }) {

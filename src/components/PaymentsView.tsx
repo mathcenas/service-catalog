@@ -54,20 +54,39 @@ export function PaymentsView({ services, clients }: Props) {
   }, []);
 
   const allItems: PaymentItem[] = useMemo(() => {
-    const fromServices: PaymentItem[] = services.map(s => ({
-      id: s.id,
-      kind: 'service',
-      name: s.name,
-      subtitle: s.provider || undefined,
-      client_id: s.client_id,
-      paid_by: s.paid_by,
-      payment_card_last4: s.payment_card_last4,
-      price: s.price * (s.confirmed_hours_monthly && s.confirmed_hours_monthly > 0 ? s.confirmed_hours_monthly : 1),
-      currency: s.currency,
-      billing_cycle: s.billing_cycle,
-      next_renewal_date: s.next_renewal_date,
-      status: s.status,
-    }));
+    const fromServices: PaymentItem[] = services.flatMap(s => {
+      const items: PaymentItem[] = [{
+        id: s.id,
+        kind: 'service',
+        name: s.name,
+        subtitle: s.provider || undefined,
+        client_id: s.client_id,
+        paid_by: s.paid_by,
+        payment_card_last4: s.payment_card_last4,
+        price: s.price * (s.confirmed_hours_monthly && s.confirmed_hours_monthly > 0 ? s.confirmed_hours_monthly : 1),
+        currency: s.currency,
+        billing_cycle: s.billing_cycle,
+        next_renewal_date: s.next_renewal_date,
+        status: s.status,
+      }];
+      if (s.infrastructure_cost && s.infrastructure_cost > 0) {
+        items.push({
+          id: `${s.id}-infra`,
+          kind: 'service',
+          name: `${s.name} — Infrastructure`,
+          subtitle: s.provider || undefined,
+          client_id: s.client_id,
+          paid_by: s.paid_by,
+          payment_card_last4: s.payment_card_last4,
+          price: s.infrastructure_cost,
+          currency: s.currency,
+          billing_cycle: 'Monthly',
+          next_renewal_date: s.next_renewal_date,
+          status: s.status,
+        });
+      }
+      return items;
+    });
     const fromLicenses: PaymentItem[] = licenses.filter(l => l.cost != null && l.cost > 0).map(l => ({
       id: l.id,
       kind: 'license',
