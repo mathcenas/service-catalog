@@ -26,6 +26,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
     billing_cycle: service.billing_cycle,
     next_renewal_date: service.next_renewal_date || '',
     confirmed_hours_monthly: service.confirmed_hours_monthly?.toString() || '',
+    infrastructure_cost: service.infrastructure_cost?.toString() || '',
     business_name: service.business_name || '',
     business_description: service.business_description || '',
     sla_level: service.sla_level || '',
@@ -136,6 +137,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
         billing_cycle: formData.billing_cycle,
         next_renewal_date: formData.next_renewal_date || null,
         confirmed_hours_monthly: formData.confirmed_hours_monthly ? parseFloat(formData.confirmed_hours_monthly) : null,
+        infrastructure_cost: formData.infrastructure_cost ? parseFloat(formData.infrastructure_cost) : null,
         provider: columnUpdates.provider,
         server_ip: columnUpdates.server_ip,
         login_url: columnUpdates.login_url,
@@ -349,6 +351,16 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Confirmed Hours / Month</label>
                 <input type="number" step="0.5" value={formData.confirmed_hours_monthly} onChange={e => set('confirmed_hours_monthly', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Infrastructure Cost / Month</label>
+                <div className="flex gap-2 items-center">
+                  <input type="number" step="0.01" value={formData.infrastructure_cost} onChange={e => set('infrastructure_cost', e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    placeholder="e.g., 25.00" />
+                  <span className="text-xs text-gray-400 whitespace-nowrap">{formData.currency || 'USD'}/mo</span>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">VPS, DB, hosting — fixed cost not tied to hours</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Paid By</label>
