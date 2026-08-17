@@ -16,6 +16,7 @@ interface NotifyPayload {
   subject: string;
   title: string;
   description?: string;
+  service_name?: string;
   scheduled_date?: string;
   share_url?: string;
   share_url_label?: string;
@@ -64,6 +65,7 @@ Deno.serve(async (req: Request) => {
       subject,
       title,
       description,
+      service_name,
       scheduled_date,
       share_url,
       share_url_label,
@@ -159,6 +161,7 @@ Deno.serve(async (req: Request) => {
         </p>
 
         <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          ${service_name ? `<p style="color: #64748b; margin: 0 0 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">${service_name}</p>` : ""}
           <h3 style="color: #1e293b; margin: 0 0 8px; font-size: 17px;">${title}</h3>
           ${description ? `<p style="color: #475569; margin: 0 0 12px; font-size: 14px; line-height: 1.5;">${description.replace(/\n/g, "<br>")}</p>` : ""}
           ${formattedDate ? `<p style="color: #2563eb; margin: 0; font-size: 14px; font-weight: 600;">Scheduled: ${formattedDate}</p>` : ""}
