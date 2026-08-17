@@ -362,14 +362,21 @@ export function Dashboard() {
                             </td>
                             <td className="px-4 py-2.5 text-gray-600">{client?.company_name || '--'}</td>
                             <td className="px-4 py-2.5">
-                              {svc.server_ip ? (
-                                <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono text-gray-800">{svc.server_ip}</code>
+                              {(svc.server_ip || svc.ip_public || svc.ip_internal) ? (
+                                <div className="flex flex-col gap-0.5">
+                                  {svc.ip_public && <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono text-gray-800">{svc.ip_public}</code>}
+                                  {svc.server_ip && svc.server_ip !== svc.ip_public && <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono text-gray-800">{svc.server_ip}</code>}
+                                  {svc.ip_internal && <code className="text-xs bg-slate-50 text-slate-500 px-1.5 py-0.5 rounded font-mono border border-slate-200">{svc.ip_internal}</code>}
+                                </div>
                               ) : <span className="text-gray-400">--</span>}
                             </td>
                             <td className="px-4 py-2.5 text-gray-600">{svc.provider || svc.cloud_provider || '--'}</td>
                             <td className="px-4 py-2.5">
-                              {svc.reverse_proxy_domain ? (
-                                <code className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-mono">{svc.reverse_proxy_domain}</code>
+                              {(svc.reverse_proxy_domain || svc.dns_record) ? (
+                                <div className="flex flex-col gap-0.5">
+                                  {svc.reverse_proxy_domain && <code className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-mono">{svc.reverse_proxy_domain}</code>}
+                                  {svc.dns_record && <code className="text-xs bg-violet-50 text-violet-700 px-1.5 py-0.5 rounded font-mono">{svc.dns_record}</code>}
+                                </div>
                               ) : <span className="text-gray-400">--</span>}
                             </td>
                             <td className="px-4 py-2.5">

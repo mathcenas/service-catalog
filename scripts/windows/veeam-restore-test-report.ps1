@@ -8,6 +8,8 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
+$SCRIPT_VERSION = "1.0.0"
+
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -56,6 +58,7 @@ $body = @{
     last_restore_test_at      = $testedAt
     last_restore_test_result  = $result
     details                   = $details
+    script_version            = $SCRIPT_VERSION
 } | ConvertTo-Json
 
 try {

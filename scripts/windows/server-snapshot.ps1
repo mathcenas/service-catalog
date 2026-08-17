@@ -8,6 +8,8 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
+$SCRIPT_VERSION = "1.0.0"
+
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -145,6 +147,7 @@ foreach ($rawLine in @($newLines)) {
         rdp_disconnect_events = $rdp_disconnect_events
         top_process           = $top_process
         probable_cause        = $probable_cause
+        script_version        = $SCRIPT_VERSION
     }
 
     $body = @{

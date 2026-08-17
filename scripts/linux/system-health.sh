@@ -1,10 +1,13 @@
 #!/bin/bash
 # =============================================================
 # system-health.sh — Métricas de hardware de VPS Linux
+# Version: 1.0.0
 # al Service Catalog como heartbeat (source: system-health)
 # Correr cada hora via cron:
 #   0 * * * * /srv/scripts/system-health.sh
 # =============================================================
+
+SCRIPT_VERSION="1.0.0"
 
 # ---------- Cargar .env ----------
 # Orden: arg CLI → /etc/backup-ingest.env → $SCRIPT_DIR/.env
@@ -134,7 +137,8 @@ PAYLOAD=$(cat <<EOF
     "disk_free_gb": $DISK_FREE_GB,
     "uptime_str": "$UPTIME_STR",
     "uptime_seconds": $UPTIME_SECS,
-    "issues": "$ISSUES"
+    "issues": "$ISSUES",
+    "script_version": "$SCRIPT_VERSION"
   }
 }
 EOF

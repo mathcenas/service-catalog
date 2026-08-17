@@ -28,6 +28,8 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
     next_renewal_date: '',
     confirmed_hours_monthly: '',
     infrastructure_cost: '',
+    cloud_backup_enabled: false,
+    cloud_backup_retention_days: '',
     business_name: '',
     business_description: '',
     sla_level: '',
@@ -101,6 +103,8 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
       next_renewal_date: formData.next_renewal_date || null,
       confirmed_hours_monthly: formData.confirmed_hours_monthly ? parseFloat(formData.confirmed_hours_monthly) : null,
       infrastructure_cost: formData.infrastructure_cost ? parseFloat(formData.infrastructure_cost) : null,
+      cloud_backup_enabled: formData.cloud_backup_enabled,
+      cloud_backup_retention_days: formData.cloud_backup_retention_days ? parseInt(formData.cloud_backup_retention_days) : null,
       provider: columnUpdates.provider ?? null,
       server_ip: columnUpdates.server_ip ?? null,
       login_url: columnUpdates.login_url ?? null,
@@ -371,6 +375,26 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
                   <span className="text-xs text-gray-400 whitespace-nowrap">{formData.currency || 'USD'}/mo</span>
                 </div>
                 <p className="text-xs text-gray-400 mt-1">VPS, DB, hosting — fixed cost not tied to hours</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Cloud Backup</label>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={formData.cloud_backup_enabled} onChange={e => set('cloud_backup_enabled', e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                    <span className="text-sm text-gray-700">Enabled</span>
+                  </label>
+                  {formData.cloud_backup_enabled && (
+                    <div className="flex items-center gap-2 flex-1">
+                      <input type="number" min="1" max="365" value={formData.cloud_backup_retention_days}
+                        onChange={e => set('cloud_backup_retention_days', e.target.value)}
+                        className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                        placeholder="7" />
+                      <span className="text-sm text-gray-500">days retention</span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Cloud provider backup (no agent required)</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Paid By</label>

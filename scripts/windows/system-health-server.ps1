@@ -7,6 +7,8 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
+$SCRIPT_VERSION = "1.0.0"
+
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -84,11 +86,12 @@ $hwBody = @{
     status     = $hwStatus
     message    = "CPU: $cpuUsage% | RAM: $ramUsePct% | Disk C: $diskUsePct%"
     payload    = @{
-        cpu_pct      = $cpuUsage
-        ram_pct      = $ramUsePct
-        ram_total_gb = $ramTotalGB
-        disk_pct     = $diskUsePct
-        disk_free_gb = $diskFreeGB
+        cpu_pct        = $cpuUsage
+        ram_pct        = $ramUsePct
+        ram_total_gb   = $ramTotalGB
+        disk_pct       = $diskUsePct
+        disk_free_gb   = $diskFreeGB
+        script_version = $SCRIPT_VERSION
     }
 } | ConvertTo-Json -Depth 3
 
