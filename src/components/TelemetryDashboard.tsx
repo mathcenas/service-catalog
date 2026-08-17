@@ -406,14 +406,6 @@ export function TelemetryDashboard({ services, clients }: Props) {
     load();
   };
 
-  // Normalize status values from different sources:
-  // backup scripts send "success"/"failed", heartbeat scripts send "ok"/"warning"/"error"
-  const normalizeStatus = (status: string): string => {
-    if (status === 'success') return 'ok';
-    if (status === 'failed') return 'error';
-    return status;
-  };
-
   const statusDot = (status: string, stale: boolean) => {
     if (stale) return 'bg-gray-300';
     const s = normalizeStatus(status);
