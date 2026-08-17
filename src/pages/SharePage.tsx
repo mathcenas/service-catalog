@@ -915,12 +915,17 @@ function ServiceCard({ service, typeName, projectName, expanded, onToggle, heart
           )}
         </div>
 
-        {(service.includes?.length) ? (
+        {(service.includes?.length || service.cloud_backup_enabled) ? (
           <div className="flex flex-wrap gap-1.5 mt-3">
             {(service.includes || []).slice(0, 4).map((item, i) => (
               <span key={i} className="text-[11px] bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full">{item}</span>
             ))}
             {(service.includes || []).length > 4 && <span className="text-[11px] text-gray-400">+{(service.includes || []).length - 4} more</span>}
+            {service.cloud_backup_enabled && (
+              <span className="inline-flex items-center gap-1 text-[11px] bg-sky-50 dark:bg-sky-950 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 px-2 py-0.5 rounded-full font-medium">
+                ☁ Cloud backup{service.cloud_backup_retention_days ? ` · ${service.cloud_backup_retention_days}d` : ''}
+              </span>
+            )}
           </div>
         ) : null}
 

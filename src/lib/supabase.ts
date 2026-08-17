@@ -139,6 +139,8 @@ export type Service = {
   ip_public?: string;
   dns_record?: string;
   infrastructure_cost?: number;
+  cloud_backup_enabled?: boolean;
+  cloud_backup_retention_days?: number;
   allocated_hours?: number;
   extra_hour_rate?: number;
   paid_by?: PaidBy;
