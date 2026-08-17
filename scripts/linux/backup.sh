@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Version: 1.0.0
 #
 # backup.sh - Backup genérico para VPS con Docker + notificación a Uptime Kuma (push monitor)
 #             + reporte a Supabase ingest
@@ -32,6 +33,7 @@ RETENTION_DAYS="${RETENTION_DAYS:-7}"
 DEST_TYPE="${DEST_TYPE:-local}"        # local | rsync | rclone
 RSYNC_DEST="${RSYNC_DEST:-}"
 RSYNC_SSH_KEY="${RSYNC_SSH_KEY:-}"
+SCRIPT_VERSION="1.0.0"
 RCLONE_REMOTE="${RCLONE_REMOTE:-}"
 PG_CONTAINERS="${PG_CONTAINERS:-}"
 KUMA_PUSH_URL="${KUMA_PUSH_URL:-}"
@@ -112,7 +114,8 @@ report_ingest() {
       \"size_bytes\": ${size_bytes},
       \"duration_seconds\": ${duration},
       \"backed_up_at\": \"${backed_up_at}\",
-      \"details\": \"${details}\"
+      \"details\": \"${details}\",
+      \"script_version\": \"${SCRIPT_VERSION}\"
     }" >/dev/null \
     || echo "WARN: no se pudo reportar al ingest de Supabase" >&2
 }

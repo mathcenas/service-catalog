@@ -5,6 +5,7 @@
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"
+$SCRIPT_VERSION = "1.0.0"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
@@ -60,6 +61,7 @@ foreach ($session in $sessions) {
         duration_seconds = $durationSecs
         details          = $details
         backed_up_at     = $backedUpAt
+        script_version   = $SCRIPT_VERSION
     } | ConvertTo-Json
 
     try {

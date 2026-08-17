@@ -8,6 +8,8 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
+$SCRIPT_VERSION = "1.0.0"
+
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -60,11 +62,12 @@ $lines | Where-Object { $_ -match "\((\d+[,\.]\d+)\s*(MiB|KiB|GiB)\)" } | ForEac
 }
 
 $body = @{
-    service_id = $SERVICE_ID
-    job_name   = "Cristar - Respaldo BD + Nube"
-    status     = $status
-    size_bytes = [long]$totalBytes
-    details    = "archivos_subidos=$($uploaded.Count) log=$LOG_PATH"
+    service_id     = $SERVICE_ID
+    job_name       = "Cristar - Respaldo BD + Nube"
+    status         = $status
+    size_bytes     = [long]$totalBytes
+    details        = "archivos_subidos=$($uploaded.Count) log=$LOG_PATH"
+    script_version = $SCRIPT_VERSION
 } | ConvertTo-Json
 
 $headers = @{

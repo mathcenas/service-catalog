@@ -51,6 +51,17 @@ type Props = {
 };
 
 // Extract readable metrics from payload based on source
+// Latest known script versions — bump here when a script is updated
+const LATEST_SCRIPT_VERSIONS: Record<string, string> = {
+  'system-health':   '1.0.0',
+  'mikrotik':        '1.0.0',
+  'backup-folder':   '1.0.0',
+  'server-snapshot': '1.0.0',
+  'speedtest':       '1.0.0',
+  'network':         '1.0.0',
+  'rdp':             '1.0.0',
+};
+
 function MetricChips({ hb }: { hb: ServiceHeartbeat }) {
   const p = hb.payload as Record<string, unknown>;
   if (!p) return null;
@@ -107,6 +118,15 @@ function MetricChips({ hb }: { hb: ServiceHeartbeat }) {
         chips.push({ label: k.replace(/_/g, ' '), value: String(v) });
       }
     }
+  }
+
+  // Script version chip
+  const scriptVer = p.script_version != null ? String(p.script_version) : null;
+  const latestVer = LATEST_SCRIPT_VERSIONS[hb.source];
+  if (scriptVer) {
+    chips.push({ label: 'v', value: scriptVer, warn: !!latestVer && scriptVer !== latestVer });
+  } else if (latestVer) {
+    chips.push({ label: 'v', value: '?', warn: true });
   }
 
   return (

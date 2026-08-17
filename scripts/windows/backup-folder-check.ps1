@@ -13,6 +13,8 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
+$SCRIPT_VERSION = "1.0.0"
+
 # Invoke-Kuma puede no estar definida en todos los config.ps1
 if (-not (Get-Command Invoke-Kuma -ErrorAction SilentlyContinue)) {
     function Invoke-Kuma { param([string]$Status, [string]$Msg) }
@@ -122,6 +124,7 @@ $payload = @{
     size_mb        = $sizeMB
     total_folders  = $folders.Count
     backup_path    = $BACKUP_PATH
+    script_version = $SCRIPT_VERSION
 }
 
 Send-Heartbeat $status $message $payload

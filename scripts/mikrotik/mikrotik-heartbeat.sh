@@ -14,6 +14,8 @@
 
 set -euo pipefail
 
+SCRIPT_VERSION="1.0.0"
+
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 
 if [[ -n "${1:-}" && -f "$1" ]]; then
@@ -144,7 +146,8 @@ for LOG_FILE in "$LOG_DIR"/*.log; do
     "wan_in_mbps": $WAN,
     "ipsec_status": "$IPSEC",
     "client": "$CLIENT_NAME",
-    "issues": "$ISSUES"
+    "issues": "$ISSUES",
+    "script_version": "$SCRIPT_VERSION"
   }
 }
 EOF
