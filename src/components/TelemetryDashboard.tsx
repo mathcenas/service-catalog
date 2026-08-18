@@ -123,24 +123,33 @@ function MetricChips({ hb }: { hb: ServiceHeartbeat }) {
   // Script version chip
   const scriptVer = p.script_version != null ? String(p.script_version) : null;
   const latestVer = LATEST_SCRIPT_VERSIONS[hb.source];
+  const versionOutdated = !!latestVer && scriptVer !== null && scriptVer !== latestVer;
+  const versionUnknown  = !!latestVer && scriptVer === null;
   if (scriptVer) {
-    chips.push({ label: 'v', value: scriptVer, warn: !!latestVer && scriptVer !== latestVer });
+    chips.push({ label: 'v', value: scriptVer, warn: versionOutdated });
   } else if (latestVer) {
     chips.push({ label: 'v', value: '?', warn: true });
   }
 
   return (
     <div className="flex flex-wrap gap-1 mt-1">
-      {chips.map(c => (
-        <span key={c.label} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium border ${
-          c.error ? 'bg-red-50 border-red-200 text-red-700' :
-          c.warn  ? 'bg-amber-50 border-amber-200 text-amber-700' :
-                    'bg-gray-50 border-gray-200 text-gray-600'
-        }`}>
-          <span className="text-gray-400">{c.label}</span>
-          <span>{c.value}</span>
-        </span>
-      ))}
+      {chips.map(c => {
+        const isVersionChip = c.label === 'v';
+        const needsUpdate = isVersionChip && (versionOutdated || versionUnknown);
+        return (
+          <span key={c.label} title={needsUpdate ? `Script desactualizado — última versión: ${latestVer}` : undefined}
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium border ${
+              c.error                  ? 'bg-red-50 border-red-200 text-red-700' :
+              needsUpdate              ? 'bg-amber-100 border-amber-400 text-amber-800 ring-1 ring-amber-300' :
+              c.warn                   ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                                         'bg-gray-50 border-gray-200 text-gray-600'
+            }`}>
+            {needsUpdate && <span>⚠</span>}
+            <span className={needsUpdate ? 'text-amber-600' : 'text-gray-400'}>{c.label}</span>
+            <span>{c.value}</span>
+          </span>
+        );
+      })}
     </div>
   );
 }
