@@ -47,7 +47,9 @@ EMAIL_ON_FAILURE="${EMAIL_ON_FAILURE:-true}"
 
 # Supabase ingest (opcional — si no se configura, el backup funciona igual)
 # INGEST_URL se puede dejar vacío: se deriva de SUPABASE_URL automáticamente
+SUPABASE_URL="${SUPABASE_URL:-}"
 SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY:-}"
+INGEST_URL="${INGEST_URL:-}"
 INGEST_SECRET="${INGEST_SECRET:-}"
 SERVICE_ID="${SERVICE_ID:-}"
 if [[ -z "$INGEST_URL" && -n "$SUPABASE_URL" ]]; then
