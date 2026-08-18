@@ -320,7 +320,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
     for (const hb of heartbeats) serviceIds.add(hb.service_id);
 
     const withHeartbeat = Array.from(serviceIds).map(serviceId => {
-      const svc = services.find(s => s.id === serviceId);
+      const svc = services.find(s => s.id === serviceId && s.telemetry_enabled !== false);
       const client = svc ? clients.find(c => c.id === svc.client_id) : null;
 
       // All sources for this service
@@ -345,7 +345,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
 
     // Services that have never reported — shown as 'no-data'
     const silent = services
-      .filter(s => !serviceIds.has(s.id) && s.status === 'Active')
+      .filter(s => !serviceIds.has(s.id) && s.status === 'Active' && s.telemetry_enabled !== false)
       .map(svc => {
         const client = clients.find(c => c.id === svc.client_id) ?? null;
         return { serviceId: svc.id, svc, client, sources: [], worstStatus: 'no-data', latest: undefined };

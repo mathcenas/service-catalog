@@ -141,6 +141,7 @@ export type Service = {
   infrastructure_cost?: number;
   cloud_backup_enabled?: boolean;
   cloud_backup_retention_days?: number;
+  telemetry_enabled?: boolean;
   allocated_hours?: number;
   extra_hour_rate?: number;
   paid_by?: PaidBy;
