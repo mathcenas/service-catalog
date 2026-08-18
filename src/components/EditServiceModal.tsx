@@ -29,6 +29,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
     infrastructure_cost: service.infrastructure_cost?.toString() || '',
     cloud_backup_enabled: service.cloud_backup_enabled ?? false,
     cloud_backup_retention_days: service.cloud_backup_retention_days?.toString() || '',
+    telemetry_enabled: service.telemetry_enabled ?? true,
     business_name: service.business_name || '',
     business_description: service.business_description || '',
     sla_level: service.sla_level || '',
@@ -142,6 +143,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
         infrastructure_cost: formData.infrastructure_cost ? parseFloat(formData.infrastructure_cost) : null,
         cloud_backup_enabled: formData.cloud_backup_enabled,
         cloud_backup_retention_days: formData.cloud_backup_retention_days ? parseInt(formData.cloud_backup_retention_days) : null,
+        telemetry_enabled: formData.telemetry_enabled,
         provider: columnUpdates.provider,
         server_ip: columnUpdates.server_ip,
         login_url: columnUpdates.login_url,
@@ -385,6 +387,15 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
                   )}
                 </div>
                 <p className="text-xs text-gray-400 mt-1">Cloud provider backup (no agent required)</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Telemetry</label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={formData.telemetry_enabled} onChange={e => set('telemetry_enabled', e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                  <span className="text-sm text-gray-700">Monitor in Telemetry</span>
+                </label>
+                <p className="text-xs text-gray-400 mt-1">Uncheck for domains, one-time payments, or services with no agent</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Paid By</label>
