@@ -178,7 +178,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
   const [clientFilter, setClientFilter] = useState<string>('all');
   const [backupSearch, setBackupSearch] = useState('');
   const [backupClientFilter, setBackupClientFilter] = useState<string>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'ok' | 'warning' | 'error' | 'stale'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'ok' | 'warning' | 'error' | 'stale' | 'no-data'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAllBackups, setShowAllBackups] = useState(false);
   const [viewMode, setViewMode] = useState<'cards' | 'log'>('cards');
@@ -319,7 +319,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
     const serviceIds = new Set<string>();
     for (const hb of heartbeats) serviceIds.add(hb.service_id);
 
-    return Array.from(serviceIds).map(serviceId => {
+    const withHeartbeat = Array.from(serviceIds).map(serviceId => {
       const svc = services.find(s => s.id === serviceId);
       const client = svc ? clients.find(c => c.id === svc.client_id) : null;
 
@@ -341,10 +341,20 @@ export function TelemetryDashboard({ services, clients }: Props) {
       const latest = latestPerService.get(serviceId);
 
       return { serviceId, svc, client, sources, worstStatus, latest };
-    }).sort((a, b) => {
-      const order = { error: 0, stale: 1, warning: 2, ok: 3 };
-      return (order[a.worstStatus as keyof typeof order] ?? 4) - (order[b.worstStatus as keyof typeof order] ?? 4);
     });
+
+    // Services that have never reported — shown as 'no-data'
+    const silent = services
+      .filter(s => !serviceIds.has(s.id) && s.status === 'Active')
+      .map(svc => {
+        const client = clients.find(c => c.id === svc.client_id) ?? null;
+        return { serviceId: svc.id, svc, client, sources: [], worstStatus: 'no-data', latest: undefined };
+      });
+
+    const order = { error: 0, stale: 1, warning: 2, ok: 3, 'no-data': 4 };
+    return [...withHeartbeat, ...silent].sort((a, b) =>
+      (order[a.worstStatus as keyof typeof order] ?? 5) - (order[b.worstStatus as keyof typeof order] ?? 5)
+    );
   }, [heartbeats, latestPerServiceSource, latestPerService, services, clients]);
 
   const stats = useMemo(() => {
@@ -457,7 +467,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
         <StatBadge label="Warnings" value={stats.warnings} color="amber" onClick={() => setStatusFilter(statusFilter === 'warning' ? 'all' : 'warning')} active={statusFilter === 'warning'} />
         <StatBadge label="Errors" value={stats.errors} color="red" onClick={() => setStatusFilter(statusFilter === 'error' ? 'all' : 'error')} active={statusFilter === 'error'} />
         <StatBadge label="Stale" value={stats.stale} color="gray" onClick={() => setStatusFilter(statusFilter === 'stale' ? 'all' : 'stale')} active={statusFilter === 'stale'} />
-        <StatBadge label="No Data" value={stats.noData} color="slate" onClick={() => setStatusFilter('all')} active={false} />
+        <StatBadge label="No Data" value={stats.noData} color="slate" onClick={() => setStatusFilter(statusFilter === 'no-data' ? 'all' : 'no-data')} active={statusFilter === 'no-data'} />
       </div>
 
       {/* Filters + view toggle */}
@@ -499,16 +509,18 @@ export function TelemetryDashboard({ services, clients }: Props) {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filteredCards.map(({ serviceId, svc, client, sources, worstStatus, latest }) => (
-              <div key={serviceId} className={`bg-white rounded-xl border overflow-hidden ${
-                worstStatus === 'error' ? 'border-red-200' :
-                worstStatus === 'warning' ? 'border-amber-200' :
-                worstStatus === 'stale' ? 'border-gray-200' : 'border-gray-200'
+              <div key={serviceId} className={`rounded-xl border overflow-hidden ${
+                worstStatus === 'error' ? 'bg-white border-red-200' :
+                worstStatus === 'warning' ? 'bg-white border-amber-200' :
+                worstStatus === 'stale' ? 'bg-white border-gray-200' :
+                worstStatus === 'no-data' ? 'bg-slate-50 border-slate-200 border-dashed' : 'bg-white border-gray-200'
               }`}>
                 {/* Card header */}
                 <div className={`px-4 py-3 border-b flex items-start justify-between gap-2 ${
                   worstStatus === 'error' ? 'bg-red-50 border-red-100' :
                   worstStatus === 'warning' ? 'bg-amber-50 border-amber-100' :
-                  worstStatus === 'stale' ? 'bg-gray-50 border-gray-100' : 'bg-gray-50 border-gray-100'
+                  worstStatus === 'stale' ? 'bg-gray-50 border-gray-100' :
+                  worstStatus === 'no-data' ? 'bg-slate-100 border-slate-200' : 'bg-gray-50 border-gray-100'
                 }`}>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -526,6 +538,9 @@ export function TelemetryDashboard({ services, clients }: Props) {
 
                 {/* Sources */}
                 <div className="divide-y divide-gray-100">
+                  {worstStatus === 'no-data' && (
+                    <div className="px-4 py-3 text-xs text-slate-400 italic">No heartbeat received yet</div>
+                  )}
                   {sources.map(hb => {
                     const stale = isHbStale(hb);
                     return (
