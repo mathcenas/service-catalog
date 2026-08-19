@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Clock, Plus, Trash2, Filter, Calendar, X } from 'lucide-react';
-import { supabase, Client, Service, SupportHour } from '../lib/supabase';
+import { supabase, Client, Service, SupportHour, RoadmapItem } from '../lib/supabase';
 
 type Props = {
   clients: Client[];
@@ -9,6 +9,7 @@ type Props = {
 
 export function SupportHoursManager({ clients, services }: Props) {
   const [entries, setEntries] = useState<SupportHour[]>([]);
+  const [roadmapHours, setRoadmapHours] = useState<RoadmapItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [filterClientId, setFilterClientId] = useState('');
@@ -46,8 +47,25 @@ export function SupportHoursManager({ clients, services }: Props) {
       query = query.gte('work_date', start).lte('work_date', end);
     }
 
-    const { data } = await query;
+    let rmQuery = supabase
+      .from('roadmap_items')
+      .select('*')
+      .eq('amount_type', 'hours')
+      .gt('amount', 0);
+
+    if (filterClientId) rmQuery = rmQuery.eq('client_id', filterClientId);
+
+    if (filterMonth) {
+      const [year, month] = filterMonth.split('-');
+      const start = `${year}-${month}-01`;
+      const endDate = new Date(parseInt(year), parseInt(month), 0);
+      const end = `${year}-${month}-${String(endDate.getDate()).padStart(2, '0')}`;
+      rmQuery = rmQuery.or(`scheduled_date.gte.${start},eta.gte.${start}`).or(`scheduled_date.lte.${end},eta.lte.${end}`);
+    }
+
+    const [{ data }, { data: rmData }] = await Promise.all([query, rmQuery]);
     setEntries(data || []);
+    setRoadmapHours((rmData || []).filter((r: RoadmapItem) => r.scheduled_date || r.eta));
     setLoading(false);
   };
 
@@ -92,10 +110,29 @@ export function SupportHoursManager({ clients, services }: Props) {
     ? services.filter(s => s.client_id === formData.client_id)
     : [];
 
-  const totalHours = entries.reduce((sum, e) => sum + Number(e.hours), 0);
+  type UnifiedEntry = { id: string; work_date: string; hours: number; description: string; client_id: string; service_id?: string; source: 'manual' | 'pipeline' };
 
-  const clientTotals = entries.reduce((acc, e) => {
-    acc[e.client_id] = (acc[e.client_id] || 0) + Number(e.hours);
+  const mergedEntries = useMemo((): UnifiedEntry[] => {
+    const manual: UnifiedEntry[] = entries.map(e => ({
+      id: e.id, work_date: e.work_date, hours: Number(e.hours),
+      description: e.description || '', client_id: e.client_id, service_id: e.service_id, source: 'manual',
+    }));
+    const pipeline: UnifiedEntry[] = roadmapHours.map(r => ({
+      id: `rm-${r.id}`,
+      work_date: (r.scheduled_date || r.eta)!,
+      hours: r.amount!,
+      description: r.title,
+      client_id: r.client_id!,
+      service_id: r.service_id,
+      source: 'pipeline',
+    }));
+    return [...manual, ...pipeline].sort((a, b) => b.work_date.localeCompare(a.work_date));
+  }, [entries, roadmapHours]);
+
+  const totalHours = mergedEntries.reduce((sum, e) => sum + e.hours, 0);
+
+  const clientTotals = mergedEntries.reduce((acc, e) => {
+    acc[e.client_id] = (acc[e.client_id] || 0) + e.hours;
     return acc;
   }, {} as Record<string, number>);
 
@@ -173,7 +210,7 @@ export function SupportHoursManager({ clients, services }: Props) {
               <Calendar className="w-5 h-5 text-emerald-600" />
             </div>
             <div>
-              <div className="text-2xl font-bold text-gray-900">{entries.length}</div>
+              <div className="text-2xl font-bold text-gray-900">{mergedEntries.length}</div>
               <div className="text-xs text-gray-500">Entries logged</div>
             </div>
           </div>
@@ -241,10 +278,10 @@ export function SupportHoursManager({ clients, services }: Props) {
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr><td colSpan={6} className="text-center py-8 text-gray-400">Loading...</td></tr>
-              ) : entries.length === 0 ? (
+              ) : mergedEntries.length === 0 ? (
                 <tr><td colSpan={6} className="text-center py-8 text-gray-400">No hours logged for this period</td></tr>
               ) : (
-                entries.map(entry => (
+                mergedEntries.map(entry => (
                   <tr key={entry.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 whitespace-nowrap text-gray-700">
                       {new Date(entry.work_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
@@ -252,18 +289,20 @@ export function SupportHoursManager({ clients, services }: Props) {
                     <td className="px-4 py-3 font-medium text-gray-900">{getClientName(entry.client_id)}</td>
                     <td className="px-4 py-3 text-gray-600">{getServiceName(entry.service_id) || '--'}</td>
                     <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-xs font-semibold">
-                        <Clock className="w-3 h-3" />{Number(entry.hours).toFixed(1)}h
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-xs font-semibold">
+                          <Clock className="w-3 h-3" />{entry.hours.toFixed(1)}h
+                        </span>
+                        {entry.source === 'pipeline' && <span className="text-[10px] bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-full font-medium">Pipeline</span>}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-gray-600 max-w-xs truncate">{entry.description || '--'}</td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => handleDelete(entry.id)}
-                        className="text-gray-400 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {entry.source === 'manual' && (
+                        <button onClick={() => handleDelete(entry.id)} className="text-gray-400 hover:text-red-500 transition-colors">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
