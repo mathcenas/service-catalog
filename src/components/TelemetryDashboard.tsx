@@ -368,6 +368,28 @@ export function TelemetryDashboard({ services, clients }: Props) {
     return { ok, warnings, errors, stale, noData };
   }, [latestPerService, services]);
 
+  const outdatedScripts = useMemo(() => {
+    const results: { serviceId: string; serviceName: string; source: string; current: string; latest: string }[] = [];
+    for (const [key, hb] of latestPerServiceSource.entries()) {
+      const latest = LATEST_SCRIPT_VERSIONS[hb.source];
+      if (!latest) continue;
+      const current = hb.payload && (hb.payload as Record<string, unknown>).script_version != null
+        ? String((hb.payload as Record<string, unknown>).script_version)
+        : null;
+      if (current === null || current !== latest) {
+        const svc = services.find(s => s.id === hb.service_id);
+        results.push({
+          serviceId: hb.service_id,
+          serviceName: svc?.business_name || svc?.name || hb.service_id.slice(0, 8),
+          source: hb.source,
+          current: current ?? 'unknown',
+          latest,
+        });
+      }
+    }
+    return results;
+  }, [latestPerServiceSource, services]);
+
   const filteredCards = useMemo(() => {
     let list = serviceCards;
     if (clientFilter !== 'all') list = list.filter(c => c.client?.id === clientFilter);
@@ -470,6 +492,29 @@ export function TelemetryDashboard({ services, clients }: Props) {
         <StatBadge label="Stale" value={stats.stale} color="gray" onClick={() => setStatusFilter(statusFilter === 'stale' ? 'all' : 'stale')} active={statusFilter === 'stale'} />
         <StatBadge label="No Data" value={stats.noData} color="slate" onClick={() => setStatusFilter(statusFilter === 'no-data' ? 'all' : 'no-data')} active={statusFilter === 'no-data'} />
       </div>
+
+      {/* Outdated scripts banner */}
+      {outdatedScripts.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span className="text-sm font-semibold text-amber-800">{outdatedScripts.length} script{outdatedScripts.length !== 1 ? 's' : ''} outdated</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {outdatedScripts.map(({ serviceId, serviceName, source, current, latest }) => (
+              <div key={`${serviceId}-${source}`} className="flex items-center gap-1.5 bg-white border border-amber-200 rounded-lg px-2.5 py-1.5 text-xs">
+                <span className="font-medium text-gray-800 truncate max-w-[120px]">{serviceName}</span>
+                <span className="text-gray-400">·</span>
+                <span className="font-mono text-amber-700">{source}</span>
+                <span className="text-gray-400">·</span>
+                <span className="text-gray-400 line-through">{current}</span>
+                <span className="text-gray-400">→</span>
+                <span className="text-emerald-700 font-semibold">{latest}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Filters + view toggle */}
       <div className="flex items-center gap-3 flex-wrap">
