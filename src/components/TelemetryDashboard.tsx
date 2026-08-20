@@ -53,7 +53,7 @@ type Props = {
 // Extract readable metrics from payload based on source
 // Latest known script versions — bump here when a script is updated
 const LATEST_SCRIPT_VERSIONS: Record<string, string> = {
-  'system-health':   '1.0.0',
+  'system-health':   '1.1.0',
   'mikrotik':        '1.0.0',
   'backup-folder':   '1.0.0',
   'server-snapshot': '1.0.0',
@@ -75,6 +75,7 @@ function MetricChips({ hb }: { hb: ServiceHeartbeat }) {
     if (p.disk_pct != null) chips.push({ label: 'Disk', value: `${p.disk_pct}%`, warn: Number(p.disk_pct) > 75, error: Number(p.disk_pct) > 90 });
     if (p.disk_free_gb != null) chips.push({ label: 'Free', value: `${p.disk_free_gb} GB` });
     if (p.uptime_str != null) chips.push({ label: 'Up', value: String(p.uptime_str) });
+    if (p.smb_session_count != null) chips.push({ label: 'SMB', value: `${p.smb_session_count} session${Number(p.smb_session_count) !== 1 ? 's' : ''}` });
   } else if (hb.source === 'network') {
     if (p.gateway_ok != null) chips.push({ label: 'GW', value: p.gateway_ok ? 'ok' : '✗', error: !p.gateway_ok });
     if (p.internet_ok != null) chips.push({ label: 'Internet', value: p.internet_ok ? 'ok' : '✗', error: !p.internet_ok });
@@ -561,6 +562,15 @@ export function TelemetryDashboard({ services, clients }: Props) {
                           </div>
                         </div>
                         <MetricChips hb={hb} />
+                        {hb.source === 'system-health' && Array.isArray((hb.payload as Record<string,unknown>)?.smb_sessions) && ((hb.payload as Record<string,unknown>).smb_sessions as {user:string;machine:string}[]).length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {((hb.payload as Record<string,unknown>).smb_sessions as {user:string;machine:string}[]).map((s, i) => (
+                              <span key={i} className="text-[10px] bg-blue-50 border border-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-mono">
+                                {s.user}@{s.machine}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
