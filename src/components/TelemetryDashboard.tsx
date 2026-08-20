@@ -935,14 +935,18 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
       </div>`;
   }).join('');
 
-  const usersHtml = (users as (AclUser & { last_login?: string | null })[]).map(u => {
+  const usersHtml = (users as (AclUser & { last_login?: string | null; active_sessions?: { machine: string; ip: string }[] })[]).map(u => {
     const login = u.last_login
       ? `<span style="color:#374151;">${u.last_login}</span>`
-      : `<span style="background:#f1f5f9;color:#94a3b8;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.4px;">EN DESARROLLO</span>`;
+      : `<span style="color:#9ca3af;font-style:italic;">—</span>`;
+    const sessions = u.active_sessions && u.active_sessions.length > 0
+      ? u.active_sessions.map(s => `<span style="background:#eff6ff;color:#1d4ed8;padding:2px 6px;border-radius:4px;font-size:10px;font-family:monospace;margin-right:4px;">${s.machine}</span>`).join('')
+      : `<span style="color:#9ca3af;font-style:italic;">—</span>`;
     return `<tr style="border-top:1px solid #f3f4f6;">
       <td style="padding:7px 14px;color:#374151;font-size:13px;font-weight:500;">${u.name}</td>
       <td style="padding:7px 14px;color:#6b7280;font-size:12px;">${(u.groups || []).join(', ') || '—'}</td>
       <td style="padding:7px 14px;font-size:12px;">${login}</td>
+      <td style="padding:7px 14px;font-size:12px;">${sessions}</td>
       <td style="padding:7px 14px;color:#94a3b8;font-size:12px;">${u.comment || ''}</td>
     </tr>`;
   }).join('');
@@ -992,13 +996,13 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
           <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Usuario</th>
           <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Grupos</th>
           <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Último acceso</th>
+          <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Equipo activo</th>
           <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Descripción</th>
         </tr></thead>
         <tbody>${usersHtml}</tbody>
       </table>
     </div>
 
-    <p style="color:#cbd5e1;font-size:10px;margin-top:12px;margin-bottom:0;">* Último acceso vía SMB/Windows en desarrollo — requiere auditoría de Samba habilitada en el servidor.</p>
     <p style="color:#94a3b8;font-size:11px;text-align:center;margin-top:20px;padding-top:16px;border-top:1px solid #f1f5f9;">${companyName} &nbsp;·&nbsp; Reporte generado automáticamente &nbsp;·&nbsp; ${dateStr}</p>
   </div>
 </body>
