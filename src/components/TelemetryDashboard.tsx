@@ -368,6 +368,28 @@ export function TelemetryDashboard({ services, clients }: Props) {
     return { ok, warnings, errors, stale, noData };
   }, [latestPerService, services]);
 
+  const outdatedScripts = useMemo(() => {
+    const results: { serviceId: string; serviceName: string; source: string; current: string; latest: string }[] = [];
+    for (const [key, hb] of latestPerServiceSource.entries()) {
+      const latest = LATEST_SCRIPT_VERSIONS[hb.source];
+      if (!latest) continue;
+      const current = hb.payload && (hb.payload as Record<string, unknown>).script_version != null
+        ? String((hb.payload as Record<string, unknown>).script_version)
+        : null;
+      if (current === null || current !== latest) {
+        const svc = services.find(s => s.id === hb.service_id);
+        results.push({
+          serviceId: hb.service_id,
+          serviceName: svc?.business_name || svc?.name || hb.service_id.slice(0, 8),
+          source: hb.source,
+          current: current ?? 'unknown',
+          latest,
+        });
+      }
+    }
+    return results;
+  }, [latestPerServiceSource, services]);
+
   const filteredCards = useMemo(() => {
     let list = serviceCards;
     if (clientFilter !== 'all') list = list.filter(c => c.client?.id === clientFilter);
@@ -470,6 +492,29 @@ export function TelemetryDashboard({ services, clients }: Props) {
         <StatBadge label="Stale" value={stats.stale} color="gray" onClick={() => setStatusFilter(statusFilter === 'stale' ? 'all' : 'stale')} active={statusFilter === 'stale'} />
         <StatBadge label="No Data" value={stats.noData} color="slate" onClick={() => setStatusFilter(statusFilter === 'no-data' ? 'all' : 'no-data')} active={statusFilter === 'no-data'} />
       </div>
+
+      {/* Outdated scripts banner */}
+      {outdatedScripts.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span className="text-sm font-semibold text-amber-800">{outdatedScripts.length} script{outdatedScripts.length !== 1 ? 's' : ''} outdated</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {outdatedScripts.map(({ serviceId, serviceName, source, current, latest }) => (
+              <div key={`${serviceId}-${source}`} className="flex items-center gap-1.5 bg-white border border-amber-200 rounded-lg px-2.5 py-1.5 text-xs">
+                <span className="font-medium text-gray-800 truncate max-w-[120px]">{serviceName}</span>
+                <span className="text-gray-400">·</span>
+                <span className="font-mono text-amber-700">{source}</span>
+                <span className="text-gray-400">·</span>
+                <span className="text-gray-400 line-through">{current}</span>
+                <span className="text-gray-400">→</span>
+                <span className="text-emerald-700 font-semibold">{latest}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Filters + view toggle */}
       <div className="flex items-center gap-3 flex-wrap">
@@ -890,14 +935,18 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
       </div>`;
   }).join('');
 
-  const usersHtml = (users as (AclUser & { last_login?: string | null })[]).map(u => {
+  const usersHtml = (users as (AclUser & { last_login?: string | null; active_sessions?: { machine: string; ip: string }[] })[]).map(u => {
     const login = u.last_login
       ? `<span style="color:#374151;">${u.last_login}</span>`
-      : `<span style="background:#f1f5f9;color:#94a3b8;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;letter-spacing:.4px;">EN DESARROLLO</span>`;
+      : `<span style="color:#9ca3af;font-style:italic;">—</span>`;
+    const sessions = u.active_sessions && u.active_sessions.length > 0
+      ? u.active_sessions.map(s => `<span style="background:#eff6ff;color:#1d4ed8;padding:2px 6px;border-radius:4px;font-size:10px;font-family:monospace;margin-right:4px;">${s.machine}</span>`).join('')
+      : `<span style="color:#9ca3af;font-style:italic;">—</span>`;
     return `<tr style="border-top:1px solid #f3f4f6;">
       <td style="padding:7px 14px;color:#374151;font-size:13px;font-weight:500;">${u.name}</td>
       <td style="padding:7px 14px;color:#6b7280;font-size:12px;">${(u.groups || []).join(', ') || '—'}</td>
       <td style="padding:7px 14px;font-size:12px;">${login}</td>
+      <td style="padding:7px 14px;font-size:12px;">${sessions}</td>
       <td style="padding:7px 14px;color:#94a3b8;font-size:12px;">${u.comment || ''}</td>
     </tr>`;
   }).join('');
@@ -947,13 +996,13 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
           <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Usuario</th>
           <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Grupos</th>
           <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Último acceso</th>
+          <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Equipo activo</th>
           <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Descripción</th>
         </tr></thead>
         <tbody>${usersHtml}</tbody>
       </table>
     </div>
 
-    <p style="color:#cbd5e1;font-size:10px;margin-top:12px;margin-bottom:0;">* Último acceso vía SMB/Windows en desarrollo — requiere auditoría de Samba habilitada en el servidor.</p>
     <p style="color:#94a3b8;font-size:11px;text-align:center;margin-top:20px;padding-top:16px;border-top:1px solid #f1f5f9;">${companyName} &nbsp;·&nbsp; Reporte generado automáticamente &nbsp;·&nbsp; ${dateStr}</p>
   </div>
 </body>
