@@ -6,7 +6,7 @@ type Action = 'mantener' | 'eliminar' | 'cambiar';
 
 interface AclPrivilege { type: string; name: string; access: string; perms: number; }
 interface AclShare { smb_name: string; folder_name: string; rel_path: string; comment: string; readonly: boolean; guest_access: boolean; enabled: boolean; users: AclPrivilege[]; groups: AclPrivilege[]; }
-interface AclUser { name: string; uid?: string; comment?: string; groups?: string[]; last_login?: string | null; }
+interface AclUser { name: string; uid?: string; comment?: string; groups?: string[]; last_login?: string | null; active_sessions?: { machine: string; ip: string }[]; }
 
 interface ReviewData {
   snapshot: { shares: AclShare[]; users: AclUser[]; hostname?: string; generated_at: string };
@@ -183,6 +183,18 @@ export function AclReviewPage({ token }: Props) {
                       {u.comment && <p className="text-xs text-slate-400">{u.comment}</p>}
                       {u.groups && u.groups.length > 0 && (
                         <p className="text-xs text-slate-400 mt-0.5">Grupos: {u.groups.join(', ')}</p>
+                      )}
+                      {u.last_login && (
+                        <p className="text-xs text-slate-400 mt-0.5">Último acceso: {u.last_login}</p>
+                      )}
+                      {u.active_sessions && u.active_sessions.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {u.active_sessions.map((s, i) => (
+                            <span key={i} className="text-[10px] bg-emerald-50 border border-emerald-200 text-emerald-700 px-1.5 py-0.5 rounded font-mono">
+                              {s.machine} ({s.ip})
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
                     <div className="flex gap-1.5 shrink-0">

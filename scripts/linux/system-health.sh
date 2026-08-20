@@ -7,7 +7,7 @@
 #   0 * * * * /srv/scripts/system-health.sh
 # =============================================================
 
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.1.0"
 
 # ---------- Cargar .env ----------
 # Orden: arg CLI → /etc/backup-ingest.env → $SCRIPT_DIR/.env
@@ -122,6 +122,27 @@ ISSUES=$(echo "$ISSUES" | xargs)
 
 MESSAGE="CPU: ${CPU_PCT}% | RAM: ${RAM_PCT}% | Disk: ${DISK_PCT}% (${DISK_FREE_GB} GB free) | Up: ${UPTIME_STR}"
 
+# ---------- Samba sessions ----------
+SMB_SESSIONS_JSON="[]"
+SMB_SESSION_COUNT=0
+if command -v smbstatus >/dev/null 2>&1; then
+  # smbstatus -b: brief, one line per session: PID  username  group  machine  proto
+  SMB_RAW=$(smbstatus -b 2>/dev/null | awk 'NR>2 && /[0-9]/ {print $2, $4}' || true)
+  if [[ -n "$SMB_RAW" ]]; then
+    SMB_SESSION_COUNT=$(echo "$SMB_RAW" | wc -l | tr -d ' ')
+    SMB_SESSIONS_JSON="["
+    first=1
+    while IFS= read -r line; do
+      user=$(echo "$line" | awk '{print $1}')
+      machine=$(echo "$line" | awk '{print $2}')
+      [[ $first -eq 0 ]] && SMB_SESSIONS_JSON+=","
+      SMB_SESSIONS_JSON+="{\"user\":\"${user}\",\"machine\":\"${machine}\"}"
+      first=0
+    done <<< "$SMB_RAW"
+    SMB_SESSIONS_JSON+="]"
+  fi
+fi
+
 # ---------- Payload ----------
 PAYLOAD=$(cat <<EOF
 {
@@ -138,6 +159,8 @@ PAYLOAD=$(cat <<EOF
     "uptime_str": "$UPTIME_STR",
     "uptime_seconds": $UPTIME_SECS,
     "issues": "$ISSUES",
+    "smb_session_count": $SMB_SESSION_COUNT,
+    "smb_sessions": $SMB_SESSIONS_JSON,
     "script_version": "$SCRIPT_VERSION"
   }
 }

@@ -180,14 +180,15 @@ try:
     umap = {u['name']: u for u in users}
     for line in smb.stdout.split('\n'):
         # formato: PID  username  group  machine (ipv4:IP:port)  ...
-        m = re.match(r'^\d+\s+(\S+)\s+\S+\s+\S+\s+\(ipv4:([^:]+):\d+\)', line)
+        m = re.match(r'^\d+\s+(\S+)\s+\S+\s+(\S+)\s+\(ipv4:([^:]+):\d+\)', line)
         if not m:
             continue
-        uname, ip = m.group(1), m.group(2)
+        uname, machine, ip = m.group(1), m.group(2), m.group(3)
         if uname in umap:
             sessions = umap[uname].setdefault('active_sessions', [])
-            if ip not in sessions:
-                sessions.append(ip)
+            entry = {'machine': machine, 'ip': ip}
+            if entry not in sessions:
+                sessions.append(entry)
 except Exception:
     pass
 

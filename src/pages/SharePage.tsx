@@ -284,7 +284,7 @@ export function SharePage({ token }: Props) {
             {roadmap.some(r => r.category === 'problem' || r.category === 'change_request') && (
               <NavBtn active={section === 'tickets' as Section} onClick={() => setSection('tickets' as Section)}>Tickets</NavBtn>
             )}
-            {supportHours.length > 0 && <NavBtn active={section === 'hours'} onClick={() => setSection('hours')}>Hours</NavBtn>}
+            {(supportHours.length > 0 || roadmap.some(r => r.amount_type === 'hours' && r.amount && r.amount > 0)) && <NavBtn active={section === 'hours'} onClick={() => setSection('hours')}>Hours</NavBtn>}
             <NavBtn active={section === 'support'} onClick={() => setSection('support')}>Support</NavBtn>
           </div>
         </nav>
@@ -294,7 +294,7 @@ export function SharePage({ token }: Props) {
           {section === 'services' && <ServiceCatalog services={services} projects={projects} getTypeName={getTypeName} getProjectName={getProjectName} expandedService={expandedService} setExpandedService={setExpandedService} heartbeats={heartbeats} backups={backups} systemHeartbeats={systemHeartbeats} />}
           {section === 'licenses' && <LicensesSection licenses={licenses} services={services} />}
           {section === ('tickets' as Section) && <TicketsSection items={roadmap.filter(r => r.category === 'problem' || r.category === 'change_request')} />}
-          {section === 'hours' && <SupportHoursSection hours={supportHours} services={services} />}
+          {section === 'hours' && <SupportHoursSection hours={supportHours} roadmapItems={roadmap} services={services} />}
           {section === 'support' && <SupportSection token={token} clientName={client!.company_name} services={services} />}
         </main>
 
@@ -1227,32 +1227,52 @@ function ChangesSection({ changes, services }: { changes: ServiceChange[]; servi
 
 /* ---------- Support Hours ---------- */
 
-function SupportHoursSection({ hours, services }: { hours: SupportHour[]; services: Service[] }) {
+function SupportHoursSection({ hours, roadmapItems, services }: { hours: SupportHour[]; roadmapItems: RoadmapItem[]; services: Service[] }) {
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
+
+  type UnifiedEntry = { id: string; work_date: string; hours: number; description: string; service_id?: string; source: 'manual' | 'pipeline' };
+
+  const allEntries = useMemo((): UnifiedEntry[] => {
+    const manual: UnifiedEntry[] = hours.map(h => ({
+      id: h.id, work_date: h.work_date, hours: Number(h.hours),
+      description: h.description || '', service_id: h.service_id, source: 'manual',
+    }));
+    const pipeline: UnifiedEntry[] = roadmapItems
+      .filter(r => r.amount_type === 'hours' && r.amount && r.amount > 0 && (r.scheduled_date || r.eta))
+      .map(r => ({
+        id: `rm-${r.id}`,
+        work_date: (r.scheduled_date || r.eta)!,
+        hours: r.amount!,
+        description: r.title,
+        service_id: r.service_id,
+        source: 'pipeline',
+      }));
+    return [...manual, ...pipeline].sort((a, b) => b.work_date.localeCompare(a.work_date));
+  }, [hours, roadmapItems]);
 
   const filteredHours = useMemo(() => {
     const [year, month] = selectedMonth.split('-');
     const start = `${year}-${month}-01`;
     const endDate = new Date(parseInt(year), parseInt(month), 0);
     const end = `${year}-${month}-${String(endDate.getDate()).padStart(2, '0')}`;
-    return hours.filter(h => h.work_date >= start && h.work_date <= end);
-  }, [hours, selectedMonth]);
+    return allEntries.filter(h => h.work_date >= start && h.work_date <= end);
+  }, [allEntries, selectedMonth]);
 
-  const totalHoursUsed = filteredHours.reduce((sum, h) => sum + Number(h.hours), 0);
+  const totalHoursUsed = filteredHours.reduce((sum, h) => sum + h.hours, 0);
   const totalAllocated = services.filter(s => s.status === 'Active').reduce((sum, s) => sum + (s.confirmed_hours_monthly || 0), 0);
   const pctUsed = totalAllocated > 0 ? (totalHoursUsed / totalAllocated) * 100 : 0;
   const getServiceName = (id?: string) => { if (!id) return null; const svc = services.find(s => s.id === id); return svc?.business_name || svc?.name || null; };
 
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
-    hours.forEach(h => { const [y, m] = h.work_date.split('-'); months.add(`${y}-${m}`); });
+    allEntries.forEach(h => { const [y, m] = h.work_date.split('-'); months.add(`${y}-${m}`); });
     const now = new Date();
     months.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
     return Array.from(months).sort().reverse();
-  }, [hours]);
+  }, [allEntries]);
 
   return (
     <div className="space-y-4">
@@ -1286,13 +1306,14 @@ function SupportHoursSection({ hours, services }: { hours: SupportHour[]; servic
           {filteredHours.map(entry => (
             <div key={entry.id} className="px-4 py-3 flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-gray-400">{new Date(entry.work_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
                   {getServiceName(entry.service_id) && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">{getServiceName(entry.service_id)}</span>}
+                  {entry.source === 'pipeline' && <span className="text-[10px] bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 rounded-full font-medium">Pipeline</span>}
                 </div>
                 {entry.description && <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5">{entry.description}</p>}
               </div>
-              <span className="text-xs font-semibold text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full shrink-0">{Number(entry.hours).toFixed(1)}h</span>
+              <span className="text-xs font-semibold text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full shrink-0">{entry.hours.toFixed(1)}h</span>
             </div>
           ))}
         </div>
