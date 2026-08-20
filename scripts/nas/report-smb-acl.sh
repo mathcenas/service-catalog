@@ -174,16 +174,31 @@ try:
 except Exception:
     pass
 
-# Sesiones activas via smbstatus -b (usuario → IP actual)
+# Sesiones activas via smbstatus -b (usuario → IP) + resolución NetBIOS via nmblookup
+def resolve_netbios(ip):
+    try:
+        r = subprocess.run(['nmblookup', '-A', ip], capture_output=True, text=True, timeout=5)
+        for ln in r.stdout.split('\n'):
+            # linea: NAME  <00> ...  UNIQUE
+            m2 = re.match(r'^\s*(\S+)\s+<00>\s+.*UNIQUE', ln)
+            if m2:
+                name = m2.group(1).strip()
+                if name.upper() not in ('WORKGROUP', '__MSBROWSE__'):
+                    return name
+    except Exception:
+        pass
+    return ip  # fallback a IP si no se puede resolver
+
 try:
     smb = subprocess.run(['smbstatus', '-b'], capture_output=True, text=True, timeout=10)
     umap = {u['name']: u for u in users}
     for line in smb.stdout.split('\n'):
-        # formato: PID  username  group  machine (ipv4:IP:port)  ...
-        m = re.match(r'^\d+\s+(\S+)\s+\S+\s+(\S+)\s+\(ipv4:([^:]+):\d+\)', line)
+        # formato: PID  username  group  IP (ipv4:IP:port)  ...
+        m = re.match(r'^\d+\s+(\S+)\s+\S+\s+\S+\s+\(ipv4:([^:]+):\d+\)', line)
         if not m:
             continue
-        uname, machine, ip = m.group(1), m.group(2), m.group(3)
+        uname, ip = m.group(1), m.group(2)
+        machine = resolve_netbios(ip)
         if uname in umap:
             sessions = umap[uname].setdefault('active_sessions', [])
             entry = {'machine': machine, 'ip': ip}
