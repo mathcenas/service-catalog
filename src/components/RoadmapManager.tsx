@@ -371,9 +371,9 @@ export function RoadmapManager({ clients, services }: Props) {
             <textarea
               value={draft.description}
               onChange={e => setDraft({ ...draft, description: e.target.value })}
-              rows={2}
+              rows={4}
               placeholder="Details about the planned action..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y"
             />
           </div>
           <div>
@@ -613,8 +613,8 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
             value={localDesc}
             onChange={e => handleDescChange(e.target.value)}
             placeholder="Description..."
-            rows={2}
-            className="w-full px-2 py-1 border border-transparent hover:border-gray-200 focus:border-blue-300 rounded-md text-xs text-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+            rows={localDesc ? Math.max(3, localDesc.split('\n').length + 1) : 2}
+            className="w-full px-2 py-1 border border-transparent hover:border-gray-200 focus:border-blue-300 rounded-md text-xs text-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y min-h-[40px]"
           />
           {item.requested_by && (
             <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
