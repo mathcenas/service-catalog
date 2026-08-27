@@ -905,13 +905,28 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
     return `<span style="background:#f3f4f6;color:#6b7280;padding:2px 8px;border-radius:4px;font-size:11px;">Sin acceso</span>`;
   };
 
-  const sharesHtml = shares.filter(s => s.enabled).map(share => {
+  const diskBar = (share: Record<string, any>) => {
+    if (share.disk_total_gb == null) return '';
+    const pct = share.disk_used_pct ?? 0;
+    const barColor = pct >= 90 ? '#ef4444' : pct >= 75 ? '#f59e0b' : '#22c55e';
+    return `
+      <div style="padding:6px 14px 8px;border-top:1px solid #f3f4f6;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:10px;color:#6b7280;white-space:nowrap;">💾 Disco</span>
+        <div style="flex:1;background:#f1f5f9;border-radius:4px;height:6px;overflow:hidden;">
+          <div style="width:${pct}%;background:${barColor};height:6px;border-radius:4px;"></div>
+        </div>
+        <span style="font-size:11px;color:#374151;white-space:nowrap;font-weight:600;">${share.disk_used_pct}%</span>
+        <span style="font-size:10px;color:#94a3b8;white-space:nowrap;">${share.disk_free_gb} GB libres / ${share.disk_total_gb} GB</span>
+      </div>`;
+  };
+
+  const sharesHtml = shares.filter(s => s.enabled).map((share: Record<string, any>) => {
     const allPrivs = [
-      ...share.users.map(u => ({ name: u.name, access: u.access })),
-      ...share.groups.map(g => ({ name: `[${g.name}]`, access: g.access })),
+      ...share.users.map((u: any) => ({ name: u.name, access: u.access })),
+      ...share.groups.map((g: any) => ({ name: `[${g.name}]`, access: g.access })),
     ];
     const rows = allPrivs.length
-      ? allPrivs.map(p => `<tr style="border-top:1px solid #f3f4f6;"><td style="padding:7px 14px;color:#374151;font-size:13px;">${p.name}</td><td style="padding:7px 14px;">${accessBadge(p.access)}</td></tr>`).join('')
+      ? allPrivs.map((p: any) => `<tr style="border-top:1px solid #f3f4f6;"><td style="padding:7px 14px;color:#374151;font-size:13px;">${p.name}</td><td style="padding:7px 14px;">${accessBadge(p.access)}</td></tr>`).join('')
       : `<tr><td colspan="2" style="padding:7px 14px;color:#9ca3af;font-style:italic;font-size:12px;">Sin permisos explícitos configurados</td></tr>`;
 
     const badges = [
@@ -932,6 +947,7 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
+        ${diskBar(share)}
       </div>`;
   }).join('');
 

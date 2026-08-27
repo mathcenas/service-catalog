@@ -5,7 +5,7 @@ type Props = { token: string };
 type Action = 'mantener' | 'eliminar' | 'cambiar';
 
 interface AclPrivilege { type: string; name: string; access: string; perms: number; }
-interface AclShare { smb_name: string; folder_name: string; rel_path: string; comment: string; readonly: boolean; guest_access: boolean; enabled: boolean; users: AclPrivilege[]; groups: AclPrivilege[]; }
+interface AclShare { smb_name: string; folder_name: string; rel_path: string; comment: string; readonly: boolean; guest_access: boolean; enabled: boolean; users: AclPrivilege[]; groups: AclPrivilege[]; disk_total_gb?: number; disk_free_gb?: number; disk_used_pct?: number; }
 interface AclUser { name: string; uid?: string; comment?: string; groups?: string[]; last_login?: string | null; active_sessions?: { machine: string; ip: string }[]; }
 
 interface ReviewData {
@@ -155,6 +155,19 @@ export function AclReviewPage({ token }: Props) {
                     ))}
                     {share.users.length === 0 && share.groups.length === 0 && <span className="text-xs text-slate-400">Sin permisos explícitos</span>}
                   </div>
+                  {share.disk_total_gb != null && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-[10px] text-slate-400 shrink-0">Disco</span>
+                      <div className="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className={`h-1.5 rounded-full ${(share.disk_used_pct ?? 0) >= 90 ? 'bg-red-500' : (share.disk_used_pct ?? 0) >= 75 ? 'bg-amber-400' : 'bg-emerald-400'}`}
+                          style={{ width: `${share.disk_used_pct ?? 0}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-slate-500 shrink-0 font-medium">{share.disk_used_pct}%</span>
+                      <span className="text-[10px] text-slate-400 shrink-0">{share.disk_free_gb} GB libres / {share.disk_total_gb} GB</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

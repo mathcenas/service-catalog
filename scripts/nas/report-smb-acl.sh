@@ -81,25 +81,48 @@ parse_users() {
 # Cada sharedfolder tiene: uuid, name, reldirpath, privileges/privilege*
 parse_shares_json() {
   python3 - "$OMV_CONFIG" <<'PYEOF'
-import sys, xml.etree.ElementTree as ET, json
+import sys, xml.etree.ElementTree as ET, json, os
 
 tree = ET.parse(sys.argv[1])
 root = tree.getroot()
 
+# Mapa uuid -> mount point (dir) desde mntent
+mnt_map = {}
+for mnt in root.findall('.//fstab/mntent'):
+    muuid = mnt.findtext('uuid', '').strip()
+    mdir  = mnt.findtext('dir', '').strip()
+    if muuid and mdir:
+        mnt_map[muuid] = mdir
+
+def disk_stats(full_path):
+    """Retorna dict con free_gb, total_gb, used_pct o None si falla."""
+    try:
+        st = os.statvfs(full_path)
+        total = st.f_blocks * st.f_frsize
+        free  = st.f_bavail * st.f_frsize
+        used  = total - free
+        return {
+            'disk_total_gb': round(total / 1073741824, 1),
+            'disk_free_gb':  round(free  / 1073741824, 1),
+            'disk_used_pct': round(used / total * 100, 1) if total else 0,
+        }
+    except Exception:
+        return None
+
 # Mapa uuid -> shared folder info
 sf_map = {}
 for sf in root.findall('.//sharedfolder'):
-    uuid = sf.findtext('uuid', '').strip()
-    name = sf.findtext('name', '').strip()
+    uuid    = sf.findtext('uuid', '').strip()
+    name    = sf.findtext('name', '').strip()
     relpath = sf.findtext('reldirpath', '').strip()
     comment = sf.findtext('comment', '').strip()
+    mntref  = sf.findtext('mntentref', '').strip()
 
     privs = []
     for p in sf.findall('privileges/privilege'):
-        ptype = p.findtext('type', '').strip()   # user | group
+        ptype = p.findtext('type', '').strip()
         pname = p.findtext('name', '').strip()
         perms = p.findtext('perms', '0').strip()
-        # OMV perms: 7=read/write, 5=read only, 0=no access
         if perms == '7':
             access = 'read/write'
         elif perms == '5':
@@ -108,38 +131,48 @@ for sf in root.findall('.//sharedfolder'):
             access = 'no access'
         privs.append({'type': ptype, 'name': pname, 'access': access, 'perms': int(perms)})
 
+    # Ruta completa: mount_point + reldirpath
+    mount_dir = mnt_map.get(mntref, '')
+    full_path = os.path.join(mount_dir, relpath.lstrip('/')) if mount_dir else ''
+
     sf_map[uuid] = {
         'folder_name': name,
-        'rel_path': relpath,
-        'comment': comment,
-        'privileges': privs,
+        'rel_path':    relpath,
+        'full_path':   full_path,
+        'comment':     comment,
+        'privileges':  privs,
+        'disk':        disk_stats(full_path) if full_path else None,
     }
 
 # SMB shares: enlazar con sharedfolder por sharedfolderref
 shares = []
 for share in root.findall('.//smb/shares/share'):
-    sfref = share.findtext('sharedfolderref', '').strip()
-    smb_name = share.findtext('name', '').strip()
-    smb_comment = share.findtext('comment', '').strip()
-    readonly = share.findtext('readonly', '0').strip() == '1'
-    guest = share.findtext('guest', 'no').strip()
-    enable = share.findtext('enable', '1').strip() == '1'
+    sfref      = share.findtext('sharedfolderref', '').strip()
+    smb_name   = share.findtext('name', '').strip()
+    smb_comment= share.findtext('comment', '').strip()
+    readonly   = share.findtext('readonly', '0').strip() == '1'
+    guest      = share.findtext('guest', 'no').strip()
+    enable     = share.findtext('enable', '1').strip() == '1'
 
     sf = sf_map.get(sfref, {})
-    users_access = [p for p in sf.get('privileges', []) if p['type'] == 'user']
+    users_access  = [p for p in sf.get('privileges', []) if p['type'] == 'user']
     groups_access = [p for p in sf.get('privileges', []) if p['type'] == 'group']
+    disk          = sf.get('disk')
 
-    shares.append({
-        'smb_name': smb_name or sf.get('folder_name', sfref),
+    entry = {
+        'smb_name':    smb_name or sf.get('folder_name', sfref),
         'folder_name': sf.get('folder_name', ''),
-        'rel_path': sf.get('rel_path', ''),
-        'comment': smb_comment or sf.get('comment', ''),
-        'readonly': readonly,
-        'guest_access': guest != 'no',
-        'enabled': enable,
-        'users': users_access,
-        'groups': groups_access,
-    })
+        'rel_path':    sf.get('rel_path', ''),
+        'comment':     smb_comment or sf.get('comment', ''),
+        'readonly':    readonly,
+        'guest_access':guest != 'no',
+        'enabled':     enable,
+        'users':       users_access,
+        'groups':      groups_access,
+    }
+    if disk:
+        entry.update(disk)
+    shares.append(entry)
 
 # Usuarios OMV
 users = []
