@@ -80,7 +80,7 @@ parse_users() {
 # ---------- Parsear shared folders ----------
 # Cada sharedfolder tiene: uuid, name, reldirpath, privileges/privilege*
 parse_shares_json() {
-  python3 - "$OMV_CONFIG" <<'PYEOF'
+  timeout 90 python3 - "$OMV_CONFIG" <<'PYEOF'
 import sys, xml.etree.ElementTree as ET, json, os
 
 tree = ET.parse(sys.argv[1])
@@ -185,8 +185,9 @@ for u in root.findall('.//system/usermanagement/users/user'):
     if uname:
         users.append({'name': uname, 'uid': uid, 'comment': comment, 'groups': ugroups})
 
-# Último login Samba via pdbedit -L -v (registra logins Windows/SMB, no PAM)
+# Último login Samba via pdbedit -L -v
 import subprocess, re
+print('[acl] pdbedit...', file=sys.stderr, flush=True)
 try:
     result = subprocess.run(['pdbedit', '-L', '-v'], capture_output=True, text=True, timeout=15)
     umap = {u['name']: u for u in users}
@@ -204,15 +205,14 @@ try:
                     umap[current_user]['last_login'] = None
                 else:
                     umap[current_user]['last_login'] = val
-except Exception:
-    pass
+except Exception as e:
+    print(f'[acl] pdbedit error: {e}', file=sys.stderr, flush=True)
 
-# Sesiones activas via smbstatus -b (usuario → IP) + resolución NetBIOS via nmblookup
+# Sesiones activas via smbstatus -b + resolución NetBIOS via nmblookup
 def resolve_netbios(ip):
     try:
         r = subprocess.run(['nmblookup', '-A', ip], capture_output=True, text=True, timeout=5)
         for ln in r.stdout.split('\n'):
-            # linea: NAME  <00> ...  UNIQUE
             m2 = re.match(r'^\s*(\S+)\s+<00>\s+.*UNIQUE', ln)
             if m2:
                 name = m2.group(1).strip()
@@ -220,35 +220,37 @@ def resolve_netbios(ip):
                     return name
     except Exception:
         pass
-    return ip  # fallback a IP si no se puede resolver
+    return ip
 
+print('[acl] smbstatus...', file=sys.stderr, flush=True)
 try:
     smb = subprocess.run(['smbstatus', '-b'], capture_output=True, text=True, timeout=10)
     umap = {u['name']: u for u in users}
     for line in smb.stdout.split('\n'):
-        # formato: PID  username  group  IP (ipv4:IP:port)  ...
         m = re.match(r'^\d+\s+(\S+)\s+\S+\s+\S+\s+\(ipv4:([^:]+):\d+\)', line)
         if not m:
             continue
         uname, ip = m.group(1), m.group(2)
+        print(f'[acl] nmblookup {ip}...', file=sys.stderr, flush=True)
         machine = resolve_netbios(ip)
         if uname in umap:
             sessions = umap[uname].setdefault('active_sessions', [])
             entry = {'machine': machine, 'ip': ip}
             if entry not in sessions:
                 sessions.append(entry)
-except Exception:
-    pass
+except Exception as e:
+    print(f'[acl] smbstatus error: {e}', file=sys.stderr, flush=True)
 
+print('[acl] done, outputting JSON', file=sys.stderr, flush=True)
 print(json.dumps({'shares': shares, 'users': users}))
 PYEOF
 }
 
 log "Parseando config OMV..."
-PARSED=$(parse_shares_json)
+PARSED=$(parse_shares_json 2>>"$LOG_FILE")
 
 if [[ -z "$PARSED" ]]; then
-  log "ERROR: no se pudo parsear el config XML"
+  log "ERROR: no se pudo parsear el config XML (ver log para detalle)"
   exit 1
 fi
 
