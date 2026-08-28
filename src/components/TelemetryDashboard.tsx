@@ -985,33 +985,79 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
       </div>`;
   }).join('');
 
-  const usersHtml = (users as (AclUser & { last_login?: string | null; active_sessions?: { machine: string; ip: string }[]; login_history?: { machine: string; timestamp: string; ip: string }[] })[]).map(u => {
-    const sessions = u.active_sessions && u.active_sessions.length > 0
-      ? u.active_sessions.map(s => `<span style="background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-size:10px;font-family:monospace;margin-right:4px;">● ${s.machine}</span>`).join('')
+  // Build machine-centric index from NAS login_history
+  // machine key → { nasUsers: Set, lastAccess, ip, isActive }
+  type MachineEntry = { nasUsers: Map<string, string>; lastAccess: string; ip: string; isActive: boolean };
+  const machineIndex = new Map<string, MachineEntry>();
+
+  const typedUsers = users as (AclUser & { active_sessions?: { machine: string; ip: string }[]; login_history?: { machine: string; timestamp: string; ip: string }[] })[];
+
+  // Index active sessions
+  typedUsers.forEach(u => {
+    (u.active_sessions ?? []).forEach(s => {
+      const key = s.machine.toLowerCase();
+      if (!machineIndex.has(key)) machineIndex.set(key, { nasUsers: new Map(), lastAccess: '', ip: s.ip, isActive: false });
+      const entry = machineIndex.get(key)!;
+      entry.nasUsers.set(u.name, u.comment || '');
+      entry.isActive = true;
+      entry.ip = s.ip;
+    });
+  });
+
+  // Index login_history
+  typedUsers.forEach(u => {
+    (u.login_history ?? []).forEach(h => {
+      const key = h.machine.toLowerCase();
+      if (!machineIndex.has(key)) machineIndex.set(key, { nasUsers: new Map(), lastAccess: '', ip: h.ip, isActive: false });
+      const entry = machineIndex.get(key)!;
+      entry.nasUsers.set(u.name, u.comment || '');
+      if (!entry.lastAccess || h.timestamp > entry.lastAccess) {
+        entry.lastAccess = h.timestamp;
+        entry.ip = h.ip;
+      }
+    });
+  });
+
+  // Union with ManageEngine machines
+  suiteMap.forEach((_, key) => { if (!machineIndex.has(key)) machineIndex.set(key, { nasUsers: new Map(), lastAccess: '', ip: '', isActive: false }); });
+
+  // Build unified rows — sort by machine name, active first
+  const allMachines = Array.from(machineIndex.entries()).sort((a, b) => {
+    if (a[1].isActive !== b[1].isActive) return a[1].isActive ? -1 : 1;
+    return a[0].localeCompare(b[0]);
+  });
+
+  const th = (label: string, center = false) =>
+    `<th style="padding:7px 12px;text-align:${center ? 'center' : 'left'};font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">${label}</th>`;
+
+  const machineRows = allMachines.map(([key, entry]) => {
+    // Recover display name from machineIndex (original case from first seen)
+    const displayName = [...typedUsers.flatMap(u => [...(u.active_sessions ?? []), ...(u.login_history ?? [])]).map(h => h.machine), ...Array.from(suiteMap.keys())]
+      .find(n => n.toLowerCase() === key) ?? key;
+
+    const m365 = ownerMap.get(key);
+    const suites = suiteMap.get(key) ?? [];
+    const meRow = softwareFiles.filter(f => f.type === 'managengine').flatMap(f => f.rows).find(r => r.computer.toLowerCase() === key);
+    const hasCopilot = meRow?.hasCopilot ?? false;
+    const os = meRow?.os ?? '';
+
+    const nasUsersList = Array.from(entry.nasUsers.entries()).map(([name, comment]) =>
+      `<span style="display:inline-block;background:#f1f5f9;color:#334155;padding:1px 6px;border-radius:3px;font-size:10px;margin:1px;">${name}${comment ? ` <span style="color:#94a3b8;">(${comment})</span>` : ''}</span>`
+    ).join('');
+
+    const activeIndicator = entry.isActive
+      ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:5px;vertical-align:middle;"></span>`
       : '';
-    const history = u.login_history && u.login_history.length > 0
-      ? u.login_history.map(h => {
-          const key = h.machine.toLowerCase();
-          const m365 = hasOwners ? ownerMap.get(key) : null;
-          const suites = hasSuites ? (suiteMap.get(key) ?? []) : [];
-          const extras = [
-            m365 ? `<span style="background:#eff6ff;color:#1d4ed8;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;">M365: ${m365}</span>` : '',
-            suites.length ? `<span style="background:#f0fdf4;color:#166534;padding:1px 6px;border-radius:3px;font-size:10px;">${suites[0]}</span>` : '',
-          ].filter(Boolean).join(' ');
-          return `<div style="margin-top:3px;padding:4px 6px;background:#f8fafc;border-radius:4px;border-left:2px solid #e2e8f0;">
-            <span style="font-family:monospace;color:#1e293b;font-weight:700;font-size:11px;">${h.machine}</span>
-            <span style="color:#cbd5e1;margin:0 4px;">·</span>
-            <span style="color:#94a3b8;font-size:10px;">${h.timestamp.slice(0, 16)}</span>
-            <span style="color:#e2e8f0;margin:0 4px;">(${h.ip})</span>
-            ${extras ? `<div style="margin-top:3px;">${extras}</div>` : ''}
-          </div>`;
-        }).join('')
-      : `<span style="color:#9ca3af;font-style:italic;font-size:11px;">—</span>`;
-    const activePart = sessions ? `<div style="margin-bottom:4px;">${sessions}</div>` : '';
+
     return `<tr style="border-top:1px solid #f3f4f6;">
-      <td style="padding:7px 14px;color:#374151;font-size:13px;font-weight:500;">${u.name}</td>
-      <td style="padding:7px 14px;font-size:12px;">${activePart}${history}</td>
-      <td style="padding:7px 14px;color:#94a3b8;font-size:12px;">${u.comment || ''}</td>
+      <td style="padding:7px 12px;font-family:monospace;font-size:12px;font-weight:700;color:#1e293b;white-space:nowrap;">${activeIndicator}${displayName}</td>
+      <td style="padding:7px 12px;font-size:11px;color:#64748b;font-family:monospace;">${entry.ip || '—'}</td>
+      <td style="padding:7px 12px;font-size:12px;color:#374151;">${m365 || '<span style="color:#d1d5db;">—</span>'}</td>
+      <td style="padding:7px 12px;font-size:12px;">${nasUsersList || '<span style="color:#d1d5db;font-size:11px;">—</span>'}</td>
+      <td style="padding:7px 12px;font-size:11px;color:#64748b;">${os || '—'}</td>
+      <td style="padding:7px 12px;font-size:12px;color:#374151;">${suites.length ? suites[0] : '<span style="color:#d1d5db;">—</span>'}</td>
+      <td style="padding:7px 12px;text-align:center;">${hasCopilot ? '<span style="background:#ede9fe;color:#6d28d9;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;">✓</span>' : '<span style="color:#e2e8f0;">—</span>'}</td>
+      <td style="padding:7px 12px;font-size:11px;color:#94a3b8;white-space:nowrap;">${entry.lastAccess ? entry.lastAccess.slice(0, 16) : '—'}</td>
     </tr>`;
   }).join('');
 
@@ -1052,49 +1098,20 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
     <h2 style="font-size:14px;font-weight:700;color:#1e293b;margin:0 0 14px;text-transform:uppercase;letter-spacing:.5px;">Carpetas Compartidas</h2>
     ${sharesHtml}
 
-    <!-- Usuarios -->
-    <h2 style="font-size:14px;font-weight:700;color:#1e293b;margin:28px 0 14px;text-transform:uppercase;letter-spacing:.5px;">Usuarios del Sistema</h2>
+    <!-- Equipos unificado -->
+    <h2 style="font-size:14px;font-weight:700;color:#1e293b;margin:28px 0 6px;text-transform:uppercase;letter-spacing:.5px;">Equipos</h2>
+    <p style="font-size:11px;color:#94a3b8;margin:0 0 12px;">
+      <span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;"></span> Sesión activa</span>
+      Fuentes: NAS${hasSuites ? ' · ManageEngine' : ''}${hasOwners ? ' · Entra ID' : ''}
+    </p>
     <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
       <table style="width:100%;border-collapse:collapse;">
         <thead><tr style="background:#f9fafb;">
-          <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Usuario</th>
-          <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Accesos</th>
-          <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Descripción</th>
+          ${th('Equipo')}${th('IP LAN')}${th('Usuario M365')}${th('Usuario NAS')}${th('OS')}${th('Office')}${th('Copilot', true)}${th('Último acceso NAS')}
         </tr></thead>
-        <tbody>${usersHtml}</tbody>
+        <tbody>${machineRows}</tbody>
       </table>
     </div>
-
-    ${softwareFiles.length > 0 ? (() => {
-      const allRows = softwareFiles.flatMap(f => f.rows);
-      const deduped = new Map<string, typeof allRows[0]>();
-      allRows.forEach(r => { if (!deduped.has(r.computer)) deduped.set(r.computer, r); });
-      const sorted = Array.from(deduped.values()).sort((a, b) => a.computer.localeCompare(b.computer));
-      const rows = sorted.map(r => {
-        const owner = ownerMap.get(r.computer.toLowerCase()) || '';
-        return `<tr style="border-top:1px solid #f3f4f6;">
-          <td style="padding:7px 14px;font-size:12px;font-family:monospace;font-weight:600;color:#1e293b;">${r.computer}</td>
-          ${hasOwners ? `<td style="padding:7px 14px;font-size:12px;color:#374151;">${owner || '<span style="color:#9ca3af;font-style:italic;">—</span>'}</td>` : ''}
-          <td style="padding:7px 14px;font-size:12px;color:#374151;">${r.os || '—'}</td>
-          <td style="padding:7px 14px;font-size:12px;color:#374151;">${r.suites.length ? r.suites.join('<br>') : '<span style="color:#9ca3af;font-style:italic;">—</span>'}</td>
-          <td style="padding:7px 14px;text-align:center;">${r.hasCopilot ? '<span style="background:#ede9fe;color:#6d28d9;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">Copilot</span>' : '<span style="color:#d1d5db;">—</span>'}</td>
-        </tr>`;
-      }).join('');
-      return `
-    <h2 style="font-size:14px;font-weight:700;color:#1e293b;margin:32px 0 14px;text-transform:uppercase;letter-spacing:.5px;">Inventario de Software</h2>
-    <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-      <table style="width:100%;border-collapse:collapse;">
-        <thead><tr style="background:#f9fafb;">
-          <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Equipo</th>
-          ${hasOwners ? '<th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Usuario M365</th>' : ''}
-          <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Sistema Operativo</th>
-          <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Suite Office</th>
-          <th style="padding:7px 14px;text-align:center;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Copilot</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
-    })() : ''}
 
     <p style="color:#94a3b8;font-size:11px;text-align:center;margin-top:20px;padding-top:16px;border-top:1px solid #f1f5f9;">${companyName} &nbsp;·&nbsp; Reporte generado automáticamente &nbsp;·&nbsp; ${dateStr}</p>
   </div>
