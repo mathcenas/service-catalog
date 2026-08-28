@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings, Clock, CheckCircle2, AlertTriangle, Wrench, XCircle, Globe } from 'lucide-react';
+import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings, Clock, CheckCircle2, AlertTriangle, Wrench, XCircle, Globe, MonitorSmartphone } from 'lucide-react';
 import { supabase, Client, Service, Project, ServiceType } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { ClientList } from './ClientList';
@@ -17,6 +17,7 @@ import { DataExportImport } from './DataExportImport';
 import { SettingsPanel } from './SettingsPanel';
 import { SupportHoursManager } from './SupportHoursManager';
 import { InfrastructureView } from './InfrastructureView';
+import { SoftwareInventoryView } from './SoftwareInventoryView';
 
 type Stats = {
   totalClients: number;
@@ -29,7 +30,7 @@ type Stats = {
 
 export function Dashboard() {
   const { signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'projects' | 'services' | 'payments' | 'licenses' | 'roadmap' | 'hours' | 'telemetry' | 'infrastructure' | 'data' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'projects' | 'services' | 'payments' | 'licenses' | 'roadmap' | 'hours' | 'telemetry' | 'infrastructure' | 'software' | 'data' | 'settings'>('dashboard');
   const [stats, setStats] = useState<Stats>({
     totalClients: 0,
     activeClients: 0,
@@ -147,6 +148,7 @@ export function Dashboard() {
     { id: 'hours',     label: 'Hours',     icon: Clock },
     { id: 'telemetry',       label: 'Telemetry',      icon: Activity },
     { id: 'infrastructure',  label: 'Infrastructure', icon: Globe },
+    { id: 'software',        label: 'Software',       icon: MonitorSmartphone },
     { id: 'data',            label: 'Data',           icon: Database },
     { id: 'settings',  label: 'Settings',  icon: Settings },
   ] as const;
@@ -482,6 +484,10 @@ export function Dashboard() {
 
         {activeTab === 'infrastructure' && (
           <InfrastructureView services={services} clients={clients} />
+        )}
+
+        {activeTab === 'software' && (
+          <SoftwareInventoryView clients={clients} />
         )}
 
         {activeTab === 'data' && (
