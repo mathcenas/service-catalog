@@ -917,12 +917,21 @@ function buildOwnerMapFromImports(files: SoftwareImport[]): Map<string, string> 
   return map;
 }
 
+function buildSuiteMapFromImports(files: SoftwareImport[]): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  files.filter(f => f.type === 'managengine').flatMap(f => f.rows)
+    .forEach(r => { if (r.computer) map.set(r.computer.toLowerCase(), r.suites); });
+  return map;
+}
+
 function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: string, logoUrl: string | null, companyName: string, clientId?: string) {
   const { shares, users, hostname, generated_at } = snap.snapshot;
   const dateStr = new Date(generated_at).toLocaleString('es-UY', { dateStyle: 'long', timeStyle: 'short' });
   const softwareFiles = loadSoftwareForClient(clientId);
   const ownerMap = buildOwnerMapFromImports(softwareFiles);
+  const suiteMap = buildSuiteMapFromImports(softwareFiles);
   const hasOwners = ownerMap.size > 0;
+  const hasSuites = suiteMap.size > 0;
 
   const accessBadge = (access: string) => {
     if (access === 'read/write') return `<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">R/W</span>`;
@@ -981,7 +990,22 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
       ? u.active_sessions.map(s => `<span style="background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-size:10px;font-family:monospace;margin-right:4px;">● ${s.machine}</span>`).join('')
       : '';
     const history = u.login_history && u.login_history.length > 0
-      ? u.login_history.map(h => `<div style="font-size:10px;color:#6b7280;margin-top:2px;"><span style="font-family:monospace;color:#374151;font-weight:600;">${h.machine}</span> · ${h.timestamp.slice(0, 16)} <span style="color:#d1d5db;">(${h.ip})</span></div>`).join('')
+      ? u.login_history.map(h => {
+          const key = h.machine.toLowerCase();
+          const m365 = hasOwners ? ownerMap.get(key) : null;
+          const suites = hasSuites ? (suiteMap.get(key) ?? []) : [];
+          const extras = [
+            m365 ? `<span style="background:#eff6ff;color:#1d4ed8;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;">M365: ${m365}</span>` : '',
+            suites.length ? `<span style="background:#f0fdf4;color:#166534;padding:1px 6px;border-radius:3px;font-size:10px;">${suites[0]}</span>` : '',
+          ].filter(Boolean).join(' ');
+          return `<div style="margin-top:3px;padding:4px 6px;background:#f8fafc;border-radius:4px;border-left:2px solid #e2e8f0;">
+            <span style="font-family:monospace;color:#1e293b;font-weight:700;font-size:11px;">${h.machine}</span>
+            <span style="color:#cbd5e1;margin:0 4px;">·</span>
+            <span style="color:#94a3b8;font-size:10px;">${h.timestamp.slice(0, 16)}</span>
+            <span style="color:#e2e8f0;margin:0 4px;">(${h.ip})</span>
+            ${extras ? `<div style="margin-top:3px;">${extras}</div>` : ''}
+          </div>`;
+        }).join('')
       : `<span style="color:#9ca3af;font-style:italic;font-size:11px;">—</span>`;
     const activePart = sessions ? `<div style="margin-bottom:4px;">${sessions}</div>` : '';
     return `<tr style="border-top:1px solid #f3f4f6;">
