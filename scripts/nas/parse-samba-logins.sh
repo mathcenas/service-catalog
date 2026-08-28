@@ -1,16 +1,17 @@
 #!/bin/bash
 # =============================================================
-# parse-samba-logins.sh — Acumula últimos logins SMB desde syslog
+# parse-samba-logins.sh — Acumula historial de logins SMB desde syslog
 # Corre cada hora via cron antes que report-smb-acl.sh
 #
 # Cron sugerido:
 #   50 * * * * /usr/local/bin/parse-samba-logins.sh
 #
 # Salida: /srv/dev-disk-by-label-NASFiles/.nas-acl/last_logins.json
-# Formato: {"usuario": {"machine": "equipo", "timestamp": "2026-08-28 10:30:00", "ip": "192.168.1.x"}}
+# Formato por usuario:
+#   {"last_login": "2026-08-28 11:27", "accesses": [{"machine":..., "timestamp":..., "ip":...}, ...]}
 #
 # Fuente: syslog con líneas tipo:
-#   smbd_audit: acer-mariano (ipv4:192.168.1.150:60008) connect to service X initially as user mariano
+#   smbd_audit: machine (ipv4:IP:port) connect to service X initially as user USERNAME
 # =============================================================
 
 set -euo pipefail
@@ -40,9 +41,8 @@ try:
 except Exception:
     state = {}
 
-# Formato syslog: "Aug 28 11:27:04 nas smbd_audit:   machine (ipv4:IP:port) connect to service X initially as user USERNAME"
-# El año no está en syslog — usamos el año actual
 YEAR = datetime.now().year
+MAX_ACCESSES = 20  # máximo de entradas por usuario (una por equipo distinto)
 
 RE_LINE = re.compile(
     r'^(\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2})\s+\S+\s+smbd_audit:\s+'
@@ -52,7 +52,10 @@ RE_LINE = re.compile(
 
 SKIP_USERS = {'root', 'nobody', 'guest', 'anonymous'}
 
-updated = 0
+# Leer syslog y recolectar todos los eventos de esta sesión
+# {user -> {machine -> timestamp_str}} — guardamos el más reciente por máquina
+new_events = {}  # user -> {machine -> (timestamp, ip)}
+
 try:
     with open(syslog_file, errors='replace') as f:
         for line in f:
@@ -62,22 +65,42 @@ try:
             ts_str, machine, ip, user = m.group(1), m.group(2), m.group(3), m.group(4).lower()
             if user in SKIP_USERS:
                 continue
-            # Normalizar timestamp: "Aug 28 11:27:04" -> "2026-08-28 11:27:04"
             try:
                 ts = datetime.strptime(f'{YEAR} {ts_str}', '%Y %b %d %H:%M:%S').strftime('%Y-%m-%d %H:%M:%S')
             except Exception:
                 continue
-            existing = state.get(user, {})
-            if not existing or ts > existing.get('timestamp', ''):
-                state[user] = {'machine': machine, 'timestamp': ts, 'ip': ip}
-                updated += 1
+            if user not in new_events:
+                new_events[user] = {}
+            # Guardar el más reciente por máquina
+            existing_ts = new_events[user].get(machine, ('',))[0]
+            if ts > existing_ts:
+                new_events[user][machine] = (ts, ip)
 except Exception as e:
-    print(f'[parse-logins] error: {e}', file=sys.stderr)
+    print(f'[parse-logins] error leyendo syslog: {e}', file=sys.stderr)
+
+# Merge con estado acumulado
+updated = 0
+for user, machines in new_events.items():
+    entry = state.get(user, {'last_login': '', 'accesses': []})
+    accesses = {a['machine']: a for a in entry.get('accesses', [])}
+
+    for machine, (ts, ip) in machines.items():
+        existing_ts = accesses.get(machine, {}).get('timestamp', '')
+        if ts > existing_ts:
+            accesses[machine] = {'machine': machine, 'timestamp': ts, 'ip': ip}
+            updated += 1
+
+    # Ordenar por timestamp desc, limitar a MAX_ACCESSES
+    sorted_accesses = sorted(accesses.values(), key=lambda x: x['timestamp'], reverse=True)[:MAX_ACCESSES]
+    last_login = sorted_accesses[0]['timestamp'] if sorted_accesses else entry.get('last_login', '')
+
+    state[user] = {'last_login': last_login, 'accesses': sorted_accesses}
 
 with open(state_file, 'w') as f:
     json.dump(state, f, indent=2)
 
-print(f'[parse-logins] {updated} entradas actualizadas, {len(state)} usuarios en estado')
+total_accesses = sum(len(v.get('accesses', [])) for v in state.values())
+print(f'[parse-logins] {updated} accesos actualizados, {len(state)} usuarios, {total_accesses} entradas totales')
 PYEOF
 
 log "Listo. Estado en $STATE_FILE"

@@ -6,7 +6,8 @@ type Action = 'mantener' | 'eliminar' | 'cambiar';
 
 interface AclPrivilege { type: string; name: string; access: string; perms: number; }
 interface AclShare { smb_name: string; folder_name: string; rel_path: string; comment: string; readonly: boolean; guest_access: boolean; enabled: boolean; users: AclPrivilege[]; groups: AclPrivilege[]; disk_total_gb?: number; disk_free_gb?: number; disk_used_pct?: number; }
-interface AclUser { name: string; uid?: string; comment?: string; groups?: string[]; last_login?: string | null; active_sessions?: { machine: string; ip: string }[]; }
+interface LoginEntry { machine: string; timestamp: string; ip: string; }
+interface AclUser { name: string; uid?: string; comment?: string; groups?: string[]; last_login?: string | null; active_sessions?: { machine: string; ip: string }[]; login_history?: LoginEntry[]; }
 
 interface ReviewData {
   snapshot: { shares: AclShare[]; users: AclUser[]; hostname?: string; generated_at: string };
@@ -194,15 +195,24 @@ export function AclReviewPage({ token }: Props) {
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-slate-900 text-sm">{u.name}</p>
                       {u.comment && <p className="text-xs text-slate-400">{u.comment}</p>}
-                      {u.last_login && (
-                        <p className="text-xs text-slate-400 mt-0.5">Último acceso: {u.last_login}</p>
-                      )}
                       {u.active_sessions && u.active_sessions.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1">
                           {u.active_sessions.map((s, i) => (
                             <span key={i} className="text-[10px] bg-emerald-50 border border-emerald-200 text-emerald-700 px-1.5 py-0.5 rounded font-mono">
-                              {s.machine} ({s.ip})
+                              ● {s.machine}
                             </span>
+                          ))}
+                        </div>
+                      )}
+                      {u.login_history && u.login_history.length > 0 && (
+                        <div className="mt-1.5 space-y-0.5">
+                          {u.login_history.map((h, i) => (
+                            <div key={i} className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                              <span className="font-mono text-slate-600 font-medium">{h.machine}</span>
+                              <span>·</span>
+                              <span>{h.timestamp.slice(0, 16).replace('T', ' ')}</span>
+                              <span className="text-slate-300">({h.ip})</span>
+                            </div>
                           ))}
                         </div>
                       )}

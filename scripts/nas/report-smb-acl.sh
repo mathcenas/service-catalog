@@ -190,7 +190,7 @@ for u in root.findall('.//system/usermanagement/users/user'):
     if uname:
         users.append({'name': uname, 'uid': uid, 'comment': comment, 'groups': ugroups})
 
-# Último login desde estado acumulado por parse-samba-logins.sh
+# Historial de logins desde estado acumulado por parse-samba-logins.sh
 logins_file = sys.argv[2] if len(sys.argv) > 2 else ''
 if logins_file:
     try:
@@ -199,8 +199,8 @@ if logins_file:
         umap = {u['name']: u for u in users}
         for uname, info in logins.items():
             if uname in umap:
-                umap[uname]['last_login']     = info.get('timestamp')
-                umap[uname]['last_login_machine'] = info.get('machine')
+                umap[uname]['last_login']    = info.get('last_login') or info.get('timestamp')
+                umap[uname]['login_history'] = info.get('accesses', [])
     except Exception:
         pass
 
