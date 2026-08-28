@@ -80,13 +80,13 @@ parse_users() {
 # ---------- Parsear shared folders ----------
 # Cada sharedfolder tiene: uuid, name, reldirpath, privileges/privilege*
 parse_shares_json() {
-  timeout 90 python3 - "$OMV_CONFIG" <<'PYEOF'
-import sys, xml.etree.ElementTree as ET, json, os
+  python3 - "$OMV_CONFIG" <<'PYEOF'
+import sys, xml.etree.ElementTree as ET, json, subprocess, re
 
 tree = ET.parse(sys.argv[1])
 root = tree.getroot()
 
-# Mapa uuid -> mount point (dir) desde mntent
+# Mapa uuid -> mount point desde mntent (OMV fstab)
 mnt_map = {}
 for mnt in root.findall('.//fstab/mntent'):
     muuid = mnt.findtext('uuid', '').strip()
@@ -95,16 +95,23 @@ for mnt in root.findall('.//fstab/mntent'):
         mnt_map[muuid] = mdir
 
 def disk_stats(full_path):
-    """Retorna dict con free_gb, total_gb, used_pct o None si falla."""
+    """df via subprocess con timeout — evita bloqueos en mounts FUSE/NFS."""
     try:
-        st = os.statvfs(full_path)
-        total = st.f_blocks * st.f_frsize
-        free  = st.f_bavail * st.f_frsize
-        used  = total - free
+        r = subprocess.run(
+            ['df', '-B1', '--output=size,avail,pcent', full_path],
+            capture_output=True, text=True, timeout=5
+        )
+        lines = [l for l in r.stdout.strip().split('\n') if l and not l.startswith('1B')]
+        if not lines:
+            return None
+        parts = lines[-1].split()
+        total = int(parts[0])
+        avail = int(parts[1])
+        pct   = int(parts[2].rstrip('%'))
         return {
             'disk_total_gb': round(total / 1073741824, 1),
-            'disk_free_gb':  round(free  / 1073741824, 1),
-            'disk_used_pct': round(used / total * 100, 1) if total else 0,
+            'disk_free_gb':  round(avail / 1073741824, 1),
+            'disk_used_pct': pct,
         }
     except Exception:
         return None
@@ -131,30 +138,28 @@ for sf in root.findall('.//sharedfolder'):
             access = 'no access'
         privs.append({'type': ptype, 'name': pname, 'access': access, 'perms': int(perms)})
 
-    # Ruta completa: mount_point + reldirpath
     mount_dir = mnt_map.get(mntref, '')
-    full_path = os.path.join(mount_dir, relpath.lstrip('/')) if mount_dir else ''
+    full_path = (mount_dir.rstrip('/') + '/' + relpath.lstrip('/')) if mount_dir else ''
 
     sf_map[uuid] = {
         'folder_name': name,
         'rel_path':    relpath,
-        'full_path':   full_path,
         'comment':     comment,
         'privileges':  privs,
         'disk':        disk_stats(full_path) if full_path else None,
     }
 
-# SMB shares: enlazar con sharedfolder por sharedfolderref
+# SMB shares
 shares = []
 for share in root.findall('.//smb/shares/share'):
-    sfref      = share.findtext('sharedfolderref', '').strip()
-    smb_name   = share.findtext('name', '').strip()
-    smb_comment= share.findtext('comment', '').strip()
-    readonly   = share.findtext('readonly', '0').strip() == '1'
-    guest      = share.findtext('guest', 'no').strip()
-    enable     = share.findtext('enable', '1').strip() == '1'
+    sfref       = share.findtext('sharedfolderref', '').strip()
+    smb_name    = share.findtext('name', '').strip()
+    smb_comment = share.findtext('comment', '').strip()
+    readonly    = share.findtext('readonly', '0').strip() == '1'
+    guest       = share.findtext('guest', 'no').strip()
+    enable      = share.findtext('enable', '1').strip() == '1'
 
-    sf = sf_map.get(sfref, {})
+    sf            = sf_map.get(sfref, {})
     users_access  = [p for p in sf.get('privileges', []) if p['type'] == 'user']
     groups_access = [p for p in sf.get('privileges', []) if p['type'] == 'group']
     disk          = sf.get('disk')
@@ -177,52 +182,27 @@ for share in root.findall('.//smb/shares/share'):
 # Usuarios OMV
 users = []
 for u in root.findall('.//system/usermanagement/users/user'):
-    uname = u.findtext('name', '').strip()
-    uid = u.findtext('uid', '').strip()
-    comment = u.findtext('comment', '').strip()
-    groups_el = u.findall('groups/groupname')
-    ugroups = [g.text.strip() for g in groups_el if g.text]
+    uname     = u.findtext('name', '').strip()
+    uid       = u.findtext('uid', '').strip()
+    comment   = u.findtext('comment', '').strip()
+    ugroups   = [g.text.strip() for g in u.findall('groups/groupname') if g.text]
     if uname:
         users.append({'name': uname, 'uid': uid, 'comment': comment, 'groups': ugroups})
-
-# Último login Samba via pdbedit -L -v
-import subprocess, re
-print('[acl] pdbedit...', file=sys.stderr, flush=True)
-try:
-    result = subprocess.run(['pdbedit', '-L', '-v'], capture_output=True, text=True, timeout=15)
-    umap = {u['name']: u for u in users}
-    current_user = None
-    for line in result.stdout.split('\n'):
-        m = re.match(r'^Unix username:\s+(\S+)', line)
-        if m:
-            current_user = m.group(1)
-            continue
-        if current_user and current_user in umap:
-            m2 = re.match(r'^Logon time:\s+(.+)', line)
-            if m2:
-                val = m2.group(1).strip()
-                if val in ('0', '0 (0)', '') or val.startswith('Thu, 01 Jan 1970'):
-                    umap[current_user]['last_login'] = None
-                else:
-                    umap[current_user]['last_login'] = val
-except Exception as e:
-    print(f'[acl] pdbedit error: {e}', file=sys.stderr, flush=True)
 
 # Sesiones activas via smbstatus -b + resolución NetBIOS via nmblookup
 def resolve_netbios(ip):
     try:
         r = subprocess.run(['nmblookup', '-A', ip], capture_output=True, text=True, timeout=5)
         for ln in r.stdout.split('\n'):
-            m2 = re.match(r'^\s*(\S+)\s+<00>\s+.*UNIQUE', ln)
-            if m2:
-                name = m2.group(1).strip()
+            m = re.match(r'^\s*(\S+)\s+<00>\s+.*UNIQUE', ln)
+            if m:
+                name = m.group(1).strip()
                 if name.upper() not in ('WORKGROUP', '__MSBROWSE__'):
                     return name
     except Exception:
         pass
     return ip
 
-print('[acl] smbstatus...', file=sys.stderr, flush=True)
 try:
     smb = subprocess.run(['smbstatus', '-b'], capture_output=True, text=True, timeout=10)
     umap = {u['name']: u for u in users}
@@ -231,23 +211,21 @@ try:
         if not m:
             continue
         uname, ip = m.group(1), m.group(2)
-        print(f'[acl] nmblookup {ip}...', file=sys.stderr, flush=True)
         machine = resolve_netbios(ip)
         if uname in umap:
             sessions = umap[uname].setdefault('active_sessions', [])
             entry = {'machine': machine, 'ip': ip}
             if entry not in sessions:
                 sessions.append(entry)
-except Exception as e:
-    print(f'[acl] smbstatus error: {e}', file=sys.stderr, flush=True)
+except Exception:
+    pass
 
-print('[acl] done, outputting JSON', file=sys.stderr, flush=True)
 print(json.dumps({'shares': shares, 'users': users}))
 PYEOF
 }
 
 log "Parseando config OMV..."
-PARSED=$(parse_shares_json 2>>"$LOG_FILE")
+PARSED=$(parse_shares_json)
 
 if [[ -z "$PARSED" ]]; then
   log "ERROR: no se pudo parsear el config XML (ver log para detalle)"
