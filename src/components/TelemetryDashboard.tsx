@@ -960,7 +960,6 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
       : `<span style="color:#9ca3af;font-style:italic;">—</span>`;
     return `<tr style="border-top:1px solid #f3f4f6;">
       <td style="padding:7px 14px;color:#374151;font-size:13px;font-weight:500;">${u.name}</td>
-      <td style="padding:7px 14px;color:#6b7280;font-size:12px;">${(u.groups || []).join(', ') || '—'}</td>
       <td style="padding:7px 14px;font-size:12px;">${login}</td>
       <td style="padding:7px 14px;font-size:12px;">${sessions}</td>
       <td style="padding:7px 14px;color:#94a3b8;font-size:12px;">${u.comment || ''}</td>
@@ -1010,7 +1009,6 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
       <table style="width:100%;border-collapse:collapse;">
         <thead><tr style="background:#f9fafb;">
           <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Usuario</th>
-          <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Grupos</th>
           <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Último acceso</th>
           <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Equipo activo</th>
           <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Descripción</th>

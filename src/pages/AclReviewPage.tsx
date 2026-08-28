@@ -194,9 +194,6 @@ export function AclReviewPage({ token }: Props) {
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-slate-900 text-sm">{u.name}</p>
                       {u.comment && <p className="text-xs text-slate-400">{u.comment}</p>}
-                      {u.groups && u.groups.length > 0 && (
-                        <p className="text-xs text-slate-400 mt-0.5">Grupos: {u.groups.join(', ')}</p>
-                      )}
                       {u.last_login && (
                         <p className="text-xs text-slate-400 mt-0.5">Último acceso: {u.last_login}</p>
                       )}
