@@ -951,17 +951,17 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
       </div>`;
   }).join('');
 
-  const usersHtml = (users as (AclUser & { last_login?: string | null; active_sessions?: { machine: string; ip: string }[] })[]).map(u => {
-    const login = u.last_login
-      ? `<span style="color:#374151;">${u.last_login}</span>`
-      : `<span style="color:#9ca3af;font-style:italic;">—</span>`;
+  const usersHtml = (users as (AclUser & { last_login?: string | null; active_sessions?: { machine: string; ip: string }[]; login_history?: { machine: string; timestamp: string; ip: string }[] })[]).map(u => {
     const sessions = u.active_sessions && u.active_sessions.length > 0
-      ? u.active_sessions.map(s => `<span style="background:#eff6ff;color:#1d4ed8;padding:2px 6px;border-radius:4px;font-size:10px;font-family:monospace;margin-right:4px;">${s.machine}</span>`).join('')
-      : `<span style="color:#9ca3af;font-style:italic;">—</span>`;
+      ? u.active_sessions.map(s => `<span style="background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-size:10px;font-family:monospace;margin-right:4px;">● ${s.machine}</span>`).join('')
+      : '';
+    const history = u.login_history && u.login_history.length > 0
+      ? u.login_history.map(h => `<div style="font-size:10px;color:#6b7280;margin-top:2px;"><span style="font-family:monospace;color:#374151;font-weight:600;">${h.machine}</span> · ${h.timestamp.slice(0, 16)} <span style="color:#d1d5db;">(${h.ip})</span></div>`).join('')
+      : `<span style="color:#9ca3af;font-style:italic;font-size:11px;">—</span>`;
+    const activePart = sessions ? `<div style="margin-bottom:4px;">${sessions}</div>` : '';
     return `<tr style="border-top:1px solid #f3f4f6;">
       <td style="padding:7px 14px;color:#374151;font-size:13px;font-weight:500;">${u.name}</td>
-      <td style="padding:7px 14px;font-size:12px;">${login}</td>
-      <td style="padding:7px 14px;font-size:12px;">${sessions}</td>
+      <td style="padding:7px 14px;font-size:12px;">${activePart}${history}</td>
       <td style="padding:7px 14px;color:#94a3b8;font-size:12px;">${u.comment || ''}</td>
     </tr>`;
   }).join('');
@@ -1009,8 +1009,7 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
       <table style="width:100%;border-collapse:collapse;">
         <thead><tr style="background:#f9fafb;">
           <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Usuario</th>
-          <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Último acceso</th>
-          <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Equipo activo</th>
+          <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Accesos</th>
           <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Descripción</th>
         </tr></thead>
         <tbody>${usersHtml}</tbody>
