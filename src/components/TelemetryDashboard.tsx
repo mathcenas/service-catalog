@@ -895,21 +895,34 @@ export function TelemetryDashboard({ services, clients }: Props) {
   );
 }
 
-function loadSoftwareForClient(clientId?: string) {
+type SoftwareImport = {
+  id: string; clientId: string; filename: string; importedAt: string;
+  type: 'managengine' | 'entra';
+  rows: { computer: string; os: string; suites: string[]; hasCopilot: boolean }[];
+  entraDevices?: { deviceName: string; owner: string; osVersion: string; lastSignIn: string }[];
+};
+
+function loadSoftwareForClient(clientId?: string): SoftwareImport[] {
   if (!clientId) return [];
   try {
-    const all = JSON.parse(localStorage.getItem('software_inventory_imports') || '[]') as {
-      id: string; clientId: string; filename: string; importedAt: string;
-      rows: { computer: string; os: string; suites: string[]; hasCopilot: boolean }[];
-    }[];
+    const all = JSON.parse(localStorage.getItem('software_inventory_imports') || '[]') as SoftwareImport[];
     return all.filter(f => f.clientId === clientId);
   } catch { return []; }
+}
+
+function buildOwnerMapFromImports(files: SoftwareImport[]): Map<string, string> {
+  const map = new Map<string, string>();
+  files.filter(f => f.type === 'entra').flatMap(f => f.entraDevices ?? [])
+    .forEach(d => { if (d.deviceName && d.owner) map.set(d.deviceName.toLowerCase(), d.owner); });
+  return map;
 }
 
 function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: string, logoUrl: string | null, companyName: string, clientId?: string) {
   const { shares, users, hostname, generated_at } = snap.snapshot;
   const dateStr = new Date(generated_at).toLocaleString('es-UY', { dateStyle: 'long', timeStyle: 'short' });
   const softwareFiles = loadSoftwareForClient(clientId);
+  const ownerMap = buildOwnerMapFromImports(softwareFiles);
+  const hasOwners = ownerMap.size > 0;
 
   const accessBadge = (access: string) => {
     if (access === 'read/write') return `<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">R/W</span>`;
@@ -1033,18 +1046,23 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
       const deduped = new Map<string, typeof allRows[0]>();
       allRows.forEach(r => { if (!deduped.has(r.computer)) deduped.set(r.computer, r); });
       const sorted = Array.from(deduped.values()).sort((a, b) => a.computer.localeCompare(b.computer));
-      const rows = sorted.map(r => `<tr style="border-top:1px solid #f3f4f6;">
-        <td style="padding:7px 14px;font-size:12px;font-family:monospace;font-weight:600;color:#1e293b;">${r.computer}</td>
-        <td style="padding:7px 14px;font-size:12px;color:#374151;">${r.os || '—'}</td>
-        <td style="padding:7px 14px;font-size:12px;color:#374151;">${r.suites.length ? r.suites.join('<br>') : '<span style="color:#9ca3af;font-style:italic;">—</span>'}</td>
-        <td style="padding:7px 14px;text-align:center;">${r.hasCopilot ? '<span style="background:#ede9fe;color:#6d28d9;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">Copilot</span>' : '<span style="color:#d1d5db;">—</span>'}</td>
-      </tr>`).join('');
+      const rows = sorted.map(r => {
+        const owner = ownerMap.get(r.computer.toLowerCase()) || '';
+        return `<tr style="border-top:1px solid #f3f4f6;">
+          <td style="padding:7px 14px;font-size:12px;font-family:monospace;font-weight:600;color:#1e293b;">${r.computer}</td>
+          ${hasOwners ? `<td style="padding:7px 14px;font-size:12px;color:#374151;">${owner || '<span style="color:#9ca3af;font-style:italic;">—</span>'}</td>` : ''}
+          <td style="padding:7px 14px;font-size:12px;color:#374151;">${r.os || '—'}</td>
+          <td style="padding:7px 14px;font-size:12px;color:#374151;">${r.suites.length ? r.suites.join('<br>') : '<span style="color:#9ca3af;font-style:italic;">—</span>'}</td>
+          <td style="padding:7px 14px;text-align:center;">${r.hasCopilot ? '<span style="background:#ede9fe;color:#6d28d9;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">Copilot</span>' : '<span style="color:#d1d5db;">—</span>'}</td>
+        </tr>`;
+      }).join('');
       return `
     <h2 style="font-size:14px;font-weight:700;color:#1e293b;margin:32px 0 14px;text-transform:uppercase;letter-spacing:.5px;">Inventario de Software</h2>
     <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
       <table style="width:100%;border-collapse:collapse;">
         <thead><tr style="background:#f9fafb;">
           <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Equipo</th>
+          ${hasOwners ? '<th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Usuario M365</th>' : ''}
           <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Sistema Operativo</th>
           <th style="padding:7px 14px;text-align:left;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Suite Office</th>
           <th style="padding:7px 14px;text-align:center;font-size:11px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Copilot</th>
