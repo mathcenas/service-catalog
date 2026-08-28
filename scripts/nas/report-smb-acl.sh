@@ -57,6 +57,7 @@ notify_kuma() {
 }
 
 OMV_CONFIG="${OMV_CONFIG:-/etc/openmediavault/config.xml}"
+LOGINS_STATE="${LOGINS_STATE:-/srv/dev-disk-by-label-NASFiles/.nas-acl/last_logins.json}"
 
 if [[ ! -f "$OMV_CONFIG" ]]; then
   log "ERROR: no se encontró config de OMV en $OMV_CONFIG"
@@ -80,7 +81,7 @@ parse_users() {
 # ---------- Parsear shared folders ----------
 # Cada sharedfolder tiene: uuid, name, reldirpath, privileges/privilege*
 parse_shares_json() {
-  python3 - "$OMV_CONFIG" <<'PYEOF'
+  python3 - "$OMV_CONFIG" "${LOGINS_STATE:-}" <<'PYEOF'
 import sys, xml.etree.ElementTree as ET, json, subprocess, re
 
 tree = ET.parse(sys.argv[1])
@@ -188,6 +189,20 @@ for u in root.findall('.//system/usermanagement/users/user'):
     ugroups   = [g.text.strip() for g in u.findall('groups/groupname') if g.text]
     if uname:
         users.append({'name': uname, 'uid': uid, 'comment': comment, 'groups': ugroups})
+
+# Último login desde estado acumulado por parse-samba-logins.sh
+logins_file = sys.argv[2] if len(sys.argv) > 2 else ''
+if logins_file:
+    try:
+        with open(logins_file) as lf:
+            logins = json.load(lf)
+        umap = {u['name']: u for u in users}
+        for uname, info in logins.items():
+            if uname in umap:
+                umap[uname]['last_login']     = info.get('timestamp')
+                umap[uname]['last_login_machine'] = info.get('machine')
+    except Exception:
+        pass
 
 # Sesiones activas via smbstatus -b + resolución NetBIOS via nmblookup
 def resolve_netbios(ip):
