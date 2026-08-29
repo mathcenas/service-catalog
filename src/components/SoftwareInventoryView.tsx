@@ -102,18 +102,25 @@ function parseEntraCSV(text: string): EntraDevice[] {
   return devices;
 }
 
-function trustTypeBadge(trustType: string): string {
-  if (!trustType) return '';
-  if (trustType === 'AzureAd') return '<span style="background:#dbeafe;color:#1d4ed8;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;">Azure AD</span>';
-  if (trustType === 'Workplace') return '<span style="background:#fef9c3;color:#92400e;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;">Workplace</span>';
-  if (trustType === 'ServerAd') return '<span style="background:#f1f5f9;color:#475569;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;">Dominio</span>';
-  return `<span style="background:#f1f5f9;color:#64748b;padding:1px 7px;border-radius:10px;font-size:10px;">${trustType}</span>`;
-}
-
-function compliantBadge(v: boolean | null): string {
-  if (v === true) return '<span style="background:#dcfce7;color:#15803d;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;">Cumple</span>';
-  if (v === false) return '<span style="background:#fee2e2;color:#b91c1c;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;">No cumple</span>';
-  return '<span style="color:#cbd5e1;font-size:11px;">N/A</span>';
+// Decode Entra operatingSystemVersion (e.g. "10.0.26100.3476") to friendly name
+function decodeWindowsVersion(ver: string): string {
+  if (!ver) return '';
+  const m = ver.match(/^10\.0\.(\d+)/);
+  if (!m) return ver;
+  const build = parseInt(m[1]);
+  const patch = ver.split('.')[3] ?? '';
+  const suffix = patch ? ` (${build}.${patch})` : ` (${build})`;
+  if (build >= 26100) return `Windows 11 24H2${suffix}`;
+  if (build >= 22631) return `Windows 11 23H2${suffix}`;
+  if (build >= 22621) return `Windows 11 22H2${suffix}`;
+  if (build >= 22000) return `Windows 11 21H2${suffix}`;
+  if (build >= 19045) return `Windows 10 22H2${suffix}`;
+  if (build >= 19044) return `Windows 10 21H2${suffix}`;
+  if (build >= 19043) return `Windows 10 21H1${suffix}`;
+  if (build >= 19042) return `Windows 10 20H2${suffix}`;
+  if (build >= 19041) return `Windows 10 2004${suffix}`;
+  if (build >= 18363) return `Windows 10 1909${suffix}`;
+  return `Windows 10${suffix}`;
 }
 
 // ─── ManageEngine CSV parsing ────────────────────────────────────────────────
@@ -123,32 +130,67 @@ type ComputerRow = {
   os: string;
   suites: string[];
   hasCopilot: boolean;
+  loggedOnUser?: string; // from "Currently Logged on Users" column (new ME format)
 };
 
 function parseMECSV(text: string): ComputerRow[] {
   const lines = text.split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) return [];
-  const computers = new Map<string, { os: string; suiteSet: Map<string, boolean>; hasCopilot: boolean }>();
+  const headers = lines[0].split(',').map(h => h.trim());
+
+  // Detect format by first header value
+  const isNewFormat = headers[0] === 'Software Name';
+  let iName: number, iVersion: number, iComputer: number, iOs: number, iLoggedOn: number;
+  if (isNewFormat) {
+    // New: Software Name, Software Version, Computer Name, Normalized Name, Currently Logged on Users
+    iName     = 0;
+    iVersion  = 1;
+    iComputer = 2;
+    iOs       = -1; // not present in this format
+    iLoggedOn = headers.findIndex(h => h.includes('Currently Logged on Users'));
+  } else {
+    // Old: Software Version, Software Name, Computer Name, OS, ...
+    iVersion  = 0;
+    iName     = 1;
+    iComputer = 2;
+    iOs       = 3;
+    iLoggedOn = -1;
+  }
+
+  type Entry = { os: string; suiteSet: Map<string, boolean>; hasCopilot: boolean; loggedOnUser: string };
+  const computers = new Map<string, Entry>();
+
   for (let i = 1; i < lines.length; i++) {
     const parts = lines[i].split(',');
-    if (parts.length < 4) continue;
-    const version = parts[0].trim();
-    const name    = parts[1].trim();
-    const computer = parts[2].trim();
-    const os      = parts[3].trim();
+    if (parts.length < 3) continue;
+    const get = (j: number) => (j >= 0 && j < parts.length ? parts[j].trim() : '');
+    const name     = get(iName);
+    const version  = get(iVersion);
+    const computer = get(iComputer);
+    const os       = get(iOs);
     if (!computer || !name) continue;
-    if (!computers.has(computer)) computers.set(computer, { os, suiteSet: new Map(), hasCopilot: false });
+
+    if (!computers.has(computer)) computers.set(computer, { os, suiteSet: new Map(), hasCopilot: false, loggedOnUser: '' });
     const entry = computers.get(computer)!;
     if (!entry.os && os) entry.os = os;
+
+    // Logged on user: take first non-empty, non-"--" value seen
+    if (iLoggedOn >= 0 && !entry.loggedOnUser) {
+      const raw = get(iLoggedOn);
+      if (raw && raw !== '--') entry.loggedOnUser = raw.split(',')[0].trim();
+    }
+
     const kind = classifyRow(name);
     if (kind === 'copilot') entry.hasCopilot = true;
     else if (kind === 'suite') { const label = cleanSuiteName(name, version); entry.suiteSet.set(label, true); }
   }
-  return Array.from(computers.entries()).map(([computer, { os, suiteSet, hasCopilot }]) => ({
+
+  return Array.from(computers.entries()).map(([computer, { os, suiteSet, hasCopilot, loggedOnUser }]) => ({
     computer,
     os: os.replace(/\s*\(x64\)/i, '').replace(/Edition/i, '').trim(),
     suites: Array.from(suiteSet.keys()),
     hasCopilot,
+    loggedOnUser: loggedOnUser || undefined,
   })).sort((a, b) => a.computer.localeCompare(b.computer));
 }
 
@@ -156,7 +198,7 @@ function parseMECSV(text: string): ComputerRow[] {
 function detectCSVType(text: string): 'managengine' | 'entra' | 'unknown' {
   const firstLine = text.split(/\r?\n/)[0] ?? '';
   if (firstLine.includes('deviceId') && firstLine.includes('displayName')) return 'entra';
-  if (firstLine.startsWith('Software Version')) return 'managengine';
+  if (firstLine.startsWith('Software Version') || firstLine.startsWith('Software Name,Software Version')) return 'managengine';
   return 'unknown';
 }
 
@@ -206,16 +248,14 @@ function exportPdf(file: ImportedFile, clientName: string, ownerMap: Map<string,
         return `<tr style="border-top:1px solid #f1f5f9;">
           <td style="padding:8px 12px;font-size:12px;font-weight:600;font-family:monospace;color:#1e293b;">${d.deviceName}</td>
           <td style="padding:8px 12px;font-size:12px;color:#374151;">${d.owner || '—'}</td>
-          <td style="padding:8px 12px;font-size:12px;color:#374151;">${d.osVersion || '—'}</td>
-          <td style="padding:8px 12px;font-size:12px;">${trustTypeBadge(d.trustType)}</td>
-          <td style="padding:8px 12px;font-size:12px;">${compliantBadge(d.isCompliant ?? null)}</td>
+          <td style="padding:8px 12px;font-size:12px;color:#374151;">${decodeWindowsVersion(d.osVersion) || d.osVersion || '—'}</td>
           <td style="padding:8px 12px;font-size:12px;color:#64748b;">${lastSign}</td>
         </tr>`;
       }).join('');
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Dispositivos Entra — ${clientName}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;color:#1e293b;padding:40px}.header{margin-bottom:32px;border-bottom:2px solid #e2e8f0;padding-bottom:20px}.title{font-size:22px;font-weight:700}.subtitle{font-size:13px;color:#64748b;margin-top:4px}table{width:100%;border-collapse:collapse}thead tr{background:#f8fafc}th{padding:8px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #e2e8f0}.footer{margin-top:28px;font-size:11px;color:#94a3b8}</style></head><body>
 <div class="header"><div class="title">Dispositivos Microsoft 365 — ${clientName}</div><div class="subtitle">Generado el ${now} · ${(file.entraDevices ?? []).length} dispositivos · Fuente: Entra ID</div></div>
-<table><thead><tr><th>Equipo</th><th>Usuario M365</th><th>Versión OS</th><th>Tipo</th><th>Cumplimiento</th><th>Último acceso</th></tr></thead><tbody>${rows}</tbody></table>
+<table><thead><tr><th>Equipo</th><th>Usuario M365</th><th>Sistema Operativo</th><th>Último acceso</th></tr></thead><tbody>${rows}</tbody></table>
 <div class="footer">Reporte generado por Service Catalog</div></body></html>`;
     const win = window.open('', '_blank'); if (!win) return;
     win.document.write(html); win.document.close(); win.print();
@@ -390,9 +430,7 @@ export function SoftwareInventoryView({ clients }: Props) {
                       <tr className="text-left">
                         <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Equipo</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Usuario M365</th>
-                        <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Versión OS</th>
-                        <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Tipo</th>
-                        <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Cumplimiento</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Sistema Operativo</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Último acceso</th>
                       </tr>
                     </thead>
@@ -401,18 +439,7 @@ export function SoftwareInventoryView({ clients }: Props) {
                         <tr key={d.deviceName} className="border-t border-slate-50 hover:bg-slate-50/50">
                           <td className="px-4 py-2.5 font-mono text-sm font-medium text-slate-700">{d.deviceName}</td>
                           <td className="px-4 py-2.5 text-sm text-slate-600">{d.owner || <span className="text-slate-300 italic">—</span>}</td>
-                          <td className="px-4 py-2.5 text-sm text-slate-500 font-mono text-xs">{d.osVersion || '—'}</td>
-                          <td className="px-4 py-2.5">
-                            {d.trustType === 'AzureAd' && <span className="bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full">Azure AD</span>}
-                            {d.trustType === 'Workplace' && <span className="bg-yellow-100 text-yellow-800 text-xs font-semibold px-2 py-0.5 rounded-full">Workplace</span>}
-                            {d.trustType === 'ServerAd' && <span className="bg-slate-100 text-slate-600 text-xs font-semibold px-2 py-0.5 rounded-full">Dominio</span>}
-                            {!d.trustType && <span className="text-slate-300 text-xs">—</span>}
-                          </td>
-                          <td className="px-4 py-2.5">
-                            {d.isCompliant === true && <span className="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">Cumple</span>}
-                            {d.isCompliant === false && <span className="bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5 rounded-full">No cumple</span>}
-                            {d.isCompliant === null && <span className="text-slate-300 text-xs">N/A</span>}
-                          </td>
+                          <td className="px-4 py-2.5 text-sm text-slate-500">{decodeWindowsVersion(d.osVersion) || d.osVersion || '—'}</td>
                           <td className="px-4 py-2.5 text-sm text-slate-400">
                             {d.lastSignIn ? new Date(d.lastSignIn).toLocaleDateString('es-UY') : '—'}
                           </td>
@@ -450,43 +477,54 @@ export function SoftwareInventoryView({ clients }: Props) {
                   </button>
                 </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="text-left">
-                      <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Equipo</th>
-                      {hasOwners && <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Usuario M365</th>}
-                      <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Sistema Operativo</th>
-                      <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Suite Office</th>
-                      <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide text-center">Copilot</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {file.rows.map(row => {
-                      const owner = ownerMap.get(row.computer.toLowerCase());
-                      return (
-                        <tr key={row.computer} className="border-t border-slate-50 hover:bg-slate-50/50">
-                          <td className="px-4 py-2.5 font-mono text-sm font-medium text-slate-700">{row.computer}</td>
-                          {hasOwners && (
-                            <td className="px-4 py-2.5 text-sm text-slate-600">
-                              {owner || <span className="text-slate-300 italic text-xs">sin registro</span>}
-                            </td>
-                          )}
-                          <td className="px-4 py-2.5 text-sm text-slate-600">{row.os || <span className="text-slate-300 italic">—</span>}</td>
-                          <td className="px-4 py-2.5 text-sm text-slate-600">
-                            {row.suites.length > 0 ? row.suites.map((s, i) => <div key={i}>{s}</div>) : <span className="text-slate-300 italic">—</span>}
-                          </td>
-                          <td className="px-4 py-2.5 text-center">
-                            {row.hasCopilot
-                              ? <span className="inline-block bg-violet-100 text-violet-700 text-xs font-semibold px-2 py-0.5 rounded-full">Copilot</span>
-                              : <span className="text-slate-200">—</span>}
-                          </td>
+              {(() => {
+                const hasLoggedOn = file.rows.some(r => r.loggedOnUser);
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="text-left">
+                          <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Equipo</th>
+                          {hasLoggedOn && <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Usuario Windows</th>}
+                          {hasOwners && <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Usuario M365</th>}
+                          <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Sistema Operativo</th>
+                          <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Suite Office</th>
+                          <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide text-center">Copilot</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                      </thead>
+                      <tbody>
+                        {file.rows.map(row => {
+                          const owner = ownerMap.get(row.computer.toLowerCase());
+                          return (
+                            <tr key={row.computer} className="border-t border-slate-50 hover:bg-slate-50/50">
+                              <td className="px-4 py-2.5 font-mono text-sm font-medium text-slate-700">{row.computer}</td>
+                              {hasLoggedOn && (
+                                <td className="px-4 py-2.5 text-sm text-slate-600">
+                                  {row.loggedOnUser || <span className="text-slate-300 italic text-xs">—</span>}
+                                </td>
+                              )}
+                              {hasOwners && (
+                                <td className="px-4 py-2.5 text-sm text-slate-600">
+                                  {owner || <span className="text-slate-300 italic text-xs">sin registro</span>}
+                                </td>
+                              )}
+                              <td className="px-4 py-2.5 text-sm text-slate-600">{row.os || <span className="text-slate-300 italic">—</span>}</td>
+                              <td className="px-4 py-2.5 text-sm text-slate-600">
+                                {row.suites.length > 0 ? row.suites.map((s, i) => <div key={i}>{s}</div>) : <span className="text-slate-300 italic">—</span>}
+                              </td>
+                              <td className="px-4 py-2.5 text-center">
+                                {row.hasCopilot
+                                  ? <span className="inline-block bg-violet-100 text-violet-700 text-xs font-semibold px-2 py-0.5 rounded-full">Copilot</span>
+                                  : <span className="text-slate-200">—</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
