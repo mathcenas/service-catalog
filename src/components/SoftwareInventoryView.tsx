@@ -57,11 +57,13 @@ function cleanSuiteName(name: string, version: string): string {
 // ─── Entra ID parsing ────────────────────────────────────────────────────────
 
 type EntraDevice = {
-  deviceName: string;   // displayName
-  owner: string;        // owner
-  osVersion: string;    // operatingSystemVersion
-  lastSignIn: string;   // approximateLastSignInDateTime
-  registered: string;   // registrationDateTime
+  deviceName: string;      // displayName
+  owner: string;           // owner
+  osVersion: string;       // operatingSystemVersion
+  lastSignIn: string;      // approximateLastSignInDateTime
+  registered: string;      // registrationDateTime
+  isCompliant: boolean | null; // isCompliant
+  trustType: string;       // trustType (AzureAd | Workplace | ServerAd)
 };
 
 function parseEntraCSV(text: string): EntraDevice[] {
@@ -69,11 +71,13 @@ function parseEntraCSV(text: string): EntraDevice[] {
   if (lines.length < 2) return [];
   const headers = lines[0].split(',').map(h => h.trim());
   const idx = (name: string) => headers.indexOf(name);
-  const iDisplayName = idx('displayName');
-  const iOwner       = idx('owner');
-  const iOsVer       = idx('operatingSystemVersion');
-  const iLastSign    = idx('approximateLastSignInDateTime');
-  const iReg         = idx('registrationDateTime');
+  const iDisplayName  = idx('displayName');
+  const iOwner        = idx('owner');
+  const iOsVer        = idx('operatingSystemVersion');
+  const iLastSign     = idx('approximateLastSignInDateTime');
+  const iReg          = idx('registrationDateTime');
+  const iCompliant    = idx('isCompliant');
+  const iTrustType    = idx('trustType');
   if (iDisplayName === -1 || iOwner === -1) return [];
 
   const devices: EntraDevice[] = [];
@@ -83,15 +87,33 @@ function parseEntraCSV(text: string): EntraDevice[] {
     const deviceName = get(iDisplayName);
     const owner      = get(iOwner);
     if (!deviceName) continue;
+    const rawCompliant = get(iCompliant).toLowerCase();
+    const isCompliant = rawCompliant === 'true' ? true : rawCompliant === 'false' ? false : null;
     devices.push({
       deviceName,
       owner,
       osVersion: get(iOsVer),
       lastSignIn: get(iLastSign),
       registered: get(iReg),
+      isCompliant,
+      trustType: get(iTrustType),
     });
   }
   return devices;
+}
+
+function trustTypeBadge(trustType: string): string {
+  if (!trustType) return '';
+  if (trustType === 'AzureAd') return '<span style="background:#dbeafe;color:#1d4ed8;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;">Azure AD</span>';
+  if (trustType === 'Workplace') return '<span style="background:#fef9c3;color:#92400e;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;">Workplace</span>';
+  if (trustType === 'ServerAd') return '<span style="background:#f1f5f9;color:#475569;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;">Dominio</span>';
+  return `<span style="background:#f1f5f9;color:#64748b;padding:1px 7px;border-radius:10px;font-size:10px;">${trustType}</span>`;
+}
+
+function compliantBadge(v: boolean | null): string {
+  if (v === true) return '<span style="background:#dcfce7;color:#15803d;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;">Cumple</span>';
+  if (v === false) return '<span style="background:#fee2e2;color:#b91c1c;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:600;">No cumple</span>';
+  return '<span style="color:#cbd5e1;font-size:11px;">N/A</span>';
 }
 
 // ─── ManageEngine CSV parsing ────────────────────────────────────────────────
@@ -185,13 +207,15 @@ function exportPdf(file: ImportedFile, clientName: string, ownerMap: Map<string,
           <td style="padding:8px 12px;font-size:12px;font-weight:600;font-family:monospace;color:#1e293b;">${d.deviceName}</td>
           <td style="padding:8px 12px;font-size:12px;color:#374151;">${d.owner || '—'}</td>
           <td style="padding:8px 12px;font-size:12px;color:#374151;">${d.osVersion || '—'}</td>
+          <td style="padding:8px 12px;font-size:12px;">${trustTypeBadge(d.trustType)}</td>
+          <td style="padding:8px 12px;font-size:12px;">${compliantBadge(d.isCompliant ?? null)}</td>
           <td style="padding:8px 12px;font-size:12px;color:#64748b;">${lastSign}</td>
         </tr>`;
       }).join('');
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Dispositivos Entra — ${clientName}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;color:#1e293b;padding:40px}.header{margin-bottom:32px;border-bottom:2px solid #e2e8f0;padding-bottom:20px}.title{font-size:22px;font-weight:700}.subtitle{font-size:13px;color:#64748b;margin-top:4px}table{width:100%;border-collapse:collapse}thead tr{background:#f8fafc}th{padding:8px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #e2e8f0}.footer{margin-top:28px;font-size:11px;color:#94a3b8}</style></head><body>
 <div class="header"><div class="title">Dispositivos Microsoft 365 — ${clientName}</div><div class="subtitle">Generado el ${now} · ${(file.entraDevices ?? []).length} dispositivos · Fuente: Entra ID</div></div>
-<table><thead><tr><th>Equipo</th><th>Usuario M365</th><th>Versión OS</th><th>Último acceso</th></tr></thead><tbody>${rows}</tbody></table>
+<table><thead><tr><th>Equipo</th><th>Usuario M365</th><th>Versión OS</th><th>Tipo</th><th>Cumplimiento</th><th>Último acceso</th></tr></thead><tbody>${rows}</tbody></table>
 <div class="footer">Reporte generado por Service Catalog</div></body></html>`;
     const win = window.open('', '_blank'); if (!win) return;
     win.document.write(html); win.document.close(); win.print();
@@ -367,6 +391,8 @@ export function SoftwareInventoryView({ clients }: Props) {
                         <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Equipo</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Usuario M365</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Versión OS</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Tipo</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Cumplimiento</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Último acceso</th>
                       </tr>
                     </thead>
@@ -375,7 +401,18 @@ export function SoftwareInventoryView({ clients }: Props) {
                         <tr key={d.deviceName} className="border-t border-slate-50 hover:bg-slate-50/50">
                           <td className="px-4 py-2.5 font-mono text-sm font-medium text-slate-700">{d.deviceName}</td>
                           <td className="px-4 py-2.5 text-sm text-slate-600">{d.owner || <span className="text-slate-300 italic">—</span>}</td>
-                          <td className="px-4 py-2.5 text-sm text-slate-500 font-mono">{d.osVersion || '—'}</td>
+                          <td className="px-4 py-2.5 text-sm text-slate-500 font-mono text-xs">{d.osVersion || '—'}</td>
+                          <td className="px-4 py-2.5">
+                            {d.trustType === 'AzureAd' && <span className="bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full">Azure AD</span>}
+                            {d.trustType === 'Workplace' && <span className="bg-yellow-100 text-yellow-800 text-xs font-semibold px-2 py-0.5 rounded-full">Workplace</span>}
+                            {d.trustType === 'ServerAd' && <span className="bg-slate-100 text-slate-600 text-xs font-semibold px-2 py-0.5 rounded-full">Dominio</span>}
+                            {!d.trustType && <span className="text-slate-300 text-xs">—</span>}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            {d.isCompliant === true && <span className="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">Cumple</span>}
+                            {d.isCompliant === false && <span className="bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5 rounded-full">No cumple</span>}
+                            {d.isCompliant === null && <span className="text-slate-300 text-xs">N/A</span>}
+                          </td>
                           <td className="px-4 py-2.5 text-sm text-slate-400">
                             {d.lastSignIn ? new Date(d.lastSignIn).toLocaleDateString('es-UY') : '—'}
                           </td>
