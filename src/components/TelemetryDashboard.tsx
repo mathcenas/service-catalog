@@ -897,10 +897,13 @@ export function TelemetryDashboard({ services, clients }: Props) {
 
 type SoftwareImport = {
   id: string; clientId: string; filename: string; importedAt: string;
-  type: 'managengine' | 'entra';
-  rows: { computer: string; os: string; suites: string[]; hasCopilot: boolean }[];
+  type: 'managengine' | 'entra' | 'device_report';
+  rows: { computer: string; os: string; suites: string[]; hasCopilot: boolean; loggedOnUser?: string }[];
   entraDevices?: { deviceName: string; owner: string; osVersion: string; lastSignIn: string }[];
+  deviceReportRows?: { hostname: string; ip: string; localUser: string; m365User: string; nasUser: string; os: string; office: string; hasCopilot: boolean; timestamp: string }[];
 };
+
+type DeviceReportEntry = { office: string; m365User: string; localUser: string; nasUser: string; os: string; hasCopilot: boolean; timestamp: string; ip: string };
 
 function loadSoftwareForClient(clientId?: string): SoftwareImport[] {
   if (!clientId) return [];
@@ -924,14 +927,35 @@ function buildSuiteMapFromImports(files: SoftwareImport[]): Map<string, string[]
   return map;
 }
 
+// Mapa hostname (lowercase) → datos del device-report.ps1
+function buildDeviceReportMap(files: SoftwareImport[]): Map<string, DeviceReportEntry> {
+  const map = new Map<string, DeviceReportEntry>();
+  files.filter(f => f.type === 'device_report').flatMap(f => f.deviceReportRows ?? [])
+    .forEach(r => {
+      if (!r.hostname) return;
+      const existing = map.get(r.hostname.toLowerCase());
+      // Quedar con el registro más reciente si hay varios
+      if (!existing || r.timestamp > existing.timestamp) {
+        map.set(r.hostname.toLowerCase(), {
+          office: r.office, m365User: r.m365User, localUser: r.localUser,
+          nasUser: r.nasUser, os: r.os, hasCopilot: r.hasCopilot,
+          timestamp: r.timestamp, ip: r.ip,
+        });
+      }
+    });
+  return map;
+}
+
 function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: string, logoUrl: string | null, companyName: string, clientId?: string) {
   const { shares, users, hostname, generated_at } = snap.snapshot;
   const dateStr = new Date(generated_at).toLocaleString('es-UY', { dateStyle: 'long', timeStyle: 'short' });
-  const softwareFiles = loadSoftwareForClient(clientId);
-  const ownerMap = buildOwnerMapFromImports(softwareFiles);
-  const suiteMap = buildSuiteMapFromImports(softwareFiles);
-  const hasOwners = ownerMap.size > 0;
-  const hasSuites = suiteMap.size > 0;
+  const softwareFiles  = loadSoftwareForClient(clientId);
+  const ownerMap       = buildOwnerMapFromImports(softwareFiles);
+  const suiteMap       = buildSuiteMapFromImports(softwareFiles);
+  const deviceMap      = buildDeviceReportMap(softwareFiles);
+  const hasOwners      = ownerMap.size > 0;
+  const hasSuites      = suiteMap.size > 0;
+  const hasDeviceReport = deviceMap.size > 0;
 
   const accessBadge = (access: string) => {
     if (access === 'read/write') return `<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">R/W</span>`;
@@ -1036,15 +1060,30 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
     `<th style="padding:5px 10px;text-align:${center ? 'center' : 'left'};font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">${label}</th>`;
 
   const machineRows = allMachines.map(([key, entry]) => {
-    // Recover display name from machineIndex (original case from first seen)
     const displayName = [...typedUsers.flatMap(u => [...(u.active_sessions ?? []), ...(u.login_history ?? [])]).map(h => h.machine), ...Array.from(suiteMap.keys())]
       .find(n => n.toLowerCase() === key) ?? key;
 
-    const m365 = ownerMap.get(key);
-    const suites = suiteMap.get(key) ?? [];
+    const dr    = deviceMap.get(key);                        // device-report.ps1 (fuente prioritaria)
     const meRow = softwareFiles.filter(f => f.type === 'managengine').flatMap(f => f.rows).find(r => r.computer.toLowerCase() === key);
-    const hasCopilot = meRow?.hasCopilot ?? false;
-    const os = meRow?.os ?? '';
+
+    // Office: device report > ManageEngine (el dr tiene versión exacta del build)
+    const suites     = suiteMap.get(key) ?? [];
+    const officeText = dr?.office || (suites.length ? suites[0] : '');
+
+    // OS: device report > ManageEngine
+    const os = dr?.os || meRow?.os || '';
+
+    // Copilot: device report OR ManageEngine
+    const hasCopilot = dr?.hasCopilot ?? meRow?.hasCopilot ?? false;
+
+    // M365 user: device report (leído directo del equipo) > Entra CSV (por deviceName)
+    const m365 = dr?.m365User || ownerMap.get(key) || '';
+
+    // IP: sesión activa tiene prioridad, luego device report, luego historial
+    const ip = entry.ip || dr?.ip || '';
+
+    // Usuario Windows local (solo disponible desde device report)
+    const localUser = dr?.localUser || '';
 
     const nasUsersList = Array.from(entry.nasUsers.entries()).map(([name, comment]) =>
       `<span style="display:inline-block;background:#f1f5f9;color:#334155;padding:1px 6px;border-radius:3px;font-size:10px;margin:1px;">${name}${comment ? ` <span style="color:#94a3b8;">(${comment})</span>` : ''}</span>`
@@ -1054,13 +1093,20 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
       ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:5px;vertical-align:middle;"></span>`
       : '';
 
+    // Timestamp del último reporte del equipo (device-report.ps1)
+    const drTs = dr?.timestamp ? `<div style="font-size:9px;color:#94a3b8;margin-top:1px;">reporte: ${dr.timestamp.slice(0, 16)}</div>` : '';
+
+    const localUserHtml = localUser
+      ? `<div style="font-size:10px;color:#64748b;">${localUser}</div>`
+      : '';
+
     return `<tr style="border-top:1px solid #f3f4f6;">
-      <td style="padding:5px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#1e293b;white-space:nowrap;">${activeIndicator}${displayName}</td>
-      <td style="padding:5px 10px;font-size:10px;color:#64748b;font-family:monospace;white-space:nowrap;">${entry.ip || '—'}</td>
-      <td style="padding:5px 10px;font-size:11px;color:#374151;">${m365 || '<span style="color:#d1d5db;">—</span>'}</td>
+      <td style="padding:5px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#1e293b;white-space:nowrap;">${activeIndicator}${displayName}${drTs}</td>
+      <td style="padding:5px 10px;font-size:10px;color:#64748b;font-family:monospace;white-space:nowrap;">${ip || '—'}</td>
+      <td style="padding:5px 10px;font-size:11px;color:#374151;">${m365 || '<span style="color:#d1d5db;">—</span>'}${localUserHtml}</td>
       <td style="padding:5px 10px;font-size:11px;">${nasUsersList || '<span style="color:#d1d5db;font-size:10px;">—</span>'}</td>
       <td style="padding:5px 10px;font-size:10px;color:#64748b;">${os || '—'}</td>
-      <td style="padding:5px 10px;font-size:11px;color:#374151;">${suites.length ? suites[0] : '<span style="color:#d1d5db;">—</span>'}</td>
+      <td style="padding:5px 10px;font-size:11px;color:#374151;">${officeText || '<span style="color:#d1d5db;">—</span>'}</td>
       <td style="padding:5px 10px;text-align:center;">${hasCopilot ? '<span style="background:#ede9fe;color:#6d28d9;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:700;">✓</span>' : '<span style="color:#e2e8f0;">—</span>'}</td>
       <td style="padding:5px 10px;font-size:10px;color:#94a3b8;white-space:nowrap;">${entry.lastAccess ? entry.lastAccess.slice(0, 16) : '—'}</td>
     </tr>`;
@@ -1107,7 +1153,7 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
     <h2 style="font-size:14px;font-weight:700;color:#1e293b;margin:28px 0 6px;text-transform:uppercase;letter-spacing:.5px;">Equipos</h2>
     <p style="font-size:11px;color:#94a3b8;margin:0 0 12px;">
       <span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;"></span> Sesión activa</span>
-      Fuentes: NAS${hasSuites ? ' · ManageEngine' : ''}${hasOwners ? ' · Entra ID' : ''}
+      Fuentes: NAS${hasSuites ? ' · ManageEngine' : ''}${hasOwners ? ' · Entra ID' : ''}${hasDeviceReport ? ' · Inventario PowerShell' : ''}
     </p>
     <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
       <table style="width:100%;border-collapse:collapse;">
