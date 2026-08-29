@@ -897,10 +897,13 @@ export function TelemetryDashboard({ services, clients }: Props) {
 
 type SoftwareImport = {
   id: string; clientId: string; filename: string; importedAt: string;
-  type: 'managengine' | 'entra';
-  rows: { computer: string; os: string; suites: string[]; hasCopilot: boolean }[];
+  type: 'managengine' | 'entra' | 'device_report';
+  rows: { computer: string; os: string; suites: string[]; hasCopilot: boolean; loggedOnUser?: string }[];
   entraDevices?: { deviceName: string; owner: string; osVersion: string; lastSignIn: string }[];
+  deviceReportRows?: { hostname: string; ip: string; localUser: string; m365User: string; nasUser: string; os: string; office: string; hasCopilot: boolean; timestamp: string }[];
 };
+
+type DeviceReportEntry = { office: string; m365User: string; localUser: string; nasUser: string; os: string; hasCopilot: boolean; timestamp: string; ip: string };
 
 function loadSoftwareForClient(clientId?: string): SoftwareImport[] {
   if (!clientId) return [];
@@ -924,14 +927,35 @@ function buildSuiteMapFromImports(files: SoftwareImport[]): Map<string, string[]
   return map;
 }
 
+// Mapa hostname (lowercase) → datos del device-report.ps1
+function buildDeviceReportMap(files: SoftwareImport[]): Map<string, DeviceReportEntry> {
+  const map = new Map<string, DeviceReportEntry>();
+  files.filter(f => f.type === 'device_report').flatMap(f => f.deviceReportRows ?? [])
+    .forEach(r => {
+      if (!r.hostname) return;
+      const existing = map.get(r.hostname.toLowerCase());
+      // Quedar con el registro más reciente si hay varios
+      if (!existing || r.timestamp > existing.timestamp) {
+        map.set(r.hostname.toLowerCase(), {
+          office: r.office, m365User: r.m365User, localUser: r.localUser,
+          nasUser: r.nasUser, os: r.os, hasCopilot: r.hasCopilot,
+          timestamp: r.timestamp, ip: r.ip,
+        });
+      }
+    });
+  return map;
+}
+
 function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: string, logoUrl: string | null, companyName: string, clientId?: string) {
   const { shares, users, hostname, generated_at } = snap.snapshot;
   const dateStr = new Date(generated_at).toLocaleString('es-UY', { dateStyle: 'long', timeStyle: 'short' });
-  const softwareFiles = loadSoftwareForClient(clientId);
-  const ownerMap = buildOwnerMapFromImports(softwareFiles);
-  const suiteMap = buildSuiteMapFromImports(softwareFiles);
-  const hasOwners = ownerMap.size > 0;
-  const hasSuites = suiteMap.size > 0;
+  const softwareFiles  = loadSoftwareForClient(clientId);
+  const ownerMap       = buildOwnerMapFromImports(softwareFiles);
+  const suiteMap       = buildSuiteMapFromImports(softwareFiles);
+  const deviceMap      = buildDeviceReportMap(softwareFiles);
+  const hasOwners      = ownerMap.size > 0;
+  const hasSuites      = suiteMap.size > 0;
+  const hasDeviceReport = deviceMap.size > 0;
 
   const accessBadge = (access: string) => {
     if (access === 'read/write') return `<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">R/W</span>`;
@@ -1032,19 +1056,142 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
     return a[0].localeCompare(b[0]);
   });
 
+  // ── Tiempo relativo ───────────────────────────────────────────
+  const relativeTime = (ts: string): string => {
+    if (!ts) return '—';
+    const diffMs = Date.now() - new Date(ts).getTime();
+    const days = Math.floor(diffMs / 86400000);
+    if (days === 0) return 'hoy';
+    if (days === 1) return 'ayer';
+    if (days < 30) return `hace ${days} días`;
+    const months = Math.floor(days / 30);
+    if (months < 12) return `hace ${months} ${months === 1 ? 'mes' : 'meses'}`;
+    const years = Math.floor(days / 365);
+    return `hace ${years} ${years === 1 ? 'año' : 'años'}`;
+  };
+
+  // ── KPIs para resumen ejecutivo ───────────────────────────────
+  const totalMachines  = allMachines.length;
+  const withOffice     = allMachines.filter(([key]) => {
+    const dr = deviceMap.get(key);
+    const suites = suiteMap.get(key) ?? [];
+    return !!(dr?.office || suites.length);
+  }).length;
+  const withCopilot    = allMachines.filter(([key]) => {
+    const dr = deviceMap.get(key);
+    const meRow = softwareFiles.filter(f => f.type === 'managengine').flatMap(f => f.rows).find(r => r.computer.toLowerCase() === key);
+    return dr?.hasCopilot ?? meRow?.hasCopilot ?? false;
+  }).length;
+  const withoutOffice  = totalMachines - withOffice;
+  const activeNow      = allMachines.filter(([, e]) => e.isActive).length;
+  const inactive90     = allMachines.filter(([, e]) => {
+    if (!e.lastAccess) return false;
+    return (Date.now() - new Date(e.lastAccess).getTime()) > 90 * 86400000;
+  }).length;
+
+  const kpiCard = (value: number | string, label: string, color: string, bg: string) =>
+    `<div style="flex:1;min-width:120px;background:${bg};border-radius:10px;padding:14px 18px;text-align:center;">
+      <div style="font-size:26px;font-weight:800;color:${color};line-height:1;">${value}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px;line-height:1.3;">${label}</div>
+    </div>`;
+
+  const kpisHtml = `
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:28px;">
+      ${kpiCard(totalMachines,  'equipos<br>inventariados', '#1e293b', '#f8fafc')}
+      ${kpiCard(withOffice,     'con licencia<br>Office', '#065f46', '#d1fae5')}
+      ${kpiCard(withCopilot,   'con<br>Copilot', '#6d28d9', '#ede9fe')}
+      ${withoutOffice > 0 ? kpiCard(withoutOffice, 'sin Office<br>detectado', '#92400e', '#fef3c7') : ''}
+      ${kpiCard(activeNow,     'sesión<br>activa ahora', '#1d4ed8', '#dbeafe')}
+      ${inactive90 > 0 ? kpiCard(inactive90, 'sin actividad<br>+90 días', '#991b1b', '#fee2e2') : ''}
+    </div>`;
+
+  // ── Equipos sin Office (sección de alertas) ───────────────────
+  const noOfficeMachines = allMachines.filter(([key, entry]) => {
+    // Solo incluir si tiene historial NAS (está en el radar) pero sin Office
+    if (entry.nasUsers.size === 0 && !deviceMap.has(key)) return false;
+    const dr = deviceMap.get(key);
+    const suites = suiteMap.get(key) ?? [];
+    return !dr?.office && suites.length === 0;
+  });
+
+  const noOfficeHtml = noOfficeMachines.length > 0 ? `
+    <div style="margin-bottom:24px;border:1px solid #fcd34d;border-radius:8px;overflow:hidden;background:#fffbeb;">
+      <div style="padding:9px 14px;border-bottom:1px solid #fcd34d;display:flex;align-items:center;gap:8px;">
+        <span style="font-size:14px;">⚠️</span>
+        <span style="font-weight:700;color:#92400e;font-size:13px;">Equipos sin Office detectado (${noOfficeMachines.length})</span>
+        <span style="font-size:11px;color:#b45309;margin-left:4px;">— requieren verificación de licencia</span>
+      </div>
+      <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;">
+        ${noOfficeMachines.map(([key, entry]) => {
+          const displayName = [...typedUsers.flatMap(u => [...(u.active_sessions ?? []), ...(u.login_history ?? [])]).map(h => h.machine)]
+            .find(n => n.toLowerCase() === key) ?? key;
+          const last = entry.lastAccess ? relativeTime(entry.lastAccess) : '—';
+          return `<span style="background:#fff;border:1px solid #fcd34d;border-radius:6px;padding:4px 10px;font-size:11px;font-family:monospace;color:#78350f;">${displayName} <span style="color:#b45309;font-style:italic;">${last}</span></span>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
+  // ── Usuarios NAS sin máquina registrada ───────────────────────
+  // Usuarios que tienen historial NAS pero ninguna de sus máquinas aparece en machineIndex
+  const ghostUsers = typedUsers.filter(u => {
+    const hasHistory = (u.login_history ?? []).length > 0 || (u.active_sessions ?? []).length > 0;
+    if (!hasHistory) return false;
+    const machines = [
+      ...(u.active_sessions ?? []).map(s => s.machine),
+      ...(u.login_history ?? []).map(h => h.machine),
+    ].filter(isValidMachine);
+    // Si todas sus máquinas son desconocidas (no están en deviceMap ni suiteMap)
+    return machines.length > 0 && machines.every(m => !deviceMap.has(m.toLowerCase()) && !suiteMap.has(m.toLowerCase()));
+  });
+
+  const ghostUsersHtml = ghostUsers.length > 0 ? `
+    <div style="margin-bottom:24px;border:1px solid #fca5a5;border-radius:8px;overflow:hidden;background:#fff1f2;">
+      <div style="padding:9px 14px;border-bottom:1px solid #fca5a5;display:flex;align-items:center;gap:8px;">
+        <span style="font-size:14px;">🔍</span>
+        <span style="font-weight:700;color:#991b1b;font-size:13px;">Usuarios sin equipo inventariado (${ghostUsers.length})</span>
+        <span style="font-size:11px;color:#b91c1c;margin-left:4px;">— acceden al NAS desde máquinas no registradas</span>
+      </div>
+      <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;">
+        ${ghostUsers.map(u => {
+          const lastTs = [...(u.login_history ?? [])].sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0]?.timestamp ?? '';
+          const machines = [...new Set([...(u.active_sessions ?? []), ...(u.login_history ?? [])].map(s => s.machine).filter(isValidMachine))];
+          return `<span style="background:#fff;border:1px solid #fca5a5;border-radius:6px;padding:4px 10px;font-size:11px;color:#7f1d1d;">
+            <strong>${u.name}</strong>${u.comment ? ` <span style="color:#b91c1c;">(${u.comment})</span>` : ''}
+            ${machines.length ? `<span style="color:#94a3b8;margin-left:4px;">vía ${machines.slice(0,2).join(', ')}${machines.length > 2 ? '…' : ''}</span>` : ''}
+            ${lastTs ? `<span style="color:#b91c1c;margin-left:4px;font-style:italic;">${relativeTime(lastTs)}</span>` : ''}
+          </span>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
   const th = (label: string, center = false) =>
     `<th style="padding:5px 10px;text-align:${center ? 'center' : 'left'};font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">${label}</th>`;
 
   const machineRows = allMachines.map(([key, entry]) => {
-    // Recover display name from machineIndex (original case from first seen)
     const displayName = [...typedUsers.flatMap(u => [...(u.active_sessions ?? []), ...(u.login_history ?? [])]).map(h => h.machine), ...Array.from(suiteMap.keys())]
       .find(n => n.toLowerCase() === key) ?? key;
 
-    const m365 = ownerMap.get(key);
-    const suites = suiteMap.get(key) ?? [];
+    const dr    = deviceMap.get(key);                        // device-report.ps1 (fuente prioritaria)
     const meRow = softwareFiles.filter(f => f.type === 'managengine').flatMap(f => f.rows).find(r => r.computer.toLowerCase() === key);
-    const hasCopilot = meRow?.hasCopilot ?? false;
-    const os = meRow?.os ?? '';
+
+    // Office: device report > ManageEngine (el dr tiene versión exacta del build)
+    const suites     = suiteMap.get(key) ?? [];
+    const officeText = dr?.office || (suites.length ? suites[0] : '');
+
+    // OS: device report > ManageEngine
+    const os = dr?.os || meRow?.os || '';
+
+    // Copilot: device report OR ManageEngine
+    const hasCopilot = dr?.hasCopilot ?? meRow?.hasCopilot ?? false;
+
+    // M365 user: device report (leído directo del equipo) > Entra CSV (por deviceName)
+    const m365 = dr?.m365User || ownerMap.get(key) || '';
+
+    // IP: sesión activa tiene prioridad, luego device report, luego historial
+    const ip = entry.ip || dr?.ip || '';
+
+    // Usuario Windows local (solo disponible desde device report)
+    const localUser = dr?.localUser || '';
 
     const nasUsersList = Array.from(entry.nasUsers.entries()).map(([name, comment]) =>
       `<span style="display:inline-block;background:#f1f5f9;color:#334155;padding:1px 6px;border-radius:3px;font-size:10px;margin:1px;">${name}${comment ? ` <span style="color:#94a3b8;">(${comment})</span>` : ''}</span>`
@@ -1054,15 +1201,31 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
       ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:5px;vertical-align:middle;"></span>`
       : '';
 
-    return `<tr style="border-top:1px solid #f3f4f6;">
-      <td style="padding:5px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#1e293b;white-space:nowrap;">${activeIndicator}${displayName}</td>
-      <td style="padding:5px 10px;font-size:10px;color:#64748b;font-family:monospace;white-space:nowrap;">${entry.ip || '—'}</td>
-      <td style="padding:5px 10px;font-size:11px;color:#374151;">${m365 || '<span style="color:#d1d5db;">—</span>'}</td>
+    // Timestamp del último reporte del equipo (device-report.ps1)
+    const drTs = dr?.timestamp ? `<div style="font-size:9px;color:#94a3b8;margin-top:1px;">reporte: ${dr.timestamp.slice(0, 16)}</div>` : '';
+
+    const localUserHtml = localUser
+      ? `<div style="font-size:10px;color:#64748b;">${localUser}</div>`
+      : '';
+
+    const isInactive90 = entry.lastAccess && (Date.now() - new Date(entry.lastAccess).getTime()) > 90 * 86400000;
+    const noOfficeFlag = !officeText;
+    const rowBg = isInactive90 ? 'background:#fff7f7;' : '';
+
+    const lastAccessHtml = entry.lastAccess
+      ? `<span style="font-weight:600;color:${isInactive90 ? '#dc2626' : '#475569'};">${relativeTime(entry.lastAccess)}</span>
+         <div style="font-size:9px;color:#94a3b8;">${entry.lastAccess.slice(0, 10)}</div>`
+      : '—';
+
+    return `<tr style="border-top:1px solid #f3f4f6;${rowBg}">
+      <td style="padding:5px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#1e293b;white-space:nowrap;">${activeIndicator}${displayName}${drTs}</td>
+      <td style="padding:5px 10px;font-size:10px;color:#64748b;font-family:monospace;white-space:nowrap;">${ip || '—'}</td>
+      <td style="padding:5px 10px;font-size:11px;color:#374151;">${m365 || '<span style="color:#d1d5db;">—</span>'}${localUserHtml}</td>
       <td style="padding:5px 10px;font-size:11px;">${nasUsersList || '<span style="color:#d1d5db;font-size:10px;">—</span>'}</td>
       <td style="padding:5px 10px;font-size:10px;color:#64748b;">${os || '—'}</td>
-      <td style="padding:5px 10px;font-size:11px;color:#374151;">${suites.length ? suites[0] : '<span style="color:#d1d5db;">—</span>'}</td>
+      <td style="padding:5px 10px;font-size:11px;${noOfficeFlag ? 'color:#d97706;font-style:italic;' : 'color:#374151;'}">${officeText || 'sin Office'}</td>
       <td style="padding:5px 10px;text-align:center;">${hasCopilot ? '<span style="background:#ede9fe;color:#6d28d9;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:700;">✓</span>' : '<span style="color:#e2e8f0;">—</span>'}</td>
-      <td style="padding:5px 10px;font-size:10px;color:#94a3b8;white-space:nowrap;">${entry.lastAccess ? entry.lastAccess.slice(0, 16) : '—'}</td>
+      <td style="padding:5px 10px;font-size:10px;white-space:nowrap;">${lastAccessHtml}</td>
     </tr>`;
   }).join('');
 
@@ -1099,6 +1262,13 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
       </div>
     </div>
 
+    <!-- Resumen ejecutivo -->
+    ${kpisHtml}
+
+    <!-- Alertas -->
+    ${noOfficeHtml}
+    ${ghostUsersHtml}
+
     <!-- Carpetas -->
     <h2 style="font-size:14px;font-weight:700;color:#1e293b;margin:0 0 14px;text-transform:uppercase;letter-spacing:.5px;">Carpetas Compartidas</h2>
     ${sharesHtml}
@@ -1107,7 +1277,7 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
     <h2 style="font-size:14px;font-weight:700;color:#1e293b;margin:28px 0 6px;text-transform:uppercase;letter-spacing:.5px;">Equipos</h2>
     <p style="font-size:11px;color:#94a3b8;margin:0 0 12px;">
       <span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;"></span> Sesión activa</span>
-      Fuentes: NAS${hasSuites ? ' · ManageEngine' : ''}${hasOwners ? ' · Entra ID' : ''}
+      Fuentes: NAS${hasSuites ? ' · ManageEngine' : ''}${hasOwners ? ' · Entra ID' : ''}${hasDeviceReport ? ' · Inventario PowerShell' : ''}
     </p>
     <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
       <table style="width:100%;border-collapse:collapse;">
