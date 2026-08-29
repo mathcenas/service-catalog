@@ -52,6 +52,12 @@ RE_LINE = re.compile(
 
 SKIP_USERS = {'root', 'nobody', 'guest', 'anonymous'}
 
+# Valid machine: Windows hostname (alphanum+hyphen) or IP address
+VALID_MACHINE = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9\-]*$|^\d{1,3}(\.\d{1,3}){3}$')
+
+def is_valid_machine(name):
+    return bool(name) and len(name) <= 63 and bool(VALID_MACHINE.match(name))
+
 # Leer syslog y recolectar todos los eventos de esta sesión
 # {user -> {machine -> timestamp_str}} — guardamos el más reciente por máquina
 new_events = {}  # user -> {machine -> (timestamp, ip)}
@@ -64,6 +70,8 @@ try:
                 continue
             ts_str, machine, ip, user = m.group(1), m.group(2), m.group(3), m.group(4).lower()
             if user in SKIP_USERS:
+                continue
+            if not is_valid_machine(machine):
                 continue
             try:
                 ts = datetime.strptime(f'{YEAR} {ts_str}', '%Y %b %d %H:%M:%S').strftime('%Y-%m-%d %H:%M:%S')
