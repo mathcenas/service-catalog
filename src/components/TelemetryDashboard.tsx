@@ -992,9 +992,13 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
 
   const typedUsers = users as (AclUser & { active_sessions?: { machine: string; ip: string }[]; login_history?: { machine: string; timestamp: string; ip: string }[] })[];
 
+  // Valid machine name: only alphanumerics, hyphens, underscores and dots (Windows hostnames / IPs)
+  const isValidMachine = (m: string) => m.length > 0 && /^[\w.\-]+$/.test(m);
+
   // Index active sessions
   typedUsers.forEach(u => {
     (u.active_sessions ?? []).forEach(s => {
+      if (!isValidMachine(s.machine)) return;
       const key = s.machine.toLowerCase();
       if (!machineIndex.has(key)) machineIndex.set(key, { nasUsers: new Map(), lastAccess: '', ip: s.ip, isActive: false });
       const entry = machineIndex.get(key)!;
@@ -1007,6 +1011,7 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
   // Index login_history
   typedUsers.forEach(u => {
     (u.login_history ?? []).forEach(h => {
+      if (!isValidMachine(h.machine)) return;
       const key = h.machine.toLowerCase();
       if (!machineIndex.has(key)) machineIndex.set(key, { nasUsers: new Map(), lastAccess: '', ip: h.ip, isActive: false });
       const entry = machineIndex.get(key)!;
@@ -1028,7 +1033,7 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
   });
 
   const th = (label: string, center = false) =>
-    `<th style="padding:7px 12px;text-align:${center ? 'center' : 'left'};font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">${label}</th>`;
+    `<th style="padding:5px 10px;text-align:${center ? 'center' : 'left'};font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">${label}</th>`;
 
   const machineRows = allMachines.map(([key, entry]) => {
     // Recover display name from machineIndex (original case from first seen)
@@ -1050,14 +1055,14 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
       : '';
 
     return `<tr style="border-top:1px solid #f3f4f6;">
-      <td style="padding:7px 12px;font-family:monospace;font-size:12px;font-weight:700;color:#1e293b;white-space:nowrap;">${activeIndicator}${displayName}</td>
-      <td style="padding:7px 12px;font-size:11px;color:#64748b;font-family:monospace;">${entry.ip || '—'}</td>
-      <td style="padding:7px 12px;font-size:12px;color:#374151;">${m365 || '<span style="color:#d1d5db;">—</span>'}</td>
-      <td style="padding:7px 12px;font-size:12px;">${nasUsersList || '<span style="color:#d1d5db;font-size:11px;">—</span>'}</td>
-      <td style="padding:7px 12px;font-size:11px;color:#64748b;">${os || '—'}</td>
-      <td style="padding:7px 12px;font-size:12px;color:#374151;">${suites.length ? suites[0] : '<span style="color:#d1d5db;">—</span>'}</td>
-      <td style="padding:7px 12px;text-align:center;">${hasCopilot ? '<span style="background:#ede9fe;color:#6d28d9;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;">✓</span>' : '<span style="color:#e2e8f0;">—</span>'}</td>
-      <td style="padding:7px 12px;font-size:11px;color:#94a3b8;white-space:nowrap;">${entry.lastAccess ? entry.lastAccess.slice(0, 16) : '—'}</td>
+      <td style="padding:5px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#1e293b;white-space:nowrap;">${activeIndicator}${displayName}</td>
+      <td style="padding:5px 10px;font-size:10px;color:#64748b;font-family:monospace;white-space:nowrap;">${entry.ip || '—'}</td>
+      <td style="padding:5px 10px;font-size:11px;color:#374151;">${m365 || '<span style="color:#d1d5db;">—</span>'}</td>
+      <td style="padding:5px 10px;font-size:11px;">${nasUsersList || '<span style="color:#d1d5db;font-size:10px;">—</span>'}</td>
+      <td style="padding:5px 10px;font-size:10px;color:#64748b;">${os || '—'}</td>
+      <td style="padding:5px 10px;font-size:11px;color:#374151;">${suites.length ? suites[0] : '<span style="color:#d1d5db;">—</span>'}</td>
+      <td style="padding:5px 10px;text-align:center;">${hasCopilot ? '<span style="background:#ede9fe;color:#6d28d9;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:700;">✓</span>' : '<span style="color:#e2e8f0;">—</span>'}</td>
+      <td style="padding:5px 10px;font-size:10px;color:#94a3b8;white-space:nowrap;">${entry.lastAccess ? entry.lastAccess.slice(0, 16) : '—'}</td>
     </tr>`;
   }).join('');
 
@@ -1074,12 +1079,12 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 40px 24px; background: #fff; color: #111827; }
     #print-btn { position:fixed;top:16px;right:16px;background:#3b82f6;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(59,130,246,.35);z-index:999; }
     #print-btn:hover { background:#2563eb; }
-    @media print { #print-btn { display:none; } body { padding: 20px; } }
+    @media print { #print-btn { display:none; } body { padding: 20px; } @page { size: A4 landscape; margin: 15mm; } }
   </style>
 </head>
 <body>
   <button id="print-btn" onclick="window.print()">⬇ Guardar PDF</button>
-  <div style="max-width:720px;margin:0 auto;">
+  <div style="max-width:1100px;margin:0 auto;">
 
     <!-- Header al estilo emails -->
     <div style="display:flex;align-items:flex-start;justify-content:space-between;padding-bottom:20px;border-bottom:2px solid #3b82f6;margin-bottom:28px;">
