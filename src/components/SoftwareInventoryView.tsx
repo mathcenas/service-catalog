@@ -199,7 +199,9 @@ function parseMECSV(text: string): ComputerRow[] {
 type DeviceReportRow = {
   hostname: string;
   ip: string;
-  loggedUser: string;
+  localUser: string;
+  m365User: string;
+  nasUser: string;
   os: string;
   office: string;
   hasCopilot: boolean;
@@ -211,13 +213,15 @@ function parseDeviceReportCSV(text: string): DeviceReportRow[] {
   if (lines.length < 2) return [];
   const headers = lines[0].split(',').map(h => h.trim());
   const idx = (n: string) => headers.indexOf(n);
-  const iHostname   = idx('Hostname');
-  const iIp         = idx('IP');
-  const iUser       = idx('LoggedUser');
-  const iOs         = idx('OS');
-  const iOffice     = idx('Office');
-  const iCopilot    = idx('Copilot');
-  const iTimestamp  = idx('Timestamp');
+  const iHostname  = idx('Hostname');
+  const iIp        = idx('IP');
+  const iLocal     = idx('LocalUser');
+  const iM365      = idx('M365User');
+  const iNas       = idx('NASUser');
+  const iOs        = idx('OS');
+  const iOffice    = idx('Office');
+  const iCopilot   = idx('Copilot');
+  const iTimestamp = idx('Timestamp');
   if (iHostname < 0) return [];
   const rows: DeviceReportRow[] = [];
   for (let i = 1; i < lines.length; i++) {
@@ -228,7 +232,9 @@ function parseDeviceReportCSV(text: string): DeviceReportRow[] {
     rows.push({
       hostname,
       ip:         get(iIp),
-      loggedUser: get(iUser),
+      localUser:  get(iLocal),
+      m365User:   get(iM365),
+      nasUser:    get(iNas),
       os:         get(iOs),
       office:     get(iOffice),
       hasCopilot: get(iCopilot).toLowerCase() === 'true',
@@ -526,7 +532,9 @@ export function SoftwareInventoryView({ clients }: Props) {
                       <tr className="text-left">
                         <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Equipo</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">IP LAN</th>
-                        <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Usuario</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Usuario Windows</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Usuario M365</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Usuario NAS</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Sistema Operativo</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Office</th>
                         <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Copilot</th>
@@ -538,7 +546,9 @@ export function SoftwareInventoryView({ clients }: Props) {
                         <tr key={row.hostname} className="border-t border-slate-50 hover:bg-slate-50/50">
                           <td className="px-4 py-2.5 font-mono text-sm font-medium text-slate-700">{row.hostname}</td>
                           <td className="px-4 py-2.5 text-sm text-slate-600 font-mono">{row.ip || <span className="text-slate-300">—</span>}</td>
-                          <td className="px-4 py-2.5 text-sm text-slate-600">{row.loggedUser || <span className="text-slate-300 italic text-xs">—</span>}</td>
+                          <td className="px-4 py-2.5 text-sm text-slate-600">{row.localUser || <span className="text-slate-300 italic text-xs">—</span>}</td>
+                          <td className="px-4 py-2.5 text-sm text-slate-600">{row.m365User || <span className="text-slate-300 italic text-xs">—</span>}</td>
+                          <td className="px-4 py-2.5 text-sm text-slate-600">{row.nasUser || <span className="text-slate-300 italic text-xs">—</span>}</td>
                           <td className="px-4 py-2.5 text-sm text-slate-600">{row.os || <span className="text-slate-300">—</span>}</td>
                           <td className="px-4 py-2.5 text-sm text-slate-600">{row.office || <span className="text-slate-300 italic text-xs">—</span>}</td>
                           <td className="px-4 py-2.5 text-sm">
