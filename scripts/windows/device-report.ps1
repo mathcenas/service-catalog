@@ -187,9 +187,22 @@ if (Test-Path $csvFile) {
 Write-Host "[$hostname] device-report actualizado: $csvFile" -ForegroundColor Green
 
 # ── Ubicaciones de confianza en Office ────────────────────────
-# Agrega cada ruta de OFFICE_TRUSTED_PATHS al registro del usuario
-# actual para Word, Excel y PowerPoint. Idempotente: no duplica si
-# la ruta ya existe. No requiere reiniciar Office.
+#
+# PARA EL TÉCNICO:
+#   Office bloquea archivos de red con la advertencia "Vista protegida" o
+#   "Macros deshabilitadas" si la carpeta no está en la lista de ubicaciones
+#   de confianza (Trusted Locations). Esta función la agrega por registro
+#   para el usuario actual (HKCU), por lo que:
+#     - No requiere permisos de administrador
+#     - Se aplica solo al usuario que corre el script (ideal para GPO logon)
+#     - Es permanente: sobrevive reinicios y actualizaciones de Office
+#     - Efecto inmediato: no hace falta reiniciar Office, aplica en la
+#       próxima apertura de un archivo desde esa ruta
+#     - AllowSubFolders = 1 cubre todas las subcarpetas del share
+#   Si el cliente tiene políticas de grupo (GPO) que bloquean Trusted
+#   Locations personalizadas, esta escritura en HKCU no tendrá efecto
+#   y habrá que configurarlo via GPO en Computer Configuration.
+
 function Add-OfficeTrustedLocation {
     param([string]$Path, [string]$Description = "NAS compartido")
 
@@ -200,21 +213,22 @@ function Add-OfficeTrustedLocation {
             $officeVer = $v; break
         }
     }
-    if (-not $officeVer) { return }
+    if (-not $officeVer) { return $false }
 
+    $added = $false
     $apps = @("Word","Excel","PowerPoint")
     foreach ($app in $apps) {
         $root = "HKCU:\SOFTWARE\Microsoft\Office\$officeVer\$app\Security\Trusted Locations"
         if (-not (Test-Path $root)) { continue }
 
-        # Verificar si la ruta ya está registrada (cualquier Location<N>)
+        # No duplicar si la ruta ya está registrada
         $alreadyExists = Get-ChildItem $root -ErrorAction SilentlyContinue |
             Where-Object {
                 (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).Path -eq $Path
             }
         if ($alreadyExists) { continue }
 
-        # Encontrar el siguiente indice libre: Location0, Location1, ...
+        # Siguiente indice libre: Location0, Location1, ...
         $existing = (Get-ChildItem $root -ErrorAction SilentlyContinue |
             Where-Object { $_.PSChildName -match '^Location\d+$' } |
             ForEach-Object { [int]($_.PSChildName -replace 'Location','') } |
@@ -223,16 +237,34 @@ function Add-OfficeTrustedLocation {
         $newKey  = "$root\Location$nextIdx"
 
         New-Item -Path $newKey -Force | Out-Null
-        Set-ItemProperty -Path $newKey -Name "Path"           -Value $Path
-        Set-ItemProperty -Path $newKey -Name "Description"    -Value $Description
+        Set-ItemProperty -Path $newKey -Name "Path"            -Value $Path
+        Set-ItemProperty -Path $newKey -Name "Description"     -Value $Description
         Set-ItemProperty -Path $newKey -Name "AllowSubFolders" -Value 1 -Type DWord
-        Write-Host "  [$app] ubicacion de confianza agregada: $Path" -ForegroundColor Cyan
+        $added = $true
     }
+    return $added
 }
 
 if ($OFFICE_TRUSTED_PATHS.Count -gt 0) {
-    Write-Host "[$hostname] Configurando ubicaciones de confianza en Office..." -ForegroundColor DarkCyan
+    $newTrusted = [System.Collections.Generic.List[string]]::new()
     foreach ($p in $OFFICE_TRUSTED_PATHS) {
-        Add-OfficeTrustedLocation -Path $p -Description "NAS - $NAS_HOSTNAME"
+        $wasAdded = Add-OfficeTrustedLocation -Path $p -Description "NAS - $NAS_HOSTNAME"
+        if ($wasAdded) { $newTrusted.Add($p) }
+    }
+
+    if ($newTrusted.Count -gt 0) {
+        # Mensaje visible al usuario final (cuadro de diálogo de Windows)
+        Add-Type -AssemblyName System.Windows.Forms
+        $msg = "Se configuró correctamente tu acceso al servidor.$([Environment]::NewLine * 2)" +
+               "Las siguientes carpetas de red ahora se abren sin advertencias en Word, Excel y PowerPoint:$([Environment]::NewLine)" +
+               ($newTrusted | ForEach-Object { "  • $_" } | Out-String).TrimEnd() +
+               "$([Environment]::NewLine * 2)No necesitás hacer nada más."
+        [System.Windows.Forms.MessageBox]::Show(
+            $msg,
+            "Configuración completada",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Information
+        ) | Out-Null
+        Write-Host "[$hostname] Ubicaciones de confianza agregadas en Office." -ForegroundColor Cyan
     }
 }
