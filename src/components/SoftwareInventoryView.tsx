@@ -194,11 +194,56 @@ function parseMECSV(text: string): ComputerRow[] {
   })).sort((a, b) => a.computer.localeCompare(b.computer));
 }
 
+// ─── Device Report CSV parsing (device-report.ps1 output) ───────────────────
+
+type DeviceReportRow = {
+  hostname: string;
+  ip: string;
+  loggedUser: string;
+  os: string;
+  office: string;
+  hasCopilot: boolean;
+  timestamp: string;
+};
+
+function parseDeviceReportCSV(text: string): DeviceReportRow[] {
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',').map(h => h.trim());
+  const idx = (n: string) => headers.indexOf(n);
+  const iHostname   = idx('Hostname');
+  const iIp         = idx('IP');
+  const iUser       = idx('LoggedUser');
+  const iOs         = idx('OS');
+  const iOffice     = idx('Office');
+  const iCopilot    = idx('Copilot');
+  const iTimestamp  = idx('Timestamp');
+  if (iHostname < 0) return [];
+  const rows: DeviceReportRow[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',');
+    const get = (j: number) => (j >= 0 ? (cols[j] ?? '').trim() : '');
+    const hostname = get(iHostname);
+    if (!hostname) continue;
+    rows.push({
+      hostname,
+      ip:         get(iIp),
+      loggedUser: get(iUser),
+      os:         get(iOs),
+      office:     get(iOffice),
+      hasCopilot: get(iCopilot).toLowerCase() === 'true',
+      timestamp:  get(iTimestamp),
+    });
+  }
+  return rows.sort((a, b) => a.hostname.localeCompare(b.hostname));
+}
+
 // Auto-detect CSV type by headers
-function detectCSVType(text: string): 'managengine' | 'entra' | 'unknown' {
+function detectCSVType(text: string): 'managengine' | 'entra' | 'device_report' | 'unknown' {
   const firstLine = text.split(/\r?\n/)[0] ?? '';
   if (firstLine.includes('deviceId') && firstLine.includes('displayName')) return 'entra';
   if (firstLine.startsWith('Software Version') || firstLine.startsWith('Software Name,Software Version')) return 'managengine';
+  if (firstLine.startsWith('Timestamp,Hostname,IP,LoggedUser')) return 'device_report';
   return 'unknown';
 }
 
@@ -209,9 +254,10 @@ type ImportedFile = {
   clientId: string;
   filename: string;
   importedAt: string;
-  type: 'managengine' | 'entra';
-  rows: ComputerRow[];         // ManageEngine
-  entraDevices?: EntraDevice[]; // Entra
+  type: 'managengine' | 'entra' | 'device_report';
+  rows: ComputerRow[];              // ManageEngine
+  entraDevices?: EntraDevice[];     // Entra
+  deviceReportRows?: DeviceReportRow[]; // device-report.ps1
 };
 
 const STORAGE_KEY = 'software_inventory_imports';
@@ -309,6 +355,8 @@ export function SoftwareInventoryView({ clients }: Props) {
         let entry: ImportedFile;
         if (csvType === 'entra') {
           entry = { id: crypto.randomUUID(), clientId: assignClientId, filename: file.name, importedAt: new Date().toISOString(), type: 'entra', rows: [], entraDevices: parseEntraCSV(text) };
+        } else if (csvType === 'device_report') {
+          entry = { id: crypto.randomUUID(), clientId: assignClientId, filename: file.name, importedAt: new Date().toISOString(), type: 'device_report', rows: [], deviceReportRows: parseDeviceReportCSV(text) };
         } else {
           entry = { id: crypto.randomUUID(), clientId: assignClientId, filename: file.name, importedAt: new Date().toISOString(), type: 'managengine', rows: parseMECSV(text) };
         }
@@ -443,6 +491,62 @@ export function SoftwareInventoryView({ clients }: Props) {
                           <td className="px-4 py-2.5 text-sm text-slate-400">
                             {d.lastSignIn ? new Date(d.lastSignIn).toLocaleDateString('es-UY') : '—'}
                           </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          }
+
+          // Device Report (device-report.ps1)
+          if (file.type === 'device_report') {
+            const drRows = file.deviceReportRows ?? [];
+            return (
+              <div key={file.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-emerald-50">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-semibold text-sm text-slate-800">{clientName(file.clientId)}</span>
+                    <span className="text-slate-300 mx-1">·</span>
+                    <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">Inventario PowerShell</span>
+                    <span className="text-slate-300 mx-1">·</span>
+                    <span className="text-xs text-slate-500 font-mono">{file.filename}</span>
+                    <span className="text-slate-300 mx-1">·</span>
+                    <span className="text-xs text-slate-400">{drRows.length} equipos · {new Date(file.importedAt).toLocaleDateString('es-UY')}</span>
+                  </div>
+                  <button onClick={() => removeImport(file.id)}
+                    className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="text-left">
+                        <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Equipo</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">IP LAN</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Usuario</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Sistema Operativo</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Office</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Copilot</th>
+                        <th className="px-4 py-2.5 text-xs font-semibold text-slate-400 uppercase tracking-wide">Actualizado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drRows.map(row => (
+                        <tr key={row.hostname} className="border-t border-slate-50 hover:bg-slate-50/50">
+                          <td className="px-4 py-2.5 font-mono text-sm font-medium text-slate-700">{row.hostname}</td>
+                          <td className="px-4 py-2.5 text-sm text-slate-600 font-mono">{row.ip || <span className="text-slate-300">—</span>}</td>
+                          <td className="px-4 py-2.5 text-sm text-slate-600">{row.loggedUser || <span className="text-slate-300 italic text-xs">—</span>}</td>
+                          <td className="px-4 py-2.5 text-sm text-slate-600">{row.os || <span className="text-slate-300">—</span>}</td>
+                          <td className="px-4 py-2.5 text-sm text-slate-600">{row.office || <span className="text-slate-300 italic text-xs">—</span>}</td>
+                          <td className="px-4 py-2.5 text-sm">
+                            {row.hasCopilot
+                              ? <span className="text-xs bg-purple-100 text-purple-700 font-semibold px-2 py-0.5 rounded-full">Copilot</span>
+                              : <span className="text-slate-300 text-xs">—</span>}
+                          </td>
+                          <td className="px-4 py-2.5 text-xs text-slate-400">{row.timestamp}</td>
                         </tr>
                       ))}
                     </tbody>
