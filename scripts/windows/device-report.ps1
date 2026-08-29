@@ -25,9 +25,18 @@ $CSV_DESTINO = "\\NAS\IT\device-report.csv"
 #$CSV_DESTINO = "\\SYNOLOGY\AdminShared\device-report.csv"
 #$CSV_DESTINO = "C:\Temp\device-report.csv"    # solo para prueba local
 
-# Nombre NetBIOS del NAS (para detectar credenciales guardadas).
-# Si no se usa la columna UsuarioNAS, dejar en blanco.
+# Nombre NetBIOS del NAS (para detectar credenciales guardadas y para
+# agregar como ubicación de confianza en Office).
 $NAS_HOSTNAME = "NAS"
+
+# Carpetas del NAS que se agregan como ubicaciones de confianza en Office.
+# Puede ser la raiz del share o una subcarpeta especifica.
+# Dejar vacío (@()) para no tocar la configuracion de Office.
+$OFFICE_TRUSTED_PATHS = @(
+    "\\$NAS_HOSTNAME\Documentos"
+    #"\\$NAS_HOSTNAME\Compartido"
+    #"\\$NAS_HOSTNAME\Proyectos"
+)
 
 # ──────────────────────────────────────────────────────────────
 
@@ -176,3 +185,54 @@ if (Test-Path $csvFile) {
 }
 
 Write-Host "[$hostname] device-report actualizado: $csvFile" -ForegroundColor Green
+
+# ── Ubicaciones de confianza en Office ────────────────────────
+# Agrega cada ruta de OFFICE_TRUSTED_PATHS al registro del usuario
+# actual para Word, Excel y PowerPoint. Idempotente: no duplica si
+# la ruta ya existe. No requiere reiniciar Office.
+function Add-OfficeTrustedLocation {
+    param([string]$Path, [string]$Description = "NAS compartido")
+
+    # Detectar version instalada (prioriza la mas reciente)
+    $officeVer = $null
+    foreach ($v in @("16.0","15.0","14.0")) {
+        if (Test-Path "HKCU:\SOFTWARE\Microsoft\Office\$v\Word\Security") {
+            $officeVer = $v; break
+        }
+    }
+    if (-not $officeVer) { return }
+
+    $apps = @("Word","Excel","PowerPoint")
+    foreach ($app in $apps) {
+        $root = "HKCU:\SOFTWARE\Microsoft\Office\$officeVer\$app\Security\Trusted Locations"
+        if (-not (Test-Path $root)) { continue }
+
+        # Verificar si la ruta ya está registrada (cualquier Location<N>)
+        $alreadyExists = Get-ChildItem $root -ErrorAction SilentlyContinue |
+            Where-Object {
+                (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).Path -eq $Path
+            }
+        if ($alreadyExists) { continue }
+
+        # Encontrar el siguiente indice libre: Location0, Location1, ...
+        $existing = (Get-ChildItem $root -ErrorAction SilentlyContinue |
+            Where-Object { $_.PSChildName -match '^Location\d+$' } |
+            ForEach-Object { [int]($_.PSChildName -replace 'Location','') } |
+            Measure-Object -Maximum).Maximum
+        $nextIdx = if ($null -eq $existing) { 0 } else { $existing + 1 }
+        $newKey  = "$root\Location$nextIdx"
+
+        New-Item -Path $newKey -Force | Out-Null
+        Set-ItemProperty -Path $newKey -Name "Path"           -Value $Path
+        Set-ItemProperty -Path $newKey -Name "Description"    -Value $Description
+        Set-ItemProperty -Path $newKey -Name "AllowSubFolders" -Value 1 -Type DWord
+        Write-Host "  [$app] ubicacion de confianza agregada: $Path" -ForegroundColor Cyan
+    }
+}
+
+if ($OFFICE_TRUSTED_PATHS.Count -gt 0) {
+    Write-Host "[$hostname] Configurando ubicaciones de confianza en Office..." -ForegroundColor DarkCyan
+    foreach ($p in $OFFICE_TRUSTED_PATHS) {
+        Add-OfficeTrustedLocation -Path $p -Description "NAS - $NAS_HOSTNAME"
+    }
+}
