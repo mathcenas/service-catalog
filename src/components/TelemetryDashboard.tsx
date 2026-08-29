@@ -1056,6 +1056,114 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
     return a[0].localeCompare(b[0]);
   });
 
+  // ── Tiempo relativo ───────────────────────────────────────────
+  const relativeTime = (ts: string): string => {
+    if (!ts) return '—';
+    const diffMs = Date.now() - new Date(ts).getTime();
+    const days = Math.floor(diffMs / 86400000);
+    if (days === 0) return 'hoy';
+    if (days === 1) return 'ayer';
+    if (days < 30) return `hace ${days} días`;
+    const months = Math.floor(days / 30);
+    if (months < 12) return `hace ${months} ${months === 1 ? 'mes' : 'meses'}`;
+    const years = Math.floor(days / 365);
+    return `hace ${years} ${years === 1 ? 'año' : 'años'}`;
+  };
+
+  // ── KPIs para resumen ejecutivo ───────────────────────────────
+  const totalMachines  = allMachines.length;
+  const withOffice     = allMachines.filter(([key]) => {
+    const dr = deviceMap.get(key);
+    const suites = suiteMap.get(key) ?? [];
+    return !!(dr?.office || suites.length);
+  }).length;
+  const withCopilot    = allMachines.filter(([key]) => {
+    const dr = deviceMap.get(key);
+    const meRow = softwareFiles.filter(f => f.type === 'managengine').flatMap(f => f.rows).find(r => r.computer.toLowerCase() === key);
+    return dr?.hasCopilot ?? meRow?.hasCopilot ?? false;
+  }).length;
+  const withoutOffice  = totalMachines - withOffice;
+  const activeNow      = allMachines.filter(([, e]) => e.isActive).length;
+  const inactive90     = allMachines.filter(([, e]) => {
+    if (!e.lastAccess) return false;
+    return (Date.now() - new Date(e.lastAccess).getTime()) > 90 * 86400000;
+  }).length;
+
+  const kpiCard = (value: number | string, label: string, color: string, bg: string) =>
+    `<div style="flex:1;min-width:120px;background:${bg};border-radius:10px;padding:14px 18px;text-align:center;">
+      <div style="font-size:26px;font-weight:800;color:${color};line-height:1;">${value}</div>
+      <div style="font-size:11px;color:#64748b;margin-top:4px;line-height:1.3;">${label}</div>
+    </div>`;
+
+  const kpisHtml = `
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:28px;">
+      ${kpiCard(totalMachines,  'equipos<br>inventariados', '#1e293b', '#f8fafc')}
+      ${kpiCard(withOffice,     'con licencia<br>Office', '#065f46', '#d1fae5')}
+      ${kpiCard(withCopilot,   'con<br>Copilot', '#6d28d9', '#ede9fe')}
+      ${withoutOffice > 0 ? kpiCard(withoutOffice, 'sin Office<br>detectado', '#92400e', '#fef3c7') : ''}
+      ${kpiCard(activeNow,     'sesión<br>activa ahora', '#1d4ed8', '#dbeafe')}
+      ${inactive90 > 0 ? kpiCard(inactive90, 'sin actividad<br>+90 días', '#991b1b', '#fee2e2') : ''}
+    </div>`;
+
+  // ── Equipos sin Office (sección de alertas) ───────────────────
+  const noOfficeMachines = allMachines.filter(([key, entry]) => {
+    // Solo incluir si tiene historial NAS (está en el radar) pero sin Office
+    if (entry.nasUsers.size === 0 && !deviceMap.has(key)) return false;
+    const dr = deviceMap.get(key);
+    const suites = suiteMap.get(key) ?? [];
+    return !dr?.office && suites.length === 0;
+  });
+
+  const noOfficeHtml = noOfficeMachines.length > 0 ? `
+    <div style="margin-bottom:24px;border:1px solid #fcd34d;border-radius:8px;overflow:hidden;background:#fffbeb;">
+      <div style="padding:9px 14px;border-bottom:1px solid #fcd34d;display:flex;align-items:center;gap:8px;">
+        <span style="font-size:14px;">⚠️</span>
+        <span style="font-weight:700;color:#92400e;font-size:13px;">Equipos sin Office detectado (${noOfficeMachines.length})</span>
+        <span style="font-size:11px;color:#b45309;margin-left:4px;">— requieren verificación de licencia</span>
+      </div>
+      <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;">
+        ${noOfficeMachines.map(([key, entry]) => {
+          const displayName = [...typedUsers.flatMap(u => [...(u.active_sessions ?? []), ...(u.login_history ?? [])]).map(h => h.machine)]
+            .find(n => n.toLowerCase() === key) ?? key;
+          const last = entry.lastAccess ? relativeTime(entry.lastAccess) : '—';
+          return `<span style="background:#fff;border:1px solid #fcd34d;border-radius:6px;padding:4px 10px;font-size:11px;font-family:monospace;color:#78350f;">${displayName} <span style="color:#b45309;font-style:italic;">${last}</span></span>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
+  // ── Usuarios NAS sin máquina registrada ───────────────────────
+  // Usuarios que tienen historial NAS pero ninguna de sus máquinas aparece en machineIndex
+  const ghostUsers = typedUsers.filter(u => {
+    const hasHistory = (u.login_history ?? []).length > 0 || (u.active_sessions ?? []).length > 0;
+    if (!hasHistory) return false;
+    const machines = [
+      ...(u.active_sessions ?? []).map(s => s.machine),
+      ...(u.login_history ?? []).map(h => h.machine),
+    ].filter(isValidMachine);
+    // Si todas sus máquinas son desconocidas (no están en deviceMap ni suiteMap)
+    return machines.length > 0 && machines.every(m => !deviceMap.has(m.toLowerCase()) && !suiteMap.has(m.toLowerCase()));
+  });
+
+  const ghostUsersHtml = ghostUsers.length > 0 ? `
+    <div style="margin-bottom:24px;border:1px solid #fca5a5;border-radius:8px;overflow:hidden;background:#fff1f2;">
+      <div style="padding:9px 14px;border-bottom:1px solid #fca5a5;display:flex;align-items:center;gap:8px;">
+        <span style="font-size:14px;">🔍</span>
+        <span style="font-weight:700;color:#991b1b;font-size:13px;">Usuarios sin equipo inventariado (${ghostUsers.length})</span>
+        <span style="font-size:11px;color:#b91c1c;margin-left:4px;">— acceden al NAS desde máquinas no registradas</span>
+      </div>
+      <div style="padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;">
+        ${ghostUsers.map(u => {
+          const lastTs = [...(u.login_history ?? [])].sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0]?.timestamp ?? '';
+          const machines = [...new Set([...(u.active_sessions ?? []), ...(u.login_history ?? [])].map(s => s.machine).filter(isValidMachine))];
+          return `<span style="background:#fff;border:1px solid #fca5a5;border-radius:6px;padding:4px 10px;font-size:11px;color:#7f1d1d;">
+            <strong>${u.name}</strong>${u.comment ? ` <span style="color:#b91c1c;">(${u.comment})</span>` : ''}
+            ${machines.length ? `<span style="color:#94a3b8;margin-left:4px;">vía ${machines.slice(0,2).join(', ')}${machines.length > 2 ? '…' : ''}</span>` : ''}
+            ${lastTs ? `<span style="color:#b91c1c;margin-left:4px;font-style:italic;">${relativeTime(lastTs)}</span>` : ''}
+          </span>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
   const th = (label: string, center = false) =>
     `<th style="padding:5px 10px;text-align:${center ? 'center' : 'left'};font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">${label}</th>`;
 
@@ -1100,15 +1208,24 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
       ? `<div style="font-size:10px;color:#64748b;">${localUser}</div>`
       : '';
 
-    return `<tr style="border-top:1px solid #f3f4f6;">
+    const isInactive90 = entry.lastAccess && (Date.now() - new Date(entry.lastAccess).getTime()) > 90 * 86400000;
+    const noOfficeFlag = !officeText;
+    const rowBg = isInactive90 ? 'background:#fff7f7;' : '';
+
+    const lastAccessHtml = entry.lastAccess
+      ? `<span style="font-weight:600;color:${isInactive90 ? '#dc2626' : '#475569'};">${relativeTime(entry.lastAccess)}</span>
+         <div style="font-size:9px;color:#94a3b8;">${entry.lastAccess.slice(0, 10)}</div>`
+      : '—';
+
+    return `<tr style="border-top:1px solid #f3f4f6;${rowBg}">
       <td style="padding:5px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#1e293b;white-space:nowrap;">${activeIndicator}${displayName}${drTs}</td>
       <td style="padding:5px 10px;font-size:10px;color:#64748b;font-family:monospace;white-space:nowrap;">${ip || '—'}</td>
       <td style="padding:5px 10px;font-size:11px;color:#374151;">${m365 || '<span style="color:#d1d5db;">—</span>'}${localUserHtml}</td>
       <td style="padding:5px 10px;font-size:11px;">${nasUsersList || '<span style="color:#d1d5db;font-size:10px;">—</span>'}</td>
       <td style="padding:5px 10px;font-size:10px;color:#64748b;">${os || '—'}</td>
-      <td style="padding:5px 10px;font-size:11px;color:#374151;">${officeText || '<span style="color:#d1d5db;">—</span>'}</td>
+      <td style="padding:5px 10px;font-size:11px;${noOfficeFlag ? 'color:#d97706;font-style:italic;' : 'color:#374151;'}">${officeText || 'sin Office'}</td>
       <td style="padding:5px 10px;text-align:center;">${hasCopilot ? '<span style="background:#ede9fe;color:#6d28d9;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:700;">✓</span>' : '<span style="color:#e2e8f0;">—</span>'}</td>
-      <td style="padding:5px 10px;font-size:10px;color:#94a3b8;white-space:nowrap;">${entry.lastAccess ? entry.lastAccess.slice(0, 16) : '—'}</td>
+      <td style="padding:5px 10px;font-size:10px;white-space:nowrap;">${lastAccessHtml}</td>
     </tr>`;
   }).join('');
 
@@ -1144,6 +1261,13 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
         <div>${dateStr}</div>
       </div>
     </div>
+
+    <!-- Resumen ejecutivo -->
+    ${kpisHtml}
+
+    <!-- Alertas -->
+    ${noOfficeHtml}
+    ${ghostUsersHtml}
 
     <!-- Carpetas -->
     <h2 style="font-size:14px;font-weight:700;color:#1e293b;margin:0 0 14px;text-transform:uppercase;letter-spacing:.5px;">Carpetas Compartidas</h2>
