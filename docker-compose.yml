@@ -20,6 +20,36 @@ services:
       timeout: 5s
       retries: 3
 
+  upload-service:
+    build:
+      context: ./services/upload-service
+    image: upload-service:latest
+    container_name: upload-service
+    restart: unless-stopped
+    expose:
+      - "3030"
+    environment:
+      - UPLOAD_DIR=/uploads
+      - SUPABASE_URL=${VITE_SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+    volumes:
+      - email_audit_uploads:/uploads
+    networks:
+      - npm_default
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3030/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  email_audit_uploads:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /srv/service-catalog/email-audit
+
 networks:
   npm_default:
     external: true

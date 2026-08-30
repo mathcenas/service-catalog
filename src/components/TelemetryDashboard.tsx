@@ -1016,8 +1016,13 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
 
   const typedUsers = users as (AclUser & { active_sessions?: { machine: string; ip: string }[]; login_history?: { machine: string; timestamp: string; ip: string }[] })[];
 
-  // Valid machine name: only alphanumerics, hyphens, underscores and dots (Windows hostnames / IPs)
-  const isValidMachine = (m: string) => m.length > 0 && /^[\w.\-]+$/.test(m);
+  // Valid machine name: Windows hostname (alphanum+hyphen, max 63 chars) or IPv4.
+  // Rejects UUIDs, user-agents, empty strings, and anything with spaces/slashes.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const isValidMachine = (m: string) =>
+    m.length > 0 && m.length <= 63 && /^[\w.\-]+$/.test(m) && !UUID_RE.test(m);
+  // Also filter UUID-looking NAS usernames (Entra device auth artifacts)
+  const isValidNasUser = (name: string) => name.length > 0 && !UUID_RE.test(name);
 
   // Index active sessions
   typedUsers.forEach(u => {
@@ -1071,37 +1076,29 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
   };
 
   // ── KPIs para resumen ejecutivo ───────────────────────────────
-  const totalMachines  = allMachines.length;
-  const withOffice     = allMachines.filter(([key]) => {
+  const totalMachines = allMachines.length;
+  const withOffice    = allMachines.filter(([key]) => {
     const dr = deviceMap.get(key);
     const suites = suiteMap.get(key) ?? [];
     return !!(dr?.office || suites.length);
   }).length;
-  const withCopilot    = allMachines.filter(([key]) => {
-    const dr = deviceMap.get(key);
-    const meRow = softwareFiles.filter(f => f.type === 'managengine').flatMap(f => f.rows).find(r => r.computer.toLowerCase() === key);
-    return dr?.hasCopilot ?? meRow?.hasCopilot ?? false;
-  }).length;
-  const withoutOffice  = totalMachines - withOffice;
-  const activeNow      = allMachines.filter(([, e]) => e.isActive).length;
-  const inactive90     = allMachines.filter(([, e]) => {
+  const withoutOffice = totalMachines - withOffice;
+  const inactive90    = allMachines.filter(([, e]) => {
     if (!e.lastAccess) return false;
     return (Date.now() - new Date(e.lastAccess).getTime()) > 90 * 86400000;
   }).length;
 
   const kpiCard = (value: number | string, label: string, color: string, bg: string) =>
-    `<div style="flex:1;min-width:120px;background:${bg};border-radius:10px;padding:14px 18px;text-align:center;">
-      <div style="font-size:26px;font-weight:800;color:${color};line-height:1;">${value}</div>
+    `<div style="flex:1;min-width:110px;background:${bg};border-radius:10px;padding:12px 16px;text-align:center;">
+      <div style="font-size:28px;font-weight:800;color:${color};line-height:1;">${value}</div>
       <div style="font-size:11px;color:#64748b;margin-top:4px;line-height:1.3;">${label}</div>
     </div>`;
 
   const kpisHtml = `
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:28px;">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px;">
       ${kpiCard(totalMachines,  'equipos<br>inventariados', '#1e293b', '#f8fafc')}
       ${kpiCard(withOffice,     'con licencia<br>Office', '#065f46', '#d1fae5')}
-      ${kpiCard(withCopilot,   'con<br>Copilot', '#6d28d9', '#ede9fe')}
       ${withoutOffice > 0 ? kpiCard(withoutOffice, 'sin Office<br>detectado', '#92400e', '#fef3c7') : ''}
-      ${kpiCard(activeNow,     'sesión<br>activa ahora', '#1d4ed8', '#dbeafe')}
       ${inactive90 > 0 ? kpiCard(inactive90, 'sin actividad<br>+90 días', '#991b1b', '#fee2e2') : ''}
     </div>`;
 
@@ -1164,8 +1161,8 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
       </div>
     </div>` : '';
 
-  const th = (label: string, center = false) =>
-    `<th style="padding:5px 10px;text-align:${center ? 'center' : 'left'};font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">${label}</th>`;
+  const th = (label: string) =>
+    `<th style="padding:4px 8px;text-align:left;font-size:10px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">${label}</th>`;
 
   const machineRows = allMachines.map(([key, entry]) => {
     const displayName = [...typedUsers.flatMap(u => [...(u.active_sessions ?? []), ...(u.login_history ?? [])]).map(h => h.machine), ...Array.from(suiteMap.keys())]
@@ -1193,39 +1190,33 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
     // Usuario Windows local (solo disponible desde device report)
     const localUser = dr?.localUser || '';
 
-    const nasUsersList = Array.from(entry.nasUsers.entries()).map(([name, comment]) =>
-      `<span style="display:inline-block;background:#f1f5f9;color:#334155;padding:1px 6px;border-radius:3px;font-size:10px;margin:1px;">${name}${comment ? ` <span style="color:#94a3b8;">(${comment})</span>` : ''}</span>`
-    ).join('');
-
-    const activeIndicator = entry.isActive
-      ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;margin-right:5px;vertical-align:middle;"></span>`
-      : '';
-
-    // Timestamp del último reporte del equipo (device-report.ps1)
-    const drTs = dr?.timestamp ? `<div style="font-size:9px;color:#94a3b8;margin-top:1px;">reporte: ${dr.timestamp.slice(0, 16)}</div>` : '';
-
-    const localUserHtml = localUser
-      ? `<div style="font-size:10px;color:#64748b;">${localUser}</div>`
-      : '';
+    // Filtrar usuarios NAS con nombres tipo UUID (auth de dispositivo Entra)
+    const nasUsersList = Array.from(entry.nasUsers.entries())
+      .filter(([name]) => isValidNasUser(name))
+      .map(([name, comment]) =>
+        `<span style="display:inline-block;background:#f1f5f9;color:#334155;padding:1px 5px;border-radius:3px;font-size:10px;margin:1px;">${name}${comment ? ` <span style="color:#94a3b8;">(${comment})</span>` : ''}</span>`
+      ).join('');
 
     const isInactive90 = entry.lastAccess && (Date.now() - new Date(entry.lastAccess).getTime()) > 90 * 86400000;
-    const noOfficeFlag = !officeText;
     const rowBg = isInactive90 ? 'background:#fff7f7;' : '';
 
     const lastAccessHtml = entry.lastAccess
       ? `<span style="font-weight:600;color:${isInactive90 ? '#dc2626' : '#475569'};">${relativeTime(entry.lastAccess)}</span>
          <div style="font-size:9px;color:#94a3b8;">${entry.lastAccess.slice(0, 10)}</div>`
-      : '—';
+      : '<span style="color:#d1d5db;">—</span>';
+
+    const m365Line = m365 || localUser
+      ? `${m365 || ''}${localUser && m365 ? `<div style="font-size:10px;color:#94a3b8;">${localUser}</div>` : localUser ? `<span style="font-size:11px;color:#374151;">${localUser}</span>` : ''}`
+      : '<span style="color:#d1d5db;">—</span>';
 
     return `<tr style="border-top:1px solid #f3f4f6;${rowBg}">
-      <td style="padding:5px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#1e293b;white-space:nowrap;">${activeIndicator}${displayName}${drTs}</td>
-      <td style="padding:5px 10px;font-size:10px;color:#64748b;font-family:monospace;white-space:nowrap;">${ip || '—'}</td>
-      <td style="padding:5px 10px;font-size:11px;color:#374151;">${m365 || '<span style="color:#d1d5db;">—</span>'}${localUserHtml}</td>
-      <td style="padding:5px 10px;font-size:11px;">${nasUsersList || '<span style="color:#d1d5db;font-size:10px;">—</span>'}</td>
-      <td style="padding:5px 10px;font-size:10px;color:#64748b;">${os || '—'}</td>
-      <td style="padding:5px 10px;font-size:11px;${noOfficeFlag ? 'color:#d97706;font-style:italic;' : 'color:#374151;'}">${officeText || 'sin Office'}</td>
-      <td style="padding:5px 10px;text-align:center;">${hasCopilot ? '<span style="background:#ede9fe;color:#6d28d9;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:700;">✓</span>' : '<span style="color:#e2e8f0;">—</span>'}</td>
-      <td style="padding:5px 10px;font-size:10px;white-space:nowrap;">${lastAccessHtml}</td>
+      <td style="padding:3px 8px;font-family:monospace;font-size:11px;font-weight:700;color:#1e293b;white-space:nowrap;">${displayName}</td>
+      <td style="padding:3px 8px;font-size:10px;color:#64748b;font-family:monospace;white-space:nowrap;">${ip || '—'}</td>
+      <td style="padding:3px 8px;font-size:11px;color:#374151;">${m365Line}</td>
+      <td style="padding:3px 8px;font-size:11px;">${nasUsersList || '<span style="color:#d1d5db;font-size:10px;">—</span>'}</td>
+      <td style="padding:3px 8px;font-size:10px;color:#64748b;">${os || '—'}</td>
+      <td style="padding:3px 8px;font-size:11px;${!officeText ? 'color:#d97706;font-style:italic;' : 'color:#374151;'}">${officeText || 'sin Office'}</td>
+      <td style="padding:3px 8px;font-size:10px;white-space:nowrap;">${lastAccessHtml}</td>
     </tr>`;
   }).join('');
 
@@ -1282,7 +1273,7 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
     <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
       <table style="width:100%;border-collapse:collapse;">
         <thead><tr style="background:#f9fafb;">
-          ${th('Equipo')}${th('IP LAN')}${th('Usuario M365')}${th('Usuario NAS')}${th('OS')}${th('Office')}${th('Copilot', true)}${th('Último acceso NAS')}
+          ${th('Equipo')}${th('IP LAN')}${th('Usuario Windows / M365')}${th('Usuario NAS')}${th('OS')}${th('Office')}${th('Último acceso NAS')}
         </tr></thead>
         <tbody>${machineRows}</tbody>
       </table>
