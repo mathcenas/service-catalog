@@ -3,13 +3,15 @@ import { Auth } from './components/Auth';
 import { Dashboard } from './components/Dashboard';
 import { SharePage } from './pages/SharePage';
 import { AclReviewPage } from './pages/AclReviewPage';
+import { EmailAuditPage } from './pages/EmailAuditPage';
 
 function AppContent() {
   const { user, loading } = useAuth();
 
   const path = window.location.pathname;
-  const shareMatch = path.match(/^\/share\/([a-z0-9-]+)$/i);
-  const aclReviewMatch = path.match(/^\/acl-review\/([a-z0-9]+)$/i);
+  const shareMatch      = path.match(/^\/share\/([a-z0-9-]+)$/i);
+  const aclReviewMatch  = path.match(/^\/acl-review\/([a-z0-9]+)$/i);
+  const emailAuditMatch = path.match(/^\/email-audit\/([a-z0-9]+)$/i);
 
   if (shareMatch) {
     return <SharePage token={shareMatch[1]} />;
@@ -17,6 +19,10 @@ function AppContent() {
 
   if (aclReviewMatch) {
     return <AclReviewPage token={aclReviewMatch[1]} />;
+  }
+
+  if (emailAuditMatch) {
+    return <EmailAuditPage token={emailAuditMatch[1]} />;
   }
 
   if (loading) {
