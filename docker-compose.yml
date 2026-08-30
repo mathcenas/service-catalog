@@ -12,6 +12,8 @@ services:
       - "80"
     ports:
       - "${APP_PORT:-3020}:80"
+    volumes:
+      - /srv/service-catalog/email-audit:/usr/share/nginx/html/uploads:ro
     networks:
       - npm_default
     healthcheck:
@@ -33,7 +35,7 @@ services:
       - SUPABASE_URL=${VITE_SUPABASE_URL}
       - SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
     volumes:
-      - email_audit_uploads:/uploads
+      - /srv/service-catalog/email-audit:/uploads
     networks:
       - npm_default
     healthcheck:
@@ -41,14 +43,6 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-
-volumes:
-  email_audit_uploads:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /srv/service-catalog/email-audit
 
 networks:
   npm_default:
