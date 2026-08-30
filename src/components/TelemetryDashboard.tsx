@@ -1017,10 +1017,11 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
   const typedUsers = users as (AclUser & { active_sessions?: { machine: string; ip: string }[]; login_history?: { machine: string; timestamp: string; ip: string }[] })[];
 
   // Valid machine name: Windows hostname (alphanum+hyphen, max 63 chars) or IPv4.
-  // Rejects UUIDs, user-agents, empty strings, and anything with spaces/slashes.
+  // Rejects UUIDs, user-agents, IPs, empty strings, and anything with spaces/slashes.
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const IP_RE   = /^\d{1,3}(\.\d{1,3}){3}$/;
   const isValidMachine = (m: string) =>
-    m.length > 0 && m.length <= 63 && /^[\w.\-]+$/.test(m) && !UUID_RE.test(m);
+    m.length > 0 && m.length <= 63 && /^[\w.\-]+$/.test(m) && !UUID_RE.test(m) && !IP_RE.test(m);
   // Also filter UUID-looking NAS usernames (Entra device auth artifacts)
   const isValidNasUser = (name: string) => name.length > 0 && !UUID_RE.test(name);
 
@@ -1053,7 +1054,7 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
   });
 
   // Union with ManageEngine machines
-  suiteMap.forEach((_, key) => { if (!machineIndex.has(key)) machineIndex.set(key, { nasUsers: new Map(), lastAccess: '', ip: '', isActive: false }); });
+  suiteMap.forEach((_, key) => { if (isValidMachine(key) && !machineIndex.has(key)) machineIndex.set(key, { nasUsers: new Map(), lastAccess: '', ip: '', isActive: false }); });
 
   // Build unified rows — sort by machine name, active first
   const allMachines = Array.from(machineIndex.entries()).sort((a, b) => {
