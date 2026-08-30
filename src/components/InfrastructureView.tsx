@@ -40,8 +40,8 @@ export function InfrastructureView({ services, clients }: Props) {
       }))
       .filter(e => e.client)
       .sort((a, b) => {
-        const ca = a.client.name.toLowerCase();
-        const cb = b.client.name.toLowerCase();
+        const ca = a.client.company_name.toLowerCase();
+        const cb = b.client.company_name.toLowerCase();
         return ca !== cb ? ca.localeCompare(cb) : a.domain.localeCompare(b.domain);
       });
   }, [services, clientMap]);
@@ -54,7 +54,7 @@ export function InfrastructureView({ services, clients }: Props) {
       return (
         e.domain.toLowerCase().includes(q) ||
         e.service.name.toLowerCase().includes(q) ||
-        e.client.name.toLowerCase().includes(q) ||
+        e.client.company_name.toLowerCase().includes(q) ||
         (e.service.provider ?? '').toLowerCase().includes(q)
       );
     });
@@ -111,7 +111,7 @@ export function InfrastructureView({ services, clients }: Props) {
         >
           <option value="all">All clients</option>
           {activeClients.map(c => (
-            <option key={c.id} value={c.id}>{c.name}</option>
+            <option key={c.id} value={c.id}>{c.company_name}</option>
           ))}
         </select>
       </div>
@@ -139,7 +139,7 @@ export function InfrastructureView({ services, clients }: Props) {
               {filtered.map(({ service, client, domain }) => (
                 <tr key={service.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">
-                    {client.name}
+                    {client.company_name}
                   </td>
                   <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                     {service.name}
