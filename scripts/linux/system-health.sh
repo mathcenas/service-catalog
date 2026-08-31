@@ -1,6 +1,10 @@
 #!/bin/bash
 # =============================================================
 # system-health.sh — Métricas de hardware de VPS Linux
+#
+# ACTUALIZAR (Linux/NAS):
+#   curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/linux/system-health.sh \
+#     -o /usr/local/bin/system-health.sh && chmod +x /usr/local/bin/system-health.sh
 # Version: 1.0.0
 # al Service Catalog como heartbeat (source: system-health)
 # Correr cada hora via cron:

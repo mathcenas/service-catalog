@@ -1,6 +1,10 @@
 #!/bin/bash
 # =============================================================
 # report-backup.sh — Reporta un snapshot de rsnapshot/rsync
+#
+# ACTUALIZAR (Linux/NAS):
+#   curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/linux/report-backup.sh \
+#     -o /usr/local/bin/report-backup.sh && chmod +x /usr/local/bin/report-backup.sh
 # Uso: report-backup.sh <job_name> <exit_code> <snapshot_dir>
 # Ejemplo: report-backup.sh "OMV Daily" 0 /srv/uuid.../daily.0
 # Requiere: /etc/backup-ingest.env
