@@ -60,6 +60,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
       location: service.location,
       cloud_provider: service.cloud_provider,
       cloud_account_payer: service.cloud_account_payer,
+      ip_internal: service.ip_internal,
     };
     for (const [k, v] of Object.entries(spec)) {
       if (v !== null && v !== undefined) values[k] = v;
@@ -113,6 +114,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
       location: null,
       cloud_provider: null,
       cloud_account_payer: null,
+      ip_internal: null,
     };
     const specifications: Record<string, any> = {};
     for (const field of fields) {
@@ -165,7 +167,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
         rto: formData.rto || null,
         rpo: formData.rpo || null,
         maintenance_window: formData.maintenance_window || null,
-        ip_internal: formData.ip_internal || null,
+        ip_internal: columnUpdates.ip_internal ?? formData.ip_internal || null,
         ip_public: formData.ip_public || null,
         dns_record: formData.dns_record || null,
         paid_by: formData.paid_by || null,
@@ -476,12 +478,15 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
               Network / IPAM
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {/* ip_internal is shown in DynamicServiceFields for types that define it (e.g. Database) */}
+              {!getFieldsForType(currentTypeName).some(f => f.key === 'ip_internal') && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Internal IP</label>
                 <input type="text" value={formData.ip_internal} onChange={e => set('ip_internal', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none font-mono text-sm"
                   placeholder="192.168.1.10" />
               </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Public IP</label>
                 <input type="text" value={formData.ip_public} onChange={e => set('ip_public', e.target.value)}
