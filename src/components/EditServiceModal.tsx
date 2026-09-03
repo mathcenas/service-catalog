@@ -167,7 +167,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
         rto: formData.rto || null,
         rpo: formData.rpo || null,
         maintenance_window: formData.maintenance_window || null,
-        ip_internal: columnUpdates.ip_internal ?? formData.ip_internal || null,
+        ip_internal: columnUpdates.ip_internal ?? (formData.ip_internal || null),
         ip_public: formData.ip_public || null,
         dns_record: formData.dns_record || null,
         paid_by: formData.paid_by || null,
