@@ -2,6 +2,10 @@
 # system-health-server.ps1 — Windows Server: Hardware + Red + RDP
 # Schedulear en Task Scheduler cada 5 minutos
 # Requiere: config.ps1 en la misma carpeta
+#
+# ACTUALIZAR (PowerShell, correr como Admin):
+#   $dest = "C:\Scripts\system-health-server.ps1"
+#   Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/windows/system-health-server.ps1" -OutFile $dest
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"

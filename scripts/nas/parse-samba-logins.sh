@@ -1,6 +1,10 @@
 #!/bin/bash
 # =============================================================
 # parse-samba-logins.sh — Acumula historial de logins SMB desde syslog
+#
+# ACTUALIZAR (NAS):
+#   curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/nas/parse-samba-logins.sh \
+#     -o /usr/local/bin/parse-samba-logins.sh && chmod +x /usr/local/bin/parse-samba-logins.sh
 # Corre cada hora via cron antes que report-smb-acl.sh
 #
 # Cron sugerido:

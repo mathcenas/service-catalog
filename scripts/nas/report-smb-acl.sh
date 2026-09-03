@@ -1,6 +1,10 @@
 #!/bin/bash
 # =============================================================
 # report-smb-acl.sh — Snapshot de usuarios y permisos SMB en OMV
+#
+# ACTUALIZAR (NAS):
+#   curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/nas/report-smb-acl.sh \
+#     -o /usr/local/bin/report-smb-acl.sh && chmod +x /usr/local/bin/report-smb-acl.sh
 # Envía al Service Catalog para visualización y exportación.
 #
 # Usar las mismas variables que backup-ingest.env:

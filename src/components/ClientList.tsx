@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react';
-import { Mail, Phone, Building2, Share2, Search, MoreHorizontal, Pencil, Trash2, Server, ExternalLink, AppWindow } from 'lucide-react';
+import { Mail, Phone, Building2, Share2, Search, MoreHorizontal, Pencil, Trash2, Server, ExternalLink, AppWindow, FileText } from 'lucide-react';
 import { Client, Service, supabase } from '../lib/supabase';
 import { EditClientModal } from './EditClientModal';
 import { ShareTokenModal } from './ShareTokenModal';
 import { ClientAppsManager } from './ClientAppsManager';
+import { ClientBriefModal } from './ClientBriefModal';
 
 type Props = {
   clients: Client[];
@@ -19,6 +20,7 @@ export function ClientList({ clients, services, onUpdate }: Props) {
   const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Inactive' | 'Pending'>('all');
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [expandedApps, setExpandedApps] = useState<string | null>(null);
+  const [briefClient, setBriefClient] = useState<Client | null>(null);
 
   const serviceCountMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -163,6 +165,13 @@ export function ClientList({ clients, services, onUpdate }: Props) {
                     <AppWindow className="w-4 h-4" />
                   </button>
                   <button
+                    onClick={() => setBriefClient(client)}
+                    className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                    title="Generar resumen"
+                  >
+                    <FileText className="w-4 h-4" />
+                  </button>
+                  <button
                     onClick={() => setSharingClient(client)}
                     className="p-2 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
                     title="Share portal"
@@ -243,6 +252,13 @@ export function ClientList({ clients, services, onUpdate }: Props) {
         <ShareTokenModal
           client={sharingClient}
           onClose={() => setSharingClient(null)}
+        />
+      )}
+
+      {briefClient && (
+        <ClientBriefModal
+          client={briefClient}
+          onClose={() => setBriefClient(null)}
         />
       )}
     </>

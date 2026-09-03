@@ -1,13 +1,17 @@
 #!/bin/bash
 # =============================================================
 # system-health.sh — Métricas de hardware de VPS Linux
+#
+# ACTUALIZAR (Linux/NAS):
+#   curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/linux/system-health.sh \
+#     -o /usr/local/bin/system-health.sh && chmod +x /usr/local/bin/system-health.sh
 # Version: 1.0.0
 # al Service Catalog como heartbeat (source: system-health)
 # Correr cada hora via cron:
 #   0 * * * * /srv/scripts/system-health.sh
 # =============================================================
 
-SCRIPT_VERSION="1.1.0"
+SCRIPT_VERSION="1.2.0"
 
 # ---------- Cargar .env ----------
 # Orden: arg CLI → /etc/backup-ingest.env → $SCRIPT_DIR/.env
@@ -142,6 +146,98 @@ if command -v smbstatus >/dev/null 2>&1; then
     SMB_SESSIONS_JSON+="]"
   fi
 fi
+
+# ---------- DB checks ----------
+# Formato en .env: DB_1_INGEST_SECRET, DB_1_NAME, DB_1_HOST, DB_1_PORT, DB_1_TYPE
+# Tipos soportados: PostgreSQL, MySQL, MariaDB, Redis, MongoDB, MSSQL, (cualquier otro → nc)
+check_db() {
+  local host="$1" port="$2" engine="$3"
+  local t0 t1
+  t0=$(date +%s%3N)
+  case "${engine,,}" in
+    postgresql|postgres)
+      if command -v pg_isready >/dev/null 2>&1; then
+        pg_isready -h "$host" -p "$port" -t 3 >/dev/null 2>&1; local rc=$?
+      else
+        nc -z -w3 "$host" "$port" >/dev/null 2>&1; local rc=$?
+      fi ;;
+    mysql|mariadb)
+      if command -v mysqladmin >/dev/null 2>&1; then
+        mysqladmin ping -h "$host" -P "$port" --connect-timeout=3 >/dev/null 2>&1; local rc=$?
+      else
+        nc -z -w3 "$host" "$port" >/dev/null 2>&1; local rc=$?
+      fi ;;
+    redis)
+      if command -v redis-cli >/dev/null 2>&1; then
+        redis-cli -h "$host" -p "$port" --no-auth-warning PING >/dev/null 2>&1; local rc=$?
+      else
+        nc -z -w3 "$host" "$port" >/dev/null 2>&1; local rc=$?
+      fi ;;
+    *)
+      nc -z -w3 "$host" "$port" >/dev/null 2>&1; local rc=$? ;;
+  esac
+  t1=$(date +%s%3N)
+  echo "$rc $((t1 - t0))"
+}
+
+for i in $(seq 1 10); do
+  db_secret_var="DB_${i}_INGEST_SECRET"
+  db_secret="${!db_secret_var:-}"
+  [[ -z "$db_secret" ]] && break
+
+  db_service_id_var="DB_${i}_SERVICE_ID"
+  db_service_id="${!db_service_id_var:-}"
+  [[ -z "$db_service_id" ]] && { log "✗ db-check [DB $i] → falta DB_${i}_SERVICE_ID"; continue; }
+
+  db_name="${!("DB_${i}_NAME"):-DB $i}"
+  db_host="${!("DB_${i}_HOST"):-localhost}"
+  db_port="${!("DB_${i}_PORT"):-5432}"
+  db_type="${!("DB_${i}_TYPE"):-PostgreSQL}"
+
+  result=$(check_db "$db_host" "$db_port" "$db_type")
+  db_rc=$(echo "$result" | awk '{print $1}')
+  db_latency=$(echo "$result" | awk '{print $2}')
+
+  if [[ "$db_rc" == "0" ]]; then
+    db_status="ok"
+    db_message="Conectividad OK | ${db_name} (${db_host}:${db_port}) | ${db_latency}ms"
+  else
+    db_status="error"
+    db_message="Sin conexión | ${db_name} (${db_host}:${db_port})"
+  fi
+
+  DB_PAYLOAD=$(cat <<DBEOF
+{
+  "service_id": "$db_service_id",
+  "source": "db-check",
+  "status": "$db_status",
+  "message": "$db_message",
+  "payload": {
+    "db_name": "$db_name",
+    "db_host": "$db_host",
+    "db_port": $db_port,
+    "db_type": "$db_type",
+    "latency_ms": $db_latency,
+    "script_version": "$SCRIPT_VERSION"
+  }
+}
+DBEOF
+)
+
+  DB_HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+    -X POST "$HEARTBEAT_URL" \
+    -H "Content-Type: application/json" \
+    -H "apikey: $SUPABASE_ANON_KEY" \
+    -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+    -H "X-Ingest-Secret: $db_secret" \
+    -d "$DB_PAYLOAD")
+
+  if [[ "$DB_HTTP" == "200" || "$DB_HTTP" == "201" ]]; then
+    log "✓ db-check [${db_name}] → $db_status | $db_message"
+  else
+    log "✗ db-check [${db_name}] → HTTP $DB_HTTP"
+  fi
+done
 
 # ---------- Payload ----------
 PAYLOAD=$(cat <<EOF

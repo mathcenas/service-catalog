@@ -2,6 +2,10 @@
 # system-health.ps1 — Hardware + red + speedtest (opcional)
 # Schedulear en Task Scheduler cada 1 hora
 # Requiere: config.ps1 en la misma carpeta
+#
+# ACTUALIZAR (PowerShell, correr como Admin):
+#   $dest = "C:\Scripts\system-health.ps1"
+#   Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/windows/system-health.ps1" -OutFile $dest
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"

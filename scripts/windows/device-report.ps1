@@ -1,6 +1,10 @@
 ﻿# =============================================================
 # device-report.ps1 — Reporte de equipo para Service Catalog
 #
+# ACTUALIZAR (PowerShell):
+#   $dest = "\\NAS\IT\device-report.ps1"   # o donde lo tengas
+#   Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/windows/device-report.ps1" -OutFile $dest
+#
 # Recopila: hostname, IP LAN, usuario Windows, usuario M365,
 # usuario NAS, OS, Office/M365, Copilot.
 #

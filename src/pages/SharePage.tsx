@@ -155,7 +155,7 @@ export function SharePage({ token }: Props) {
 
         const [{ data: hbData }, { data: sysHbData }, { data: backupsData }, { data: uptimeData }] = await Promise.all([
           supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).eq('source', 'speedtest').gte('received_at', since48h).order('received_at', { ascending: true }),
-          supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder']).gte('received_at', new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
+          supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check']).gte('received_at', new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
           supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(50),
           supabase.from('uptime_events').select('id,service_id,monitor_name,event_type,message,duration_seconds,occurred_at').in('service_id', serviceIds).gte('occurred_at', since30d).order('occurred_at', { ascending: false }),
         ]);
@@ -182,7 +182,7 @@ export function SharePage({ token }: Props) {
       const serviceIds = (svcs || []).map((s: { id: string }) => s.id);
       if (serviceIds.length === 0) return;
       const [{ data: sysHbData }, { data: backupsData }] = await Promise.all([
-        supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).eq('source', 'system-health').gte('received_at', new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
+        supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check']).gte('received_at', new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
         supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(50),
       ]);
       if (sysHbData) setSystemHeartbeats(sysHbData);
@@ -782,6 +782,14 @@ function ServiceCatalog({ services, projects, getTypeName, getProjectName, expan
   services: Service[]; projects: Project[]; getTypeName: (id: string) => string; getProjectName: (id?: string) => string | null;
   expandedService: string | null; setExpandedService: (id: string | null) => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; systemHeartbeats: ServiceHeartbeat[];
 }) {
+  // latest db-check heartbeat per service
+  const latestDbCheck: Record<string, ServiceHeartbeat> = {};
+  for (const h of systemHeartbeats) {
+    if (h.source !== 'db-check') continue;
+    if (!latestDbCheck[h.service_id] || h.received_at > latestDbCheck[h.service_id].received_at) {
+      latestDbCheck[h.service_id] = h;
+    }
+  }
   const [showCosts, setShowCosts] = useState(false);
 
   if (services.length === 0) {
@@ -805,7 +813,8 @@ function ServiceCatalog({ services, projects, getTypeName, getProjectName, expan
       expanded={expandedService === s.id} onToggle={() => setExpandedService(expandedService === s.id ? null : s.id)}
       heartbeats={heartbeats.filter(h => h.service_id === s.id)}
       backups={backups.filter(b => b.service_id === s.id)}
-      latestHealth={systemHeartbeats.find(h => h.service_id === s.id) ?? null}
+      latestHealth={systemHeartbeats.find(h => h.service_id === s.id && h.source !== 'db-check') ?? null}
+      latestDbCheck={latestDbCheck[s.id] ?? null}
       showCosts={showCosts} />
   ));
 
@@ -862,8 +871,8 @@ function HealthDot({ hb }: { hb: ServiceHeartbeat | null }) {
   );
 }
 
-function ServiceCard({ service, typeName, projectName, expanded, onToggle, heartbeats, backups, latestHealth, showCosts }: {
-  service: Service; typeName: string; projectName: string | null; expanded: boolean; onToggle: () => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; latestHealth: ServiceHeartbeat | null; showCosts: boolean;
+function ServiceCard({ service, typeName, projectName, expanded, onToggle, heartbeats, backups, latestHealth, latestDbCheck, showCosts }: {
+  service: Service; typeName: string; projectName: string | null; expanded: boolean; onToggle: () => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; latestHealth: ServiceHeartbeat | null; latestDbCheck: ServiceHeartbeat | null; showCosts: boolean;
 }) {
   const title = service.business_name || service.name;
   const desc = service.business_description || service.description;
@@ -951,12 +960,12 @@ function ServiceCard({ service, typeName, projectName, expanded, onToggle, heart
         </button>
       </div>
 
-      {expanded && <TechnicalDetails service={service} heartbeats={heartbeats} backups={backups} showCosts={showCosts} />}
+      {expanded && <TechnicalDetails service={service} heartbeats={heartbeats} backups={backups} latestDbCheck={latestDbCheck} showCosts={showCosts} />}
     </div>
   );
 }
 
-function TechnicalDetails({ service, heartbeats, backups, showCosts }: { service: Service; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; showCosts: boolean }) {
+function TechnicalDetails({ service, heartbeats, backups, latestDbCheck, showCosts }: { service: Service; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; latestDbCheck: ServiceHeartbeat | null; showCosts: boolean }) {
   const specs = service.specifications || {};
   const hasSpecs = !!(specs.cpu || specs.ram || specs.storage || specs.bandwidth);
 
@@ -1016,9 +1025,49 @@ function TechnicalDetails({ service, heartbeats, backups, showCosts }: { service
         </div>
       )}
 
+      {latestDbCheck && <DbCheckStatus hb={latestDbCheck} />}
+
       {backups.length > 0 && <BackupHistory backups={backups} />}
 
       {heartbeats.length > 0 && <SpeedChart heartbeats={heartbeats} />}
+    </div>
+  );
+}
+
+function DbCheckStatus({ hb }: { hb: ServiceHeartbeat }) {
+  const p = hb.payload as any;
+  const ageMs = Date.now() - new Date(hb.received_at).getTime();
+  const stale = ageMs > 2 * 60 * 60 * 1000; // >2h without update
+
+  const color = stale           ? 'text-gray-400'
+              : hb.status === 'ok'      ? 'text-emerald-600 dark:text-emerald-400'
+              : hb.status === 'warning' ? 'text-amber-600 dark:text-amber-400'
+              : 'text-red-600 dark:text-red-400';
+
+  const dot = stale           ? 'bg-gray-300'
+            : hb.status === 'ok'      ? 'bg-emerald-500'
+            : hb.status === 'warning' ? 'bg-amber-500'
+            : 'bg-red-500';
+
+  const latency: number | undefined = p?.latency_ms;
+
+  return (
+    <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+      <div className="flex items-center gap-2">
+        <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
+        <span className={`text-xs font-semibold ${color}`}>
+          {stale ? 'Sin datos recientes' : hb.status === 'ok' ? 'Conectividad OK' : hb.status === 'warning' ? 'Advertencia' : 'Sin conexión'}
+        </span>
+        {latency != null && !stale && (
+          <span className="text-[11px] text-gray-400">{latency} ms</span>
+        )}
+        <span className="text-[11px] text-gray-400 ml-auto">
+          {new Date(hb.received_at).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+        </span>
+      </div>
+      {hb.message && (
+        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 ml-4">{hb.message}</p>
+      )}
     </div>
   );
 }
