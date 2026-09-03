@@ -189,10 +189,10 @@ for i in $(seq 1 10); do
   db_service_id="${!db_service_id_var:-}"
   [[ -z "$db_service_id" ]] && { log "✗ db-check [DB $i] → falta DB_${i}_SERVICE_ID"; continue; }
 
-  db_name="${!("DB_${i}_NAME"):-DB $i}"
-  db_host="${!("DB_${i}_HOST"):-localhost}"
-  db_port="${!("DB_${i}_PORT"):-5432}"
-  db_type="${!("DB_${i}_TYPE"):-PostgreSQL}"
+  db_name_var="DB_${i}_NAME";  db_name="${!db_name_var:-DB $i}"
+  db_host_var="DB_${i}_HOST";  db_host="${!db_host_var:-localhost}"
+  db_port_var="DB_${i}_PORT";  db_port="${!db_port_var:-5432}"
+  db_type_var="DB_${i}_TYPE";  db_type="${!db_type_var:-PostgreSQL}"
 
   result=$(check_db "$db_host" "$db_port" "$db_type")
   db_rc=$(echo "$result" | awk '{print $1}')
