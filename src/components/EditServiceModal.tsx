@@ -504,6 +504,10 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none" />
           </div>
 
+          {currentTypeName === 'Database' && (
+            <DbMonitoringPanel service={service} typeValues={typeValues} />
+          )}
+
           <IngestSecretPanel serviceId={service.id} currentSecret={service.ingest_secret} />
 
           <div className="flex gap-3 pt-2">
@@ -518,6 +522,70 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+function DbMonitoringPanel({ service, typeValues }: { service: Service; typeValues: Record<string, any> }) {
+  const [copied, setCopied] = useState(false);
+
+  const host   = service.ip_internal || typeValues.ip_internal || '';
+  const port   = service.specifications?.db_port ?? typeValues.db_port ?? '';
+  const engine = (service.specifications?.db_engine ?? typeValues.db_engine ?? '') as string;
+  const secret = service.ingest_secret || '';
+
+  // Determine which tool the script will use
+  const toolHint = engine.toLowerCase().includes('postgres') ? 'pg_isready'
+                 : engine.toLowerCase().includes('mysql') || engine.toLowerCase().includes('mariadb') ? 'mysqladmin ping'
+                 : engine.toLowerCase().includes('redis') ? 'redis-cli ping'
+                 : 'nc -z';
+
+  if (!secret) {
+    return (
+      <div className="border border-amber-200 bg-amber-50 rounded-lg p-4 text-sm text-amber-700">
+        Generá un Ingest Secret primero para poder activar el monitoreo de esta DB.
+      </div>
+    );
+  }
+
+  // Suggest next index: find next DB_N not yet in use (simple: just say DB_1)
+  const snippet = [
+    `# ${service.name} — agregar en /etc/backup-ingest.env`,
+    `DB_1_SERVICE_ID="${service.id}"`,
+    `DB_1_INGEST_SECRET="${secret}"`,
+    `DB_1_NAME="${service.name}"`,
+    host ? `DB_1_HOST="${host}"` : `DB_1_HOST="localhost"`,
+    port ? `DB_1_PORT="${port}"` : `# DB_1_PORT="5432"`,
+    engine ? `DB_1_TYPE="${engine}"` : `# DB_1_TYPE="PostgreSQL"`,
+  ].join('\n');
+
+  const copy = () => {
+    navigator.clipboard.writeText(snippet);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="border border-gray-200 rounded-lg p-4">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <label className="text-sm font-medium text-gray-700">DB Monitoring</label>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Agregá estas variables al <code className="bg-gray-100 px-1 rounded">.env</code> del servidor donde corre <code className="bg-gray-100 px-1 rounded">system-health.sh</code>.
+            El script usará <strong>{toolHint}</strong> para chequear conectividad.
+          </p>
+        </div>
+        <button type="button" onClick={copy}
+          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-50 shrink-0">
+          {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+          {copied ? 'Copiado' : 'Copiar'}
+        </button>
+      </div>
+      <pre className="bg-gray-50 rounded-md px-3 py-2 text-xs font-mono text-gray-600 whitespace-pre overflow-x-auto">{snippet}</pre>
+      <p className="text-xs text-gray-400 mt-2">
+        Si tenés más de una DB, usá <code className="bg-gray-100 px-1 rounded">DB_2_*</code>, <code className="bg-gray-100 px-1 rounded">DB_3_*</code>, etc.
+        El heartbeat aparecerá en el portal del cliente bajo este servicio.
+      </p>
     </div>
   );
 }
