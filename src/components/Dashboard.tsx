@@ -19,6 +19,7 @@ import { SupportHoursManager } from './SupportHoursManager';
 import { InfrastructureView } from './InfrastructureView';
 import { SoftwareInventoryView } from './SoftwareInventoryView';
 import { EmailAuditAdminView } from './EmailAuditAdminView';
+import { MonthlySummaryView } from './MonthlySummaryView';
 
 type Stats = {
   totalClients: number;
@@ -31,7 +32,7 @@ type Stats = {
 
 export function Dashboard() {
   const { signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'projects' | 'services' | 'payments' | 'licenses' | 'roadmap' | 'hours' | 'telemetry' | 'infrastructure' | 'software' | 'email_audit' | 'data' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'projects' | 'services' | 'payments' | 'licenses' | 'roadmap' | 'hours' | 'monthly_summary' | 'telemetry' | 'infrastructure' | 'software' | 'email_audit' | 'data' | 'settings'>('dashboard');
   const [stats, setStats] = useState<Stats>({
     totalClients: 0,
     activeClients: 0,
@@ -146,8 +147,9 @@ export function Dashboard() {
     { id: 'payments',  label: 'Payments',  icon: CreditCard },
     { id: 'licenses',  label: 'Licenses',  icon: FileText },
     { id: 'roadmap',   label: 'Roadmap',   icon: Rocket },
-    { id: 'hours',     label: 'Hours',     icon: Clock },
-    { id: 'telemetry',       label: 'Telemetry',      icon: Activity },
+    { id: 'hours',          label: 'Hours',           icon: Clock },
+    { id: 'monthly_summary', label: 'Monthly Summary', icon: CheckCircle2 },
+    { id: 'telemetry',       label: 'Telemetry',       icon: Activity },
     { id: 'infrastructure',  label: 'Infrastructure', icon: Globe },
     { id: 'software',        label: 'Software',       icon: MonitorSmartphone },
     { id: 'email_audit',     label: 'Email Audit',    icon: Mail },
@@ -478,6 +480,10 @@ export function Dashboard() {
 
         {activeTab === 'hours' && (
           <SupportHoursManager clients={clients} services={services} />
+        )}
+
+        {activeTab === 'monthly_summary' && (
+          <MonthlySummaryView clients={clients} services={services} />
         )}
 
         {activeTab === 'telemetry' && (
