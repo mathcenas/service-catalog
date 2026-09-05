@@ -15,7 +15,14 @@ Deno.serve(async (req: Request) => {
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
   const FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support <alerts@cenas-support.com>";
 
-  if (!RESEND_API_KEY) {
+  // Preview mode: return HTML without sending
+  let previewMode = false;
+  try {
+    const body = await req.clone().json();
+    if (body?.preview === true) previewMode = true;
+  } catch {}
+
+  if (!RESEND_API_KEY && !previewMode) {
     return new Response(JSON.stringify({ error: "RESEND_API_KEY not configured" }), { status: 500 });
   }
 
@@ -104,6 +111,28 @@ Deno.serve(async (req: Request) => {
       </tr>`;
     }).join('');
 
+    // Disk SMART health (from latest system-health heartbeat with disk_smart array)
+    const diskSmartRows = Object.values(healthMap).flatMap((h: any) => {
+      const svc = serviceList.find((s: any) => s.id === h.service_id);
+      const svcName = svc?.business_name || svc?.name || h.service_id;
+      const disks: any[] = Array.isArray(h.payload?.disk_smart) ? h.payload.disk_smart : [];
+      return disks.map((d: any) => {
+        const statusColor = d.status === 'ok' ? '#22c55e' : d.status === 'warning' ? '#f59e0b' : '#ef4444';
+        const details: string[] = [];
+        if (d.temp_c != null) details.push(`${d.temp_c}°C`);
+        if (d.power_on_hours != null) details.push(`${Math.round(d.power_on_hours / 24 / 365 * 10) / 10}yr`);
+        if (d.pct_used != null) details.push(`${d.pct_used}% usado`);
+        if (d.reallocated_sectors != null && d.reallocated_sectors > 0) details.push(`⚠ ${d.reallocated_sectors} sect. reasig.`);
+        return `<tr>
+          <td style="padding:5px 8px;font-size:12px;color:#1e293b;">${svcName}</td>
+          <td style="padding:5px 8px;font-size:12px;color:#64748b;font-family:monospace;">${d.dev || ''} <span style="background:#f1f5f9;padding:1px 5px;border-radius:3px;font-size:11px;">${d.type || ''}</span></td>
+          <td style="padding:5px 8px;font-size:12px;color:#64748b;max-width:160px;">${d.model || '—'}</td>
+          <td style="padding:5px 8px;font-size:12px;color:${statusColor};font-weight:600;">${(d.smart_health || d.status || '').toUpperCase()}</td>
+          <td style="padding:5px 8px;font-size:12px;color:#64748b;">${details.join(' · ')}</td>
+        </tr>`;
+      });
+    }).join('');
+
     // Upcoming renewals (60 days)
     const renewalCycles = new Set(['Annually', 'Biennially', 'Semi-Annually', 'One-Time']);
     const renewals = serviceList
@@ -152,6 +181,7 @@ Deno.serve(async (req: Request) => {
         <p style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;">Weekly Summary</p>
         <h1 style="font-size:22px;font-weight:700;color:#0f172a;margin:0 0 24px;">${weekLabel}</h1>
 
+        ${diskSmartRows ? section('Disk Health (SMART)', tableWrap(diskSmartRows, ['Servidor', 'Disco', 'Modelo', 'Estado', 'Detalles'])) : ''}
         ${section('Backups (last 7 days)',
           backupRows ? tableWrap(backupRows, ['Service', 'Client', 'Last Backup']) : '',
           backupRows ? undefined : 'No backup-monitored services.'
@@ -166,6 +196,13 @@ Deno.serve(async (req: Request) => {
         </p>
       </div>
     </div>`;
+
+    if (previewMode) {
+      return new Response(JSON.stringify({ html }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
     await fetch("https://api.resend.com/emails", {
       method: "POST",
