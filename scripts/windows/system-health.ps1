@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.0.0"
+$SCRIPT_VERSION = "1.1.0"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -53,6 +53,80 @@ $hwStatus = if   ($diskUsePct -gt 90 -or $ramUsePct -gt 92 -or $cpuUsage -gt 95)
             elseif ($diskUsePct -gt 75 -or $ramUsePct -gt 80 -or $cpuUsage -gt 80) { "warning" }
             else { "success" }
 
+# ---------- SMART (salud de discos físicos) ----------
+$diskSmartList = @()
+try {
+    $physDisks = Get-PhysicalDisk -ErrorAction Stop
+    foreach ($pd in $physDisks) {
+        $devType = switch ($pd.MediaType) {
+            'SSD'           { 'SSD' }
+            'HDD'           { 'HDD' }
+            'SCM'           { 'NVMe' }
+            'Unspecified'   { if ($pd.BusType -eq 'NVMe') { 'NVMe' } else { 'HDD' } }
+            default         { if ($pd.BusType -eq 'NVMe') { 'NVMe' } else { $pd.MediaType } }
+        }
+
+        # Salud SMART via WMI (requiere Storage module — disponible en Win 8+ / Server 2012+)
+        $smartStatus  = $pd.HealthStatus   # Healthy / Warning / Unhealthy
+        $opStatus     = $pd.OperationalStatus
+
+        # Temperatura via MSFT_StorageReliabilityCounter (Win 10+/Server 2016+)
+        $tempC        = $null
+        $pohours      = $null
+        $readErrors   = $null
+        $writeErrors  = $null
+        $wearLevel    = $null
+        try {
+            $rel = Get-StorageReliabilityCounter -PhysicalDisk $pd -ErrorAction Stop
+            if ($rel.Temperature -gt 0) { $tempC    = [int]$rel.Temperature }
+            if ($rel.PowerOnHours -gt 0){ $pohours  = [int]$rel.PowerOnHours }
+            if ($null -ne $rel.ReadErrorsUncorrected) { $readErrors  = [int]$rel.ReadErrorsUncorrected }
+            if ($null -ne $rel.WriteErrorsUncorrected){ $writeErrors = [int]$rel.WriteErrorsUncorrected }
+            if ($null -ne $rel.Wear -and $rel.Wear -ge 0) { $wearLevel = [int]$rel.Wear }
+        } catch {}
+
+        # Capacidad legible
+        $capGB = if ($pd.Size -gt 0) { [math]::Round($pd.Size / 1GB, 0) } else { $null }
+        $capStr = if ($capGB) { "${capGB} GB" } else { "" }
+
+        # Determinar estado
+        $dStatus = switch ($smartStatus) {
+            'Healthy'   { 'ok' }
+            'Warning'   { 'warning' }
+            'Unhealthy' { 'error' }
+            default     { 'warning' }
+        }
+        # Escalar por temperatura
+        if ($tempC -ne $null -and $tempC -gt 65) { $dStatus = 'error' }
+        elseif ($tempC -ne $null -and $tempC -gt 55 -and $dStatus -eq 'ok') { $dStatus = 'warning' }
+        # Escalar por wear level (% vida usada)
+        if ($wearLevel -ne $null -and $wearLevel -gt 90) { $dStatus = 'error' }
+        elseif ($wearLevel -ne $null -and $wearLevel -gt 75 -and $dStatus -eq 'ok') { $dStatus = 'warning' }
+        # Escalar por errores no corregibles
+        if (($readErrors -gt 0 -or $writeErrors -gt 0) -and $dStatus -eq 'ok') { $dStatus = 'warning' }
+
+        if ($dStatus -ne 'ok' -and $hwStatus -eq 'success') { $hwStatus = 'warning' }
+        if ($dStatus -eq 'error' -and $hwStatus -ne 'failed') { $hwStatus = 'warning' }
+
+        $diskSmartList += @{
+            dev              = $pd.DeviceId
+            type             = $devType
+            model            = $pd.FriendlyName
+            serial           = $pd.SerialNumber
+            capacity         = $capStr
+            smart_health     = $smartStatus
+            status           = $dStatus
+            temp_c           = $tempC
+            power_on_hours   = $pohours
+            pct_used         = $wearLevel
+            tbw              = $null
+            reallocated_sectors = if ($null -ne $readErrors) { $readErrors + ($writeErrors ?? 0) } else { $null }
+        }
+    }
+} catch {
+    Write-Log "⚠️ SMART: $($_.Exception.Message)"
+}
+
 $hwBody = @{
     service_id = $SERVICE_ID
     source     = "system-health"
@@ -64,9 +138,10 @@ $hwBody = @{
         ram_total_gb   = $ramTotalGB
         disk_pct       = $diskUsePct
         disk_free_gb   = $diskFreeGB
+        disk_smart     = $diskSmartList
         script_version = $SCRIPT_VERSION
     }
-} | ConvertTo-Json -Depth 3
+} | ConvertTo-Json -Depth 5
 
 try {
     Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $hwBody | Out-Null
