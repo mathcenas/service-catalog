@@ -11,7 +11,7 @@
 #   0 * * * * /srv/scripts/system-health.sh
 # =============================================================
 
-SCRIPT_VERSION="1.2.0"
+SCRIPT_VERSION="1.3.0"
 
 # ---------- Cargar .env ----------
 # Orden: arg CLI → /etc/backup-ingest.env → $SCRIPT_DIR/.env
@@ -83,6 +83,35 @@ DISK_FREE_B=$(echo "$DISK_INFO" | awk '{print $2}')
 DISK_PCT=$(echo "$DISK_INFO" | awk '{print $3}' | tr -d '%')
 DISK_FREE_GB=$(awk -v free="$DISK_FREE_B" 'BEGIN { printf "%.1f", free / 1073741824 }')
 
+# ---------- Discos adicionales ----------
+# DISK_MOUNTS="/data /backup /srv"  (espacio-separado en .env, opcional)
+DISK_MOUNTS_JSON="[]"
+if [[ -n "${DISK_MOUNTS:-}" ]]; then
+  DISK_MOUNTS_JSON="["
+  first_mount=1
+  for mnt in $DISK_MOUNTS; do
+    [[ ! -d "$mnt" ]] && continue
+    mnt_info=$(df -B1 "$mnt" 2>/dev/null | awk 'NR==2 {print $2, $4, $5}')
+    [[ -z "$mnt_info" ]] && continue
+    mnt_total=$(echo "$mnt_info" | awk '{print $1}')
+    mnt_free=$(echo "$mnt_info" | awk '{print $2}')
+    mnt_pct=$(echo "$mnt_info" | awk '{print $3}' | tr -d '%')
+    mnt_free_gb=$(awk -v f="$mnt_free" 'BEGIN { printf "%.1f", f / 1073741824 }')
+    mnt_total_gb=$(awk -v t="$mnt_total" 'BEGIN { printf "%.1f", t / 1073741824 }')
+    [[ $first_mount -eq 0 ]] && DISK_MOUNTS_JSON+=","
+    DISK_MOUNTS_JSON+="{\"mount\":\"${mnt}\",\"pct\":${mnt_pct},\"free_gb\":${mnt_free_gb},\"total_gb\":${mnt_total_gb}}"
+    first_mount=0
+    # Alerta si algún mount adicional está lleno
+    if [ "${mnt_pct:-0}" -ge 90 ]; then
+      STATUS="failed"; ISSUES="${ISSUES}Disco ${mnt} lleno (${mnt_pct}%) "
+    elif [ "${mnt_pct:-0}" -ge 75 ]; then
+      [ "$STATUS" = "success" ] && STATUS="warning"
+      ISSUES="${ISSUES}Disco ${mnt} alto (${mnt_pct}%) "
+    fi
+  done
+  DISK_MOUNTS_JSON+="]"
+fi
+
 # ---------- Uptime ----------
 UPTIME_SECS=$(awk -F. '{print $1}' /proc/uptime)
 UPTIME_DAYS=$(( UPTIME_SECS / 86400 ))
@@ -146,6 +175,56 @@ if command -v smbstatus >/dev/null 2>&1; then
     SMB_SESSIONS_JSON+="]"
   fi
 fi
+
+# ---------- Docker containers ----------
+DOCKER_JSON="[]"
+DOCKER_DOWN=""
+if command -v docker >/dev/null 2>&1; then
+  DOCKER_JSON="["
+  first_doc=1
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    cname=$(echo "$line" | awk -F'|' '{print $1}')
+    cstate=$(echo "$line" | awk -F'|' '{print $2}')
+    cstatus=$(echo "$line" | awk -F'|' '{print $3}')
+    [[ $first_doc -eq 0 ]] && DOCKER_JSON+=","
+    DOCKER_JSON+="{\"name\":\"${cname}\",\"state\":\"${cstate}\",\"status\":\"${cstatus}\"}"
+    first_doc=0
+    if [[ "$cstate" != "running" ]]; then
+      DOCKER_DOWN="${DOCKER_DOWN}${cname}(${cstate}) "
+    fi
+  done < <(docker ps -a --format '{{.Names}}|{{.State}}|{{.Status}}' 2>/dev/null || true)
+  DOCKER_JSON+="]"
+  if [[ -n "$DOCKER_DOWN" ]]; then
+    [ "$STATUS" = "success" ] && STATUS="warning"
+    ISSUES="${ISSUES}Containers caídos: ${DOCKER_DOWN}"
+  fi
+fi
+
+# ---------- Port checks ----------
+# Formato en .env: PORT_1_NAME="Web", PORT_1_HOST="localhost", PORT_1_PORT=80
+# (sin INGEST_SECRET — van incluidos en el payload principal de system-health)
+PORT_CHECKS_JSON="[]"
+for i in $(seq 1 20); do
+  pname_var="PORT_${i}_NAME";  pname="${!pname_var:-}"
+  [[ -z "$pname" ]] && break
+  phost_var="PORT_${i}_HOST";  phost="${!phost_var:-localhost}"
+  pport_var="PORT_${i}_PORT";  pport="${!pport_var:-}"
+  [[ -z "$pport" ]] && continue
+  pt0=$(date +%s%3N)
+  nc -z -w3 "$phost" "$pport" >/dev/null 2>&1; prc=$?
+  pt1=$(date +%s%3N)
+  platency=$((pt1 - pt0))
+  pok=$([[ "$prc" == "0" ]] && echo "true" || echo "false")
+  [[ "$PORT_CHECKS_JSON" == "[]" ]] && PORT_CHECKS_JSON="["
+  [[ "$PORT_CHECKS_JSON" != "[" ]] && PORT_CHECKS_JSON+=","
+  PORT_CHECKS_JSON+="{\"name\":\"${pname}\",\"host\":\"${phost}\",\"port\":${pport},\"ok\":${pok},\"latency_ms\":${platency}}"
+  if [[ "$prc" != "0" ]]; then
+    [ "$STATUS" = "success" ] && STATUS="warning"
+    ISSUES="${ISSUES}Puerto ${pname}:${pport} cerrado "
+  fi
+done
+[[ "$PORT_CHECKS_JSON" != "[]" && "$PORT_CHECKS_JSON" != "[" ]] && PORT_CHECKS_JSON+="]"
 
 # ---------- DB checks ----------
 # Formato en .env: DB_1_INGEST_SECRET, DB_1_NAME, DB_1_HOST, DB_1_PORT, DB_1_TYPE
@@ -257,6 +336,9 @@ PAYLOAD=$(cat <<EOF
     "issues": "$ISSUES",
     "smb_session_count": $SMB_SESSION_COUNT,
     "smb_sessions": $SMB_SESSIONS_JSON,
+    "disk_mounts": $DISK_MOUNTS_JSON,
+    "docker_containers": $DOCKER_JSON,
+    "port_checks": $PORT_CHECKS_JSON,
     "script_version": "$SCRIPT_VERSION"
   }
 }
