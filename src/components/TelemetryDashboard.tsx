@@ -50,10 +50,25 @@ type Props = {
   clients: Client[];
 };
 
+interface DiskSmartEntry {
+  dev: string;
+  type: 'SSD' | 'NVMe' | 'HDD' | string;
+  model: string;
+  serial: string;
+  capacity: string;
+  smart_health: string;
+  status: 'ok' | 'warning' | 'error';
+  temp_c: number | null;
+  power_on_hours: number | null;
+  pct_used: number | null;
+  tbw: string | null;
+  reallocated_sectors: number | null;
+}
+
 // Extract readable metrics from payload based on source
 // Latest known script versions — bump here when a script is updated
 const LATEST_SCRIPT_VERSIONS: Record<string, string> = {
-  'system-health':   '1.1.0',
+  'system-health':   '1.4.0',
   'mikrotik':        '1.0.0',
   'backup-folder':   '1.0.0',
   'server-snapshot': '1.0.0',
@@ -76,6 +91,11 @@ function MetricChips({ hb }: { hb: ServiceHeartbeat }) {
     if (p.disk_free_gb != null) chips.push({ label: 'Free', value: `${p.disk_free_gb} GB` });
     if (p.uptime_str != null) chips.push({ label: 'Up', value: String(p.uptime_str) });
     if (p.smb_session_count != null) chips.push({ label: 'SMB', value: `${p.smb_session_count} session${Number(p.smb_session_count) !== 1 ? 's' : ''}` });
+    if (Array.isArray(p.disk_smart) && (p.disk_smart as DiskSmartEntry[]).length > 0) {
+      const disks = p.disk_smart as DiskSmartEntry[];
+      const worst = disks.some(d => d.status === 'error') ? 'error' : disks.some(d => d.status === 'warning') ? 'warning' : false;
+      chips.push({ label: 'SMART', value: `${disks.length} disk${disks.length !== 1 ? 's' : ''}`, warn: worst === 'warning', error: worst === 'error' });
+    }
   } else if (hb.source === 'network') {
     if (p.gateway_ok != null) chips.push({ label: 'GW', value: p.gateway_ok ? 'ok' : '✗', error: !p.gateway_ok });
     if (p.internet_ok != null) chips.push({ label: 'Internet', value: p.internet_ok ? 'ok' : '✗', error: !p.internet_ok });
@@ -615,6 +635,9 @@ export function TelemetryDashboard({ services, clients }: Props) {
                               </span>
                             ))}
                           </div>
+                        )}
+                        {hb.source === 'system-health' && Array.isArray((hb.payload as Record<string,unknown>)?.disk_smart) && ((hb.payload as Record<string,unknown>).disk_smart as DiskSmartEntry[]).length > 0 && (
+                          <DiskSmartPanel disks={(hb.payload as Record<string,unknown>).disk_smart as DiskSmartEntry[]} />
                         )}
                       </div>
                     );
@@ -1305,5 +1328,57 @@ function StatBadge({ label, value, color, onClick, active }: { label: string; va
       <div className="text-xl font-bold">{value}</div>
       <div className="text-xs font-medium opacity-80">{label}</div>
     </button>
+  );
+}
+
+function DiskSmartPanel({ disks }: { disks: DiskSmartEntry[] }) {
+  return (
+    <div className="mt-2 space-y-1.5">
+      {disks.map((d, i) => {
+        const dotColor = d.status === 'ok' ? 'bg-emerald-500' : d.status === 'warning' ? 'bg-amber-400' : 'bg-red-500';
+        const pctUsedNum = typeof d.pct_used === 'number' ? d.pct_used : null;
+        const pctBar = pctUsedNum !== null ? Math.min(pctUsedNum, 100) : null;
+        const barColor = pctUsedNum == null ? '' : pctUsedNum > 90 ? 'bg-red-400' : pctUsedNum > 75 ? 'bg-amber-400' : 'bg-emerald-400';
+        return (
+          <div key={i} className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-[11px] space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />
+              <span className="font-mono font-semibold text-gray-700">{d.dev}</span>
+              <span className="bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-medium">{d.type}</span>
+              {d.model && <span className="text-gray-500 truncate max-w-[180px]">{d.model}</span>}
+              {d.capacity && <span className="text-gray-400">{d.capacity}</span>}
+              <span className={`ml-auto font-semibold ${d.status === 'ok' ? 'text-emerald-700' : d.status === 'warning' ? 'text-amber-700' : 'text-red-700'}`}>
+                SMART: {d.smart_health}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap text-gray-500">
+              {d.temp_c !== null && (
+                <span className={d.temp_c > 65 ? 'text-red-600 font-semibold' : d.temp_c > 55 ? 'text-amber-600' : ''}>
+                  🌡 {d.temp_c}°C
+                </span>
+              )}
+              {d.power_on_hours !== null && (
+                <span title="Power-On Hours">⏱ {d.power_on_hours.toLocaleString()}h ({Math.round(d.power_on_hours / 24 / 365 * 10) / 10}yr)</span>
+              )}
+              {d.tbw !== null && <span title="Total Data Written">✍ {d.tbw} TBW</span>}
+              {d.reallocated_sectors !== null && d.reallocated_sectors > 0 && (
+                <span className="text-amber-600 font-semibold">⚠ {d.reallocated_sectors} sect. reasignados</span>
+              )}
+            </div>
+            {pctBar !== null && (
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400 shrink-0">Vida usada:</span>
+                <div className="flex-1 bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                  <div className={`h-1.5 rounded-full transition-all ${barColor}`} style={{ width: `${pctBar}%` }} />
+                </div>
+                <span className={`shrink-0 font-semibold ${pctUsedNum! > 90 ? 'text-red-600' : pctUsedNum! > 75 ? 'text-amber-600' : 'text-emerald-700'}`}>
+                  {pctUsedNum}%
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }

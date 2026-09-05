@@ -11,7 +11,7 @@
 #   0 * * * * /srv/scripts/system-health.sh
 # =============================================================
 
-SCRIPT_VERSION="1.3.0"
+SCRIPT_VERSION="1.4.0"
 
 # ---------- Cargar .env ----------
 # Orden: arg CLI → /etc/backup-ingest.env → $SCRIPT_DIR/.env
@@ -226,6 +226,95 @@ for i in $(seq 1 20); do
 done
 [[ "$PORT_CHECKS_JSON" != "[]" && "$PORT_CHECKS_JSON" != "[" ]] && PORT_CHECKS_JSON+="]"
 
+# ---------- Disk SMART health ----------
+# Requiere: smartmontools (apt install smartmontools / yum install smartmontools)
+# Auto-detecta /dev/sda,sdb,...,sdz y /dev/nvme0...nvme9
+DISK_SMART_JSON="[]"
+if command -v smartctl >/dev/null 2>&1; then
+  # Recopilar lista de discos SATA/SAS y NVMe
+  SMART_DISKS=()
+  for d in /dev/sd{a..z} /dev/nvme{0..9}; do
+    [[ -b "$d" ]] && SMART_DISKS+=("$d")
+  done
+
+  for dev in "${SMART_DISKS[@]}"; do
+    # -A: atributos SMART  -H: salud general  -i: info  -j: JSON (si disponible)
+    # Usamos salida texto para máxima compatibilidad
+    smart_health=$(smartctl -H "$dev" 2>/dev/null | grep -i "overall-health\|SMART overall\|result:" | awk -F': ' '{print $2}' | tr -d '[:space:]')
+    [[ -z "$smart_health" ]] && smart_health="UNKNOWN"
+
+    # Info del dispositivo
+    smart_info=$(smartctl -i "$dev" 2>/dev/null)
+    dev_model=$(echo "$smart_info" | grep -i "Device Model\|Model Number\|Model Family" | head -1 | awk -F': ' '{gsub(/^[ \t]+/,"",$2); print $2}')
+    dev_serial=$(echo "$smart_info" | grep -i "Serial Number\|Serial number" | head -1 | awk -F': ' '{gsub(/^[ \t]+/,"",$2); print $2}')
+    dev_capacity=$(echo "$smart_info" | grep -i "User Capacity\|Namespace 1 Size" | head -1 | awk -F':' '{gsub(/^[ \t]+/,"",$2); gsub(/\[.*\]/,""); print $2}' | xargs)
+    dev_rpm=$(echo "$smart_info" | grep -i "Rotation Rate" | head -1 | awk -F': ' '{gsub(/^[ \t]+/,"",$2); print $2}')
+    [[ "$dev_rpm" =~ [Ss]olid[[:space:]][Ss]tate|[Ss][Ss][Dd]|"Solid State Drive" ]] && dev_type="SSD" || { [[ "$dev" == /dev/nvme* ]] && dev_type="NVMe" || dev_type="HDD"; }
+    [[ "$dev" == /dev/nvme* ]] && dev_type="NVMe"
+
+    # Atributos SMART (SATA/SAS)
+    smart_attrs=$(smartctl -A "$dev" 2>/dev/null)
+
+    # Temperatura
+    temp_c=$(echo "$smart_attrs" | awk '/Temperature_Celsius|Airflow_Temperature|Temperature/ {for(i=1;i<=NF;i++) if($i~/^[0-9]+$/ && $i<100 && $i>0) {print $i; exit}}')
+    # NVMe temperatura
+    if [[ -z "$temp_c" ]]; then
+      temp_c=$(smartctl -A "$dev" 2>/dev/null | grep -i "Temperature:" | awk '{print $2}')
+    fi
+    [[ -z "$temp_c" ]] && temp_c="null" || temp_c=$(echo "$temp_c" | tr -d '[:space:]')
+
+    # Power-On Hours
+    poh=$(echo "$smart_attrs" | awk '/Power_On_Hours/ {print $10}')
+    if [[ -z "$poh" ]]; then
+      poh=$(smartctl -A "$dev" 2>/dev/null | grep -i "Power On Hours" | awk '{print $NF}' | tr -d ',')
+    fi
+    [[ -z "$poh" || ! "$poh" =~ ^[0-9]+$ ]] && poh="null"
+
+    # Percentage Used (NVMe) / Wear Leveling (SATA)
+    pct_used=$(echo "$smart_attrs" | awk '/Wear_Leveling_Count|Media_Wearout_Indicator|SSD_Life_Left/ {print $4}')
+    if [[ -z "$pct_used" ]]; then
+      pct_used=$(smartctl -A "$dev" 2>/dev/null | grep -i "Percentage Used:" | awk '{print $3}' | tr -d '%')
+    fi
+    [[ -z "$pct_used" || ! "$pct_used" =~ ^[0-9]+$ ]] && pct_used="null"
+
+    # Total Data Written (TBW estimado)
+    tbw=$(echo "$smart_attrs" | awk '/Total_LBAs_Written/ {lba=$10} END {if(lba) printf "%.1f", lba*512/1e12}')
+    [[ -z "$tbw" ]] && tbw=$(smartctl -A "$dev" 2>/dev/null | grep -i "Data Units Written" | awk '{print $NF}' | tr -d ',')
+    [[ -z "$tbw" ]] && tbw="null"
+
+    # Reallocated sectors (indicador clave de degradación)
+    reallocated=$(echo "$smart_attrs" | awk '/Reallocated_Sector_Ct/ {print $10}')
+    [[ -z "$reallocated" || ! "$reallocated" =~ ^[0-9]+$ ]] && reallocated="null"
+
+    # Estado SMART → ok / warning / error
+    case "${smart_health^^}" in
+      PASSED|OK) disk_status="ok" ;;
+      FAILED*)   disk_status="error" ;;
+      *)         disk_status="warning" ;;
+    esac
+    # Escalar si temperatura alta
+    if [[ "$temp_c" != "null" && "$temp_c" -gt 65 ]] 2>/dev/null; then disk_status="error"; fi
+    if [[ "$temp_c" != "null" && "$temp_c" -gt 55 ]] 2>/dev/null && [[ "$disk_status" == "ok" ]]; then disk_status="warning"; fi
+    # Escalar si sectores reasignados > 0
+    if [[ "$reallocated" != "null" && "$reallocated" -gt 0 ]] 2>/dev/null && [[ "$disk_status" == "ok" ]]; then disk_status="warning"; fi
+    # Escalar si % usado > 80
+    if [[ "$pct_used" != "null" && "$pct_used" -gt 80 ]] 2>/dev/null; then
+      [[ "$pct_used" -gt 90 ]] 2>/dev/null && disk_status="error" || disk_status="warning"
+    fi
+    [[ "$disk_status" == "error" || "$disk_status" == "warning" ]] && STATUS="warning"
+
+    # Escapar strings
+    dev_model_esc="${dev_model//\"/\\'}"
+    dev_serial_esc="${dev_serial//\"/\\'}"
+    dev_capacity_esc="${dev_capacity//\"/\\'}"
+
+    [[ "$DISK_SMART_JSON" == "[]" ]] && DISK_SMART_JSON="["
+    [[ "$DISK_SMART_JSON" != "[" ]] && DISK_SMART_JSON+=","
+    DISK_SMART_JSON+="{\"dev\":\"${dev}\",\"type\":\"${dev_type}\",\"model\":\"${dev_model_esc}\",\"serial\":\"${dev_serial_esc}\",\"capacity\":\"${dev_capacity_esc}\",\"smart_health\":\"${smart_health}\",\"status\":\"${disk_status}\",\"temp_c\":${temp_c},\"power_on_hours\":${poh},\"pct_used\":${pct_used},\"tbw\":${tbw},\"reallocated_sectors\":${reallocated}}"
+  done
+  [[ "$DISK_SMART_JSON" != "[]" && "$DISK_SMART_JSON" != "[" ]] && DISK_SMART_JSON+="]"
+fi
+
 # ---------- DB checks ----------
 # Formato en .env: DB_1_INGEST_SECRET, DB_1_NAME, DB_1_HOST, DB_1_PORT, DB_1_TYPE
 # Tipos soportados: PostgreSQL, MySQL, MariaDB, Redis, MongoDB, MSSQL, (cualquier otro → nc)
@@ -339,6 +428,7 @@ PAYLOAD=$(cat <<EOF
     "disk_mounts": $DISK_MOUNTS_JSON,
     "docker_containers": $DOCKER_JSON,
     "port_checks": $PORT_CHECKS_JSON,
+    "disk_smart": $DISK_SMART_JSON,
     "script_version": "$SCRIPT_VERSION"
   }
 }
