@@ -14,7 +14,7 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.30.4
 
       - name: Deploy Edge Functions
         run: |
@@ -22,5 +22,8 @@ jobs:
           supabase functions deploy ingest-nas-acl --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
           supabase functions deploy get-acl-review --no-verify-jwt --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
           supabase functions deploy submit-acl-review --no-verify-jwt --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase functions deploy submit-support-request --no-verify-jwt --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase functions deploy ingest-backup --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase functions deploy license-reminder --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
