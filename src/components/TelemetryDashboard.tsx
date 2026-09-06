@@ -154,7 +154,7 @@ function MetricChips({ hb }: { hb: ServiceHeartbeat }) {
   }
 
   return (
-    <div className="flex flex-wrap gap-1 mt-1">
+    <div className="flex flex-wrap gap-2 mt-1">
       {chips.map(c => {
         const isVersionChip = c.label === 'v';
         const needsUpdate = isVersionChip && (versionOutdated || versionUnknown);

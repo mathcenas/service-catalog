@@ -243,7 +243,7 @@ export function SharePage({ token }: Props) {
               src={userSettings.logo_url}
               alt=""
               draggable={false}
-              className="h-auto w-full max-w-[8rem] select-none object-contain opacity-[0.18] dark:opacity-[0.12] drop-shadow-[0_1px_6px_rgba(255,255,255,0.6)]"
+              className="h-auto w-full max-w-[8rem] select-none object-contain opacity-[0.10] dark:opacity-[0.07] drop-shadow-[0_1px_6px_rgba(255,255,255,0.6)]"
             />
           </div>
         )}
