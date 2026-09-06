@@ -496,7 +496,7 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
 
       {healthEntries.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">System Health</h2>
+          <h2 className="text-sm font-semibold text-white mb-3">System Health</h2>
           <div className="space-y-2">
             {healthEntries.map(h => {
               const svc = services.find(s => s.id === h.service_id);
@@ -508,15 +508,15 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
                 const age = payload?.age_hours != null ? Number(payload.age_hours) : null;
                 const size = payload?.size_mb != null ? Number(payload.size_mb) : null;
                 return (
-                  <div key={h.service_id + '-backup'} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center gap-3">
+                  <div key={h.service_id + '-backup'} className="bg-[#1E293B] rounded-xl border border-white/5 px-4 py-3 flex items-center gap-3">
                     <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{svc?.business_name || svc?.name || h.service_id}</p>
-                      {folder && <p className="text-xs text-gray-400">{folder}</p>}
+                      <p className="text-sm font-medium text-white">{svc?.business_name || svc?.name || h.service_id}</p>
+                      {folder && <p className="text-xs text-slate-400">{folder}</p>}
                     </div>
-                    <div className="flex gap-3 text-xs text-gray-500 shrink-0">
+                    <div className="flex gap-3 text-xs text-slate-500 shrink-0">
                       {size != null && <span>{size} MB</span>}
-                      {age != null && <span className={age > 48 ? 'text-red-500 font-semibold' : age > 25 ? 'text-amber-500 font-semibold' : 'text-gray-400'}>{age}h ago</span>}
+                      {age != null && <span className={age > 48 ? 'text-red-400 font-semibold' : age > 25 ? 'text-amber-400 font-semibold' : 'text-slate-500'}>{age}h ago</span>}
                     </div>
                   </div>
                 );
@@ -527,17 +527,17 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
               const ram = payload?.ram_pct != null ? Number(payload.ram_pct) : null;
               const uptime = payload?.uptime_str != null ? String(payload.uptime_str) : null;
               return (
-                <div key={h.service_id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center gap-3">
+                <div key={h.service_id} className="bg-[#1E293B] rounded-xl border border-white/5 px-4 py-3 flex items-center gap-3">
                   <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">{svc?.business_name || svc?.name || h.service_id}</p>
-                    {h.message && <p className="text-xs text-gray-400">{h.message}</p>}
+                    <p className="text-sm font-medium text-white">{svc?.business_name || svc?.name || h.service_id}</p>
+                    {h.message && <p className="text-xs text-slate-400">{h.message}</p>}
                   </div>
-                  <div className="flex gap-3 text-xs text-gray-500 shrink-0">
-                    {cpu != null && <span>CPU <span className={cpu > 95 ? 'text-red-500 font-semibold' : cpu > 80 ? 'text-amber-500 font-semibold' : 'text-gray-700 dark:text-gray-300'}>{cpu}%</span></span>}
-                    {ram != null && <span>RAM <span className={ram > 92 ? 'text-red-500 font-semibold' : ram > 80 ? 'text-amber-500 font-semibold' : 'text-gray-700 dark:text-gray-300'}>{ram}%</span></span>}
-                    {disk != null && <span>Disk <span className={disk > 90 ? 'text-red-500 font-semibold' : disk > 75 ? 'text-amber-500 font-semibold' : 'text-gray-700 dark:text-gray-300'}>{disk}%</span></span>}
-                    {uptime != null && <span className="text-gray-400">↑{uptime}</span>}
+                  <div className="flex gap-3 text-xs text-slate-500 shrink-0">
+                    {cpu != null && <span>CPU <span className={cpu > 95 ? 'text-red-400 font-semibold' : cpu > 80 ? 'text-amber-400 font-semibold' : 'text-slate-300'}>{cpu}%</span></span>}
+                    {ram != null && <span>RAM <span className={ram > 92 ? 'text-red-400 font-semibold' : ram > 80 ? 'text-amber-400 font-semibold' : 'text-slate-300'}>{ram}%</span></span>}
+                    {disk != null && <span>Disk <span className={disk > 90 ? 'text-red-400 font-semibold' : disk > 75 ? 'text-amber-400 font-semibold' : 'text-slate-300'}>{disk}%</span></span>}
+                    {uptime != null && <span className="text-slate-500">↑{uptime}</span>}
                   </div>
                 </div>
               );
@@ -664,9 +664,9 @@ function CompletedUpdates({ items }: { items: RoadmapItem[] }) {
 
 function StatCard({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3">
-      <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">{label}</div>
-      <div className={`text-xl font-bold ${accent ? 'text-brand-accent dark:text-brand-accent' : 'text-gray-900 dark:text-white'}`}>{value}</div>
+    <div className="bg-[#1E293B] rounded-xl border border-white/5 px-4 py-3">
+      <div className="text-[10px] uppercase tracking-wider text-slate-400 mb-1">{label}</div>
+      <div className={`text-2xl font-bold ${accent ? 'text-[#06B6D4]' : 'text-white'}`}>{value}</div>
     </div>
   );
 }
@@ -678,10 +678,10 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
   return (
     <section>
       <div className="flex items-center gap-2 mb-3">
-        <HardDrive className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Backup Status</h2>
+        <HardDrive className="w-4 h-4 text-slate-400" />
+        <h2 className="text-sm font-semibold text-white">Backup Status</h2>
       </div>
-      <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+      <div className="bg-[#1E293B] rounded-xl border border-white/5 divide-y divide-white/5">
         {withBackup.map(s => {
           // Prefer the most recent entry from history table; fall back to services.last_backup_at
           const recent = backups.filter(b => b.service_id === s.id).slice(0, 7);
@@ -701,25 +701,25 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
               <div className="flex items-center gap-3">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
                 <div className="flex-1 min-w-0">
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">{s.business_name || s.name}</span>
+                  <span className="text-sm font-medium text-white">{s.business_name || s.name}</span>
                   {lastBackup?.job_name && (
-                    <span className="text-xs text-gray-400 ml-2">{lastBackup.job_name}</span>
+                    <span className="text-xs text-slate-400 ml-2">{lastBackup.job_name}</span>
                   )}
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   {s.last_backup_size_bytes != null && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full font-medium">
+                    <span className="text-xs text-slate-400 bg-[#0B192C] px-2 py-0.5 rounded-full font-medium">
                       {formatBytes(s.last_backup_size_bytes)}
                     </span>
                   )}
-                  <span className={`text-xs font-medium ${isStale || lastStatus === 'failed' ? 'text-red-600 dark:text-red-400' : isWarning || lastStatus === 'warning' ? 'text-amber-600 dark:text-amber-400' : 'text-gray-600 dark:text-gray-300'}`}>
+                  <span className={`text-xs font-medium ${isStale || lastStatus === 'failed' ? 'text-red-400' : isWarning || lastStatus === 'warning' ? 'text-amber-400' : 'text-slate-400'}`}>
                     {formatTimeAgo(displayAt)}
                   </span>
                 </div>
               </div>
               {recent.length > 1 && (
                 <div className="flex items-center gap-1 mt-2 ml-5">
-                  <span className="text-[10px] text-gray-400 mr-1">Last {recent.length}</span>
+                  <span className="text-[10px] text-slate-500 mr-1">Last {recent.length}</span>
                   {recent.map(b => (
                     <span key={b.id} title={`${b.status} — ${formatTimeAgo(b.backed_up_at)}`}
                       className={`w-3 h-3 rounded-sm ${b.status === 'failed' ? 'bg-red-500' : b.status === 'warning' ? 'bg-amber-400' : 'bg-emerald-500'}`} />
@@ -741,10 +741,10 @@ function UptimeStatus({ services, uptimeEvents }: { services: Service[]; uptimeE
   return (
     <section>
       <div className="flex items-center gap-2 mb-3">
-        <Wifi className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Uptime — Last 30 Days</h2>
+        <Wifi className="w-4 h-4 text-slate-400" />
+        <h2 className="text-sm font-semibold text-white">Uptime — Last 30 Days</h2>
       </div>
-      <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+      <div className="bg-[#1E293B] rounded-xl border border-white/5 divide-y divide-white/5">
         {servicesWithEvents.map(s => {
           const events = uptimeEvents.filter(e => e.service_id === s.id);
           const downEvents = events.filter(e => e.event_type === 'down');
@@ -764,19 +764,19 @@ function UptimeStatus({ services, uptimeEvents }: { services: Service[]; uptimeE
               <div className="flex items-center gap-3">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${!hasDowntime ? 'bg-emerald-500' : uptimePct > 99 ? 'bg-amber-400' : 'bg-red-500'}`} />
                 <div className="flex-1 min-w-0">
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">{s.business_name || s.name}</span>
+                  <span className="text-sm font-medium text-white">{s.business_name || s.name}</span>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className={`text-xs font-semibold ${!hasDowntime ? 'text-emerald-600 dark:text-emerald-400' : uptimePct > 99 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
+                  <span className={`text-xs font-semibold ${!hasDowntime ? 'text-emerald-400' : uptimePct > 99 ? 'text-amber-400' : 'text-red-400'}`}>
                     {hasDowntime ? `${uptimePct.toFixed(2)}%` : '100%'}
                   </span>
                   {downEvents.length > 0 && (
-                    <span className="text-xs text-gray-400">{downEvents.length} incident{downEvents.length !== 1 ? 's' : ''}</span>
+                    <span className="text-xs text-slate-400">{downEvents.length} incident{downEvents.length !== 1 ? 's' : ''}</span>
                   )}
                 </div>
               </div>
               {lastDown && (
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-5">
+                <p className="text-xs text-slate-500 mt-1 ml-5">
                   Last incident: {formatTimeAgo(lastDown.occurred_at)}
                   {lastDown.duration_seconds ? ` · ${Math.round(lastDown.duration_seconds / 60)} min down` : ''}
                   {lastDown.message ? ` · ${lastDown.message}` : ''}
