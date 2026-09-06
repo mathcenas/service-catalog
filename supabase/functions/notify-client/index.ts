@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { B, EMAIL_FONT, emailHeader, emailPortalPanel, emailMeta } from "../_shared/emailBrand.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -115,10 +116,6 @@ Deno.serve(async (req: Request) => {
       timeZone: TZ,
     });
 
-    const logoHtml = logo_url
-      ? `<img src="${logo_url}" alt="Logo" style="max-height: 40px; max-width: 160px; margin-bottom: 16px;" />`
-      : "";
-
     // Header label and accent color — event_type overrides category when releasing/closing
     type EmailMeta = { label: string; color: string; footer: string };
 
@@ -148,63 +145,56 @@ Deno.serve(async (req: Request) => {
         ? (releasedMeta[category || ""] ?? { label: "✅ Completado", color: "#16a34a", footer: "Si tiene alguna consulta, responda a este correo." })
         : (notifyMeta[category || ""] ?? defaultMeta);
 
+    const logoHtmlInner = logo_url
+      ? `<img src="${logo_url}" alt="Logo" style="max-height:32px;max-width:140px;" />`
+      : "";
+
     const htmlBody = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 24px;">
-        <div style="border-bottom: 2px solid ${meta.color}; padding-bottom: 16px; margin-bottom: 24px;">
-          ${logoHtml}
-          <h2 style="color: #1e293b; margin: 0; font-size: 20px;">${meta.label}</h2>
-          ${sender_name ? `<p style="color: #64748b; margin: 4px 0 0; font-size: 13px;">From ${sender_name}</p>` : ""}
-        </div>
+      <div style="font-family:${EMAIL_FONT};max-width:600px;margin:0 auto;padding:32px 24px;background:#f8fafc;">
+        <div style="background:#ffffff;border-radius:12px;padding:28px;border:1px solid ${B.border};">
 
-        <p style="color: #334155; font-size: 15px; line-height: 1.6;">
-          Hi ${client_name || "there"},
-        </p>
+          ${emailHeader({
+            logoHtml: logoHtmlInner,
+            senderName: sender_name || "Cenas IT",
+            label: meta.label,
+            accentColor: meta.color,
+          })}
 
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 20px 0;">
-          ${service_name ? `<p style="color: #64748b; margin: 0 0 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">${service_name}</p>` : ""}
-          <h3 style="color: #1e293b; margin: 0 0 8px; font-size: 17px;">${title}</h3>
-          ${description ? `<p style="color: #475569; margin: 0 0 12px; font-size: 14px; line-height: 1.5;">${description.replace(/\n/g, "<br>")}</p>` : ""}
-          ${formattedDate ? `<p style="color: #2563eb; margin: 0; font-size: 14px; font-weight: 600;">Scheduled: ${formattedDate}</p>` : ""}
-        </div>
-
-        <p style="color: #64748b; font-size: 12px; margin: 8px 0 0;">
-          Sent: ${nowTime}
-        </p>
-
-        ${share_url ? `
-          <p style="margin: 24px 0;">
-            <a href="${share_url}" style="display: inline-block; background: ${meta.color}; color: white; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 600;">
-              ${share_url_label || "Ver Portal"}
-            </a>
+          <p style="color:${B.textMain};font-size:15px;line-height:1.6;margin:0 0 16px;">
+            Hola ${client_name || ""},
           </p>
-        ` : ""}
 
-        <p style="color: #64748b; font-size: 13px; margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
-          ${meta.footer}
-        </p>
+          <div style="background:${B.bg};border:1px solid ${B.border};border-radius:8px;padding:20px;margin:0 0 16px;">
+            ${service_name ? `<p style="color:${B.textMid};margin:0 0 6px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">${service_name}</p>` : ""}
+            <h3 style="color:${B.primary};margin:0 0 8px;font-size:17px;">${title}</h3>
+            ${description ? `<p style="color:#475569;margin:0 0 12px;font-size:14px;line-height:1.5;">${description.replace(/\n/g, "<br>")}</p>` : ""}
+            ${formattedDate ? `<p style="color:${B.accent};margin:0;font-size:14px;font-weight:600;">Programado: ${formattedDate}</p>` : ""}
+          </div>
 
-        <div style="margin-top: 32px; padding: 16px 20px; background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%); border-radius: 8px; text-align: center;">
-          <p style="color: #94a3b8; font-size: 11px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 1px;">Portal de Servicios</p>
-          <p style="color: #ffffff; font-size: 13px; margin: 0 0 8px; font-weight: 600;">Consulte el estado de sus servicios en línea</p>
-          <p style="color: #cbd5e1; font-size: 11px; margin: 0; line-height: 1.5;">
-            Servicios gestionados &bull; Soporte &bull; Backups &bull; Información IT
-          </p>
-          ${portal_url ? `
-            <a href="${portal_url}" style="display: inline-block; margin-top: 12px; background: rgba(255,255,255,0.1); color: #e2e8f0; font-size: 12px; font-weight: 500; text-decoration: none; padding: 8px 20px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2);">
-              Ver mis servicios →
-            </a>
+          <p style="color:${B.textMid};font-size:12px;margin:0 0 8px;">Enviado: ${nowTime}</p>
+
+          ${share_url ? `
+            <p style="margin:20px 0;">
+              <a href="${share_url}" style="display:inline-block;background:${B.accent};color:${B.primary};padding:11px 26px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:700;">
+                ${share_url_label || "Ver Portal"}
+              </a>
+            </p>
           ` : ""}
-        </div>
 
-        <div style="margin-top: 16px; text-align: center;">
-          <a href="https://clientes.cenas-support.com/onboarding" style="display: inline-block; color: #64748b; font-size: 11px; text-decoration: none; border: 1px solid #e2e8f0; border-radius: 4px; padding: 6px 14px;">
-            👤 Onboarding / Offboarding — clientes.cenas-support.com
-          </a>
-        </div>
+          <p style="color:${B.textMid};font-size:13px;margin:24px 0 0;padding-top:16px;border-top:1px solid ${B.border};">
+            ${meta.footer}
+          </p>
 
-        <p style="color: #94a3b8; font-size: 10px; font-style: italic; margin-top: 12px; text-align: center;">
-          Correo generado por Task Tracker Pro, by Cenas Support
-        </p>
+          ${emailPortalPanel({ companyName: sender_name || "Cenas IT", portalUrl: portal_url })}
+
+          <div style="margin-top:14px;text-align:center;">
+            <a href="https://clientes.cenas-support.com/onboarding" style="display:inline-block;color:${B.accent};font-size:11px;text-decoration:none;border:1px solid ${B.border};border-radius:4px;padding:6px 14px;">
+              👤 Onboarding / Offboarding — clientes.cenas-support.com
+            </a>
+          </div>
+
+          ${emailMeta(sender_name || "Cenas IT")}
+        </div>
       </div>
     `;
 

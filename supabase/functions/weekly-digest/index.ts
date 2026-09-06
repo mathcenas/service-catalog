@@ -15,7 +15,14 @@ Deno.serve(async (req: Request) => {
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
   const FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support <alerts@cenas-support.com>";
 
-  if (!RESEND_API_KEY) {
+  // Preview mode: return HTML without sending
+  let previewMode = false;
+  try {
+    const body = await req.clone().json();
+    if (body?.preview === true) previewMode = true;
+  } catch {}
+
+  if (!RESEND_API_KEY && !previewMode) {
     return new Response(JSON.stringify({ error: "RESEND_API_KEY not configured" }), { status: 500 });
   }
 
@@ -104,6 +111,28 @@ Deno.serve(async (req: Request) => {
       </tr>`;
     }).join('');
 
+    // Disk SMART health (from latest system-health heartbeat with disk_smart array)
+    const diskSmartRows = Object.values(healthMap).flatMap((h: any) => {
+      const svc = serviceList.find((s: any) => s.id === h.service_id);
+      const svcName = svc?.business_name || svc?.name || h.service_id;
+      const disks: any[] = Array.isArray(h.payload?.disk_smart) ? h.payload.disk_smart : [];
+      return disks.map((d: any) => {
+        const statusColor = d.status === 'ok' ? '#22c55e' : d.status === 'warning' ? '#f59e0b' : '#ef4444';
+        const details: string[] = [];
+        if (d.temp_c != null) details.push(`${d.temp_c}°C`);
+        if (d.power_on_hours != null) details.push(`${Math.round(d.power_on_hours / 24 / 365 * 10) / 10}yr`);
+        if (d.pct_used != null) details.push(`${d.pct_used}% usado`);
+        if (d.reallocated_sectors != null && d.reallocated_sectors > 0) details.push(`⚠ ${d.reallocated_sectors} sect. reasig.`);
+        return `<tr>
+          <td style="padding:5px 8px;font-size:12px;color:#1e293b;">${svcName}</td>
+          <td style="padding:5px 8px;font-size:12px;color:#64748b;font-family:monospace;">${d.dev || ''} <span style="background:#f1f5f9;padding:1px 5px;border-radius:3px;font-size:11px;">${d.type || ''}</span></td>
+          <td style="padding:5px 8px;font-size:12px;color:#64748b;max-width:160px;">${d.model || '—'}</td>
+          <td style="padding:5px 8px;font-size:12px;color:${statusColor};font-weight:600;">${(d.smart_health || d.status || '').toUpperCase()}</td>
+          <td style="padding:5px 8px;font-size:12px;color:#64748b;">${details.join(' · ')}</td>
+        </tr>`;
+      });
+    }).join('');
+
     // Upcoming renewals (60 days)
     const renewalCycles = new Set(['Annually', 'Biennially', 'Semi-Annually', 'One-Time']);
     const renewals = serviceList
@@ -132,7 +161,7 @@ Deno.serve(async (req: Request) => {
 
     const section = (title: string, content: string, empty?: string) =>
       content ? `<div style="margin-bottom:28px;">
-        <h3 style="font-size:13px;font-weight:700;color:#0f172a;margin:0 0 10px;padding-bottom:6px;border-bottom:1px solid #e2e8f0;">${title}</h3>
+        <h3 style="font-size:13px;font-weight:700;color:#0B192C;margin:0 0 10px;padding-bottom:6px;border-bottom:2px solid #06B6D4;">${title}</h3>
         ${content}
       </div>` : (empty ? `<div style="margin-bottom:28px;">
         <h3 style="font-size:13px;font-weight:700;color:#0f172a;margin:0 0 10px;padding-bottom:6px;border-bottom:1px solid #e2e8f0;">${title}</h3>
@@ -147,11 +176,17 @@ Deno.serve(async (req: Request) => {
 
     const weekLabel = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
-    const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;background:#f8fafc;">
+    const html = `<div style="font-family:'Plus Jakarta Sans','Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;background:#f8fafc;">
       <div style="background:white;border-radius:12px;padding:28px;border:1px solid #e2e8f0;">
-        <p style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;">Weekly Summary</p>
-        <h1 style="font-size:22px;font-weight:700;color:#0f172a;margin:0 0 24px;">${weekLabel}</h1>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #e2e8f0;">
+          <div style="background:#0B192C;padding:8px 14px;border-radius:8px;">
+            <span style="color:#06B6D4;font-size:12px;font-weight:700;letter-spacing:.5px;">${senderName.toUpperCase()}</span>
+          </div>
+          <span style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;">Weekly Summary</span>
+        </div>
+        <h1 style="font-size:20px;font-weight:700;color:#0B192C;margin:0 0 24px;">${weekLabel}</h1>
 
+        ${diskSmartRows ? section('Disk Health (SMART)', tableWrap(diskSmartRows, ['Servidor', 'Disco', 'Modelo', 'Estado', 'Detalles'])) : ''}
         ${section('Backups (last 7 days)',
           backupRows ? tableWrap(backupRows, ['Service', 'Client', 'Last Backup']) : '',
           backupRows ? undefined : 'No backup-monitored services.'
@@ -161,11 +196,18 @@ Deno.serve(async (req: Request) => {
         ${changeRows ? section('Changes This Week', `<ul style="margin:0;padding-left:16px;">${changeRows}</ul>`) : ''}
         ${roadmapRows ? section('Upcoming Roadmap', `<ul style="margin:0;padding-left:16px;">${roadmapRows}</ul>`) : ''}
 
-        <p style="font-size:11px;color:#cbd5e1;text-align:center;margin-top:24px;padding-top:16px;border-top:1px solid #f1f5f9;">
-          ${senderName} · Weekly Digest · <a href="#" style="color:#cbd5e1;">Unsubscribe</a>
+        <p style="font-size:11px;color:#94a3b8;text-align:center;margin-top:24px;padding-top:16px;border-top:1px solid #e2e8f0;">
+          <span style="color:#0B192C;font-weight:600;">${senderName}</span> · Weekly Digest · <a href="#" style="color:#06B6D4;text-decoration:none;">Unsubscribe</a>
         </p>
       </div>
     </div>`;
+
+    if (previewMode) {
+      return new Response(JSON.stringify({ html }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
     await fetch("https://api.resend.com/emails", {
       method: "POST",

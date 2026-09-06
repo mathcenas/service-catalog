@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { Upload, Download, Monitor, Trash2, ChevronDown, User } from 'lucide-react';
 import type { Client } from '../lib/supabase';
+import { BRAND, pdfHeader, pdfSection, openPrintWindow } from '../lib/pdfBrand';
 
 // ─── ManageEngine parsing ────────────────────────────────────────────────────
 
@@ -297,45 +298,51 @@ function exportPdf(file: ImportedFile, clientName: string, ownerMap: Map<string,
       .sort((a, b) => a.deviceName.localeCompare(b.deviceName))
       .map(d => {
         const lastSign = d.lastSignIn ? new Date(d.lastSignIn).toLocaleDateString('es-UY') : '—';
-        return `<tr style="border-top:1px solid #f1f5f9;">
-          <td style="padding:8px 12px;font-size:12px;font-weight:600;font-family:monospace;color:#1e293b;">${d.deviceName}</td>
-          <td style="padding:8px 12px;font-size:12px;color:#374151;">${d.owner || '—'}</td>
-          <td style="padding:8px 12px;font-size:12px;color:#374151;">${decodeWindowsVersion(d.osVersion) || d.osVersion || '—'}</td>
-          <td style="padding:8px 12px;font-size:12px;color:#64748b;">${lastSign}</td>
+        return `<tr>
+          <td style="padding:8px 12px;font-size:12px;font-weight:600;font-family:monospace;color:${BRAND.primary};">${d.deviceName}</td>
+          <td style="padding:8px 12px;font-size:12px;color:${BRAND.textMain};">${d.owner || '—'}</td>
+          <td style="padding:8px 12px;font-size:12px;color:${BRAND.textMain};">${decodeWindowsVersion(d.osVersion) || d.osVersion || '—'}</td>
+          <td style="padding:8px 12px;font-size:12px;color:${BRAND.textMid};">${lastSign}</td>
         </tr>`;
       }).join('');
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Dispositivos Entra — ${clientName}</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;color:#1e293b;padding:40px}.header{margin-bottom:32px;border-bottom:2px solid #e2e8f0;padding-bottom:20px}.title{font-size:22px;font-weight:700}.subtitle{font-size:13px;color:#64748b;margin-top:4px}table{width:100%;border-collapse:collapse}thead tr{background:#f8fafc}th{padding:8px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #e2e8f0}.footer{margin-top:28px;font-size:11px;color:#94a3b8}</style></head><body>
-<div class="header"><div class="title">Dispositivos Microsoft 365 — ${clientName}</div><div class="subtitle">Generado el ${now} · ${(file.entraDevices ?? []).length} dispositivos · Fuente: Entra ID</div></div>
-<table><thead><tr><th>Equipo</th><th>Usuario M365</th><th>Sistema Operativo</th><th>Último acceso</th></tr></thead><tbody>${rows}</tbody></table>
-<div class="footer">Reporte generado por Service Catalog</div></body></html>`;
-    const win = window.open('', '_blank'); if (!win) return;
-    win.document.write(html); win.document.close(); win.print();
+
+    const body = `
+      ${pdfHeader({ title: `Dispositivos Microsoft 365 — ${clientName}`, companyName: 'Service Catalog', subtitle: `Generado el ${now} · ${(file.entraDevices ?? []).length} dispositivos · Fuente: Entra ID`, date: now })}
+      ${pdfSection('Dispositivos')}
+      <table>
+        <thead><tr><th>Equipo</th><th>Usuario M365</th><th>Sistema Operativo</th><th>Último acceso</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p class="footer">Reporte generado por Service Catalog</p>
+    `;
+    openPrintWindow(`Dispositivos Entra — ${clientName}`, body);
     return;
   }
 
   // ManageEngine export (+ owners if available)
   const rows = file.rows.map(r => {
     const owner = ownerMap.get(r.computer.toLowerCase()) || '';
-    return `<tr style="border-top:1px solid #f1f5f9;">
-      <td style="padding:8px 12px;font-size:12px;font-weight:600;font-family:monospace;color:#1e293b;">${r.computer}</td>
-      ${hasOwners ? `<td style="padding:8px 12px;font-size:12px;color:#374151;">${owner || '<span style="color:#9ca3af;font-style:italic;">—</span>'}</td>` : ''}
-      <td style="padding:8px 12px;font-size:12px;color:#374151;">${r.os || '—'}</td>
-      <td style="padding:8px 12px;font-size:12px;color:#374151;">${r.suites.length ? r.suites.join('<br>') : '<span style="color:#9ca3af;font-style:italic;">—</span>'}</td>
-      <td style="padding:8px 12px;text-align:center;font-size:12px;">${r.hasCopilot ? '<span style="background:#ede9fe;color:#6d28d9;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">Copilot</span>' : '<span style="color:#d1d5db;">—</span>'}</td>
+    return `<tr>
+      <td style="padding:8px 12px;font-size:12px;font-weight:600;font-family:monospace;color:${BRAND.primary};">${r.computer}</td>
+      ${hasOwners ? `<td style="padding:8px 12px;font-size:12px;color:${BRAND.textMain};">${owner || `<span style="color:${BRAND.textSoft};font-style:italic;">—</span>`}</td>` : ''}
+      <td style="padding:8px 12px;font-size:12px;color:${BRAND.textMain};">${r.os || '—'}</td>
+      <td style="padding:8px 12px;font-size:12px;color:${BRAND.textMain};">${r.suites.length ? r.suites.join('<br>') : `<span style="color:${BRAND.textSoft};font-style:italic;">—</span>`}</td>
+      <td style="padding:8px 12px;text-align:center;font-size:12px;">${r.hasCopilot ? '<span style="background:#ede9fe;color:#6d28d9;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;">Copilot</span>' : `<span style="color:${BRAND.border};">—</span>`}</td>
     </tr>`;
   }).join('');
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Inventario de Software — ${clientName}</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;color:#1e293b;padding:40px}.header{margin-bottom:32px;border-bottom:2px solid #e2e8f0;padding-bottom:20px}.title{font-size:22px;font-weight:700}.subtitle{font-size:13px;color:#64748b;margin-top:4px}table{width:100%;border-collapse:collapse}thead tr{background:#f8fafc}th{padding:8px 12px;text-align:left;font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #e2e8f0}.footer{margin-top:28px;font-size:11px;color:#94a3b8}</style></head><body>
-<div class="header"><div class="title">Inventario de Software — ${clientName}</div><div class="subtitle">Generado el ${now} · ${file.rows.length} equipos · Fuente: ManageEngine${hasOwners ? ' + Entra ID' : ''}</div></div>
-<table><thead><tr>
-  <th>Equipo</th>${hasOwners ? '<th>Usuario M365</th>' : ''}<th>Sistema Operativo</th><th>Suite Office</th><th style="text-align:center;">Copilot</th>
-</tr></thead><tbody>${rows}</tbody></table>
-<div class="footer">Reporte generado por Service Catalog</div></body></html>`;
-
-  const win = window.open('', '_blank'); if (!win) return;
-  win.document.write(html); win.document.close(); win.print();
+  const body = `
+    ${pdfHeader({ title: `Inventario de Software — ${clientName}`, companyName: 'Service Catalog', subtitle: `Generado el ${now} · ${file.rows.length} equipos · Fuente: ManageEngine${hasOwners ? ' + Entra ID' : ''}`, date: now })}
+    ${pdfSection('Software por Equipo')}
+    <table>
+      <thead><tr>
+        <th>Equipo</th>${hasOwners ? '<th>Usuario M365</th>' : ''}<th>Sistema Operativo</th><th>Suite Office</th><th style="text-align:center;">Copilot</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p class="footer">Reporte generado por Service Catalog</p>
+  `;
+  openPrintWindow(`Inventario de Software — ${clientName}`, body);
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────

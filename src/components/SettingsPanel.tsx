@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Upload, Trash2, Image, Send, CheckCircle2 } from 'lucide-react';
+import { Upload, Trash2, Image, Send, CheckCircle2, Eye, X } from 'lucide-react';
 import { supabase, UserSettings } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -22,6 +22,8 @@ export function SettingsPanel() {
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhookToken, setWebhookToken] = useState('');
   const [savingWebhook, setSavingWebhook] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -132,6 +134,21 @@ export function SettingsPanel() {
       });
     }
     setTestingDigest(false);
+  };
+
+  const handlePreviewDigest = async () => {
+    setLoadingPreview(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/weekly-digest`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preview: true }),
+      });
+      const json = await res.json();
+      if (json.html) setPreviewHtml(json.html);
+    }
+    setLoadingPreview(false);
   };
 
   const handleSendTestEmail = async () => {
@@ -287,8 +304,36 @@ export function SettingsPanel() {
             className="px-4 py-2 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium disabled:opacity-40">
             {testingDigest ? 'Sending...' : 'Send test now'}
           </button>
+          <button onClick={handlePreviewDigest} disabled={loadingPreview}
+            className="flex items-center gap-1.5 px-4 py-2 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-sm font-medium disabled:opacity-40">
+            <Eye className="w-3.5 h-3.5" />
+            {loadingPreview ? 'Loading...' : 'Preview'}
+          </button>
         </div>
       </div>
+
+      {/* Weekly digest preview modal */}
+      {previewHtml && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 shrink-0">
+              <span className="text-sm font-semibold text-gray-900">Vista previa — Weekly Digest</span>
+              <button onClick={() => setPreviewHtml(null)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-4 bg-slate-50">
+              <iframe
+                srcDoc={previewHtml}
+                className="w-full rounded-lg border border-gray-200 bg-white"
+                style={{ minHeight: '600px', height: '100%' }}
+                sandbox="allow-same-origin"
+                title="Weekly digest preview"
+              />
+            </div>
+          </div>
+        </div>
+      )}
       <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm space-y-4">
         <div>
           <h3 className="text-sm font-semibold text-gray-800">Test de email</h3>

@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, Fragment } from 'react';
 import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, Trash2, HardDrive, Wifi, Monitor, Server, LayoutGrid, List, Users, Download, ChevronRight, ChevronDown } from 'lucide-react';
 import { supabase, Service, Client, ServiceHeartbeat } from '../lib/supabase';
+import { BRAND, pdfHeader, pdfSection, openPrintWindow } from '../lib/pdfBrand';
 
 interface ServiceBackup {
   id: string;
@@ -50,10 +51,25 @@ type Props = {
   clients: Client[];
 };
 
+interface DiskSmartEntry {
+  dev: string;
+  type: 'SSD' | 'NVMe' | 'HDD' | string;
+  model: string;
+  serial: string;
+  capacity: string;
+  smart_health: string;
+  status: 'ok' | 'warning' | 'error';
+  temp_c: number | null;
+  power_on_hours: number | null;
+  pct_used: number | null;
+  tbw: string | null;
+  reallocated_sectors: number | null;
+}
+
 // Extract readable metrics from payload based on source
 // Latest known script versions — bump here when a script is updated
 const LATEST_SCRIPT_VERSIONS: Record<string, string> = {
-  'system-health':   '1.1.0',
+  'system-health':   '1.4.0',
   'mikrotik':        '1.0.0',
   'backup-folder':   '1.0.0',
   'server-snapshot': '1.0.0',
@@ -76,6 +92,11 @@ function MetricChips({ hb }: { hb: ServiceHeartbeat }) {
     if (p.disk_free_gb != null) chips.push({ label: 'Free', value: `${p.disk_free_gb} GB` });
     if (p.uptime_str != null) chips.push({ label: 'Up', value: String(p.uptime_str) });
     if (p.smb_session_count != null) chips.push({ label: 'SMB', value: `${p.smb_session_count} session${Number(p.smb_session_count) !== 1 ? 's' : ''}` });
+    if (Array.isArray(p.disk_smart) && (p.disk_smart as DiskSmartEntry[]).length > 0) {
+      const disks = p.disk_smart as DiskSmartEntry[];
+      const worst = disks.some(d => d.status === 'error') ? 'error' : disks.some(d => d.status === 'warning') ? 'warning' : false;
+      chips.push({ label: 'SMART', value: `${disks.length} disk${disks.length !== 1 ? 's' : ''}`, warn: worst === 'warning', error: worst === 'error' });
+    }
   } else if (hb.source === 'network') {
     if (p.gateway_ok != null) chips.push({ label: 'GW', value: p.gateway_ok ? 'ok' : '✗', error: !p.gateway_ok });
     if (p.internet_ok != null) chips.push({ label: 'Internet', value: p.internet_ok ? 'ok' : '✗', error: !p.internet_ok });
@@ -615,6 +636,9 @@ export function TelemetryDashboard({ services, clients }: Props) {
                               </span>
                             ))}
                           </div>
+                        )}
+                        {hb.source === 'system-health' && Array.isArray((hb.payload as Record<string,unknown>)?.disk_smart) && ((hb.payload as Record<string,unknown>).disk_smart as DiskSmartEntry[]).length > 0 && (
+                          <DiskSmartPanel disks={(hb.payload as Record<string,unknown>).disk_smart as DiskSmartEntry[]} />
                         )}
                       </div>
                     );
@@ -1221,74 +1245,38 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
     </tr>`;
   }).join('');
 
-  const logoHtml = logoUrl
-    ? `<img src="${logoUrl}" alt="${companyName}" style="height:36px;object-fit:contain;margin-bottom:4px;" />`
-    : `<span style="font-weight:700;font-size:16px;color:#1e293b;">${companyName}</span>`;
+  const subtitle = clientName
+    ? `Cliente: <strong>${clientName}</strong>${hostname ? ` &nbsp;·&nbsp; Servidor: ${hostname}` : ''}`
+    : `${serviceName}${hostname ? ` &nbsp;·&nbsp; ${hostname}` : ''}`;
 
-  const html = `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <title>Reporte de Accesos SMB — ${clientName || serviceName}</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 40px 24px; background: #fff; color: #111827; }
-    #print-btn { position:fixed;top:16px;right:16px;background:#3b82f6;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(59,130,246,.35);z-index:999; }
-    #print-btn:hover { background:#2563eb; }
-    @media print { #print-btn { display:none; } body { padding: 20px; } @page { size: A4 landscape; margin: 15mm; } }
-  </style>
-</head>
-<body>
-  <button id="print-btn" onclick="window.print()">⬇ Guardar PDF</button>
-  <div style="max-width:1100px;margin:0 auto;">
+  const bodyContent = `
+    ${pdfHeader({ logoUrl, companyName, title: 'Reporte de Accesos SMB', subtitle, date: dateStr })}
 
-    <!-- Header al estilo emails -->
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding-bottom:20px;border-bottom:2px solid #3b82f6;margin-bottom:28px;">
-      <div>
-        ${logoHtml}
-        <h1 style="margin:8px 0 2px;font-size:20px;color:#1e293b;">Reporte de Accesos SMB</h1>
-        ${clientName ? `<p style="margin:0;font-size:13px;color:#64748b;">Cliente: <strong>${clientName}</strong>${hostname ? ` &nbsp;·&nbsp; Servidor: ${hostname}` : ''}</p>` : `<p style="margin:0;font-size:13px;color:#64748b;">${serviceName}${hostname ? ` &nbsp;·&nbsp; ${hostname}` : ''}</p>`}
-      </div>
-      <div style="text-align:right;font-size:12px;color:#64748b;white-space:nowrap;padding-top:4px;">
-        <div style="font-weight:600;color:#374151;">Generado</div>
-        <div>${dateStr}</div>
-      </div>
-    </div>
-
-    <!-- Resumen ejecutivo -->
     ${kpisHtml}
-
-    <!-- Alertas -->
     ${noOfficeHtml}
     ${ghostUsersHtml}
 
-    <!-- Carpetas -->
-    <h2 style="font-size:14px;font-weight:700;color:#1e293b;margin:0 0 14px;text-transform:uppercase;letter-spacing:.5px;">Carpetas Compartidas</h2>
+    ${pdfSection('Carpetas Compartidas')}
     ${sharesHtml}
 
-    <!-- Equipos unificado -->
-    <h2 style="font-size:14px;font-weight:700;color:#1e293b;margin:28px 0 6px;text-transform:uppercase;letter-spacing:.5px;">Equipos</h2>
-    <p style="font-size:11px;color:#94a3b8;margin:0 0 12px;">
+    ${pdfSection('Equipos')}
+    <p style="font-size:11px;color:${BRAND.textSoft};margin:0 0 12px;">
       <span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;"></span> Sesión activa</span>
       Fuentes: NAS${hasSuites ? ' · ManageEngine' : ''}${hasOwners ? ' · Entra ID' : ''}${hasDeviceReport ? ' · Inventario PowerShell' : ''}
     </p>
-    <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+    <div style="border:1px solid ${BRAND.border};border-radius:8px;overflow:hidden;">
       <table style="width:100%;border-collapse:collapse;">
-        <thead><tr style="background:#f9fafb;">
+        <thead><tr style="background:${BRAND.bg};">
           ${th('Equipo')}${th('IP LAN')}${th('Usuario Windows / M365')}${th('Usuario NAS')}${th('OS')}${th('Office')}${th('Último acceso NAS')}
         </tr></thead>
         <tbody>${machineRows}</tbody>
       </table>
     </div>
 
-    <p style="color:#94a3b8;font-size:11px;text-align:center;margin-top:20px;padding-top:16px;border-top:1px solid #f1f5f9;">${companyName} &nbsp;·&nbsp; Reporte generado automáticamente &nbsp;·&nbsp; ${dateStr}</p>
-  </div>
-</body>
-</html>`;
+    <p class="footer" style="text-align:center;margin-top:20px;padding-top:16px;border-top:1px solid ${BRAND.border};">${companyName} &nbsp;·&nbsp; Reporte generado automáticamente &nbsp;·&nbsp; ${dateStr}</p>
+  `;
 
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const win = window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  openPrintWindow(`Reporte de Accesos SMB — ${clientName || serviceName}`, bodyContent);
 }
 
 function StatBadge({ label, value, color, onClick, active }: { label: string; value: number; color: string; onClick: () => void; active: boolean }) {
@@ -1305,5 +1293,57 @@ function StatBadge({ label, value, color, onClick, active }: { label: string; va
       <div className="text-xl font-bold">{value}</div>
       <div className="text-xs font-medium opacity-80">{label}</div>
     </button>
+  );
+}
+
+function DiskSmartPanel({ disks }: { disks: DiskSmartEntry[] }) {
+  return (
+    <div className="mt-2 space-y-1.5">
+      {disks.map((d, i) => {
+        const dotColor = d.status === 'ok' ? 'bg-emerald-500' : d.status === 'warning' ? 'bg-amber-400' : 'bg-red-500';
+        const pctUsedNum = typeof d.pct_used === 'number' ? d.pct_used : null;
+        const pctBar = pctUsedNum !== null ? Math.min(pctUsedNum, 100) : null;
+        const barColor = pctUsedNum == null ? '' : pctUsedNum > 90 ? 'bg-red-400' : pctUsedNum > 75 ? 'bg-amber-400' : 'bg-emerald-400';
+        return (
+          <div key={i} className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-[11px] space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />
+              <span className="font-mono font-semibold text-gray-700">{d.dev}</span>
+              <span className="bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-medium">{d.type}</span>
+              {d.model && <span className="text-gray-500 truncate max-w-[180px]">{d.model}</span>}
+              {d.capacity && <span className="text-gray-400">{d.capacity}</span>}
+              <span className={`ml-auto font-semibold ${d.status === 'ok' ? 'text-emerald-700' : d.status === 'warning' ? 'text-amber-700' : 'text-red-700'}`}>
+                SMART: {d.smart_health}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap text-gray-500">
+              {d.temp_c !== null && (
+                <span className={d.temp_c > 65 ? 'text-red-600 font-semibold' : d.temp_c > 55 ? 'text-amber-600' : ''}>
+                  🌡 {d.temp_c}°C
+                </span>
+              )}
+              {d.power_on_hours !== null && (
+                <span title="Power-On Hours">⏱ {d.power_on_hours.toLocaleString()}h ({Math.round(d.power_on_hours / 24 / 365 * 10) / 10}yr)</span>
+              )}
+              {d.tbw !== null && <span title="Total Data Written">✍ {d.tbw} TBW</span>}
+              {d.reallocated_sectors !== null && d.reallocated_sectors > 0 && (
+                <span className="text-amber-600 font-semibold">⚠ {d.reallocated_sectors} sect. reasignados</span>
+              )}
+            </div>
+            {pctBar !== null && (
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400 shrink-0">Vida usada:</span>
+                <div className="flex-1 bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                  <div className={`h-1.5 rounded-full transition-all ${barColor}`} style={{ width: `${pctBar}%` }} />
+                </div>
+                <span className={`shrink-0 font-semibold ${pctUsedNum! > 90 ? 'text-red-600' : pctUsedNum! > 75 ? 'text-amber-600' : 'text-emerald-700'}`}>
+                  {pctUsedNum}%
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
