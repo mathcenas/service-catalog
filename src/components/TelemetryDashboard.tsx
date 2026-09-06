@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, Fragment } from 'react';
 import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, Trash2, HardDrive, Wifi, Monitor, Server, LayoutGrid, List, Users, Download, ChevronRight, ChevronDown } from 'lucide-react';
 import { supabase, Service, Client, ServiceHeartbeat } from '../lib/supabase';
+import { BRAND, pdfHeader, pdfSection, openPrintWindow } from '../lib/pdfBrand';
 
 interface ServiceBackup {
   id: string;
@@ -1244,74 +1245,38 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
     </tr>`;
   }).join('');
 
-  const logoHtml = logoUrl
-    ? `<img src="${logoUrl}" alt="${companyName}" style="height:36px;object-fit:contain;margin-bottom:4px;" />`
-    : `<span style="font-weight:700;font-size:16px;color:#1e293b;">${companyName}</span>`;
+  const subtitle = clientName
+    ? `Cliente: <strong>${clientName}</strong>${hostname ? ` &nbsp;·&nbsp; Servidor: ${hostname}` : ''}`
+    : `${serviceName}${hostname ? ` &nbsp;·&nbsp; ${hostname}` : ''}`;
 
-  const html = `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <title>Reporte de Accesos SMB — ${clientName || serviceName}</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 40px 24px; background: #fff; color: #111827; }
-    #print-btn { position:fixed;top:16px;right:16px;background:#3b82f6;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(59,130,246,.35);z-index:999; }
-    #print-btn:hover { background:#2563eb; }
-    @media print { #print-btn { display:none; } body { padding: 20px; } @page { size: A4 landscape; margin: 15mm; } }
-  </style>
-</head>
-<body>
-  <button id="print-btn" onclick="window.print()">⬇ Guardar PDF</button>
-  <div style="max-width:1100px;margin:0 auto;">
+  const bodyContent = `
+    ${pdfHeader({ logoUrl, companyName, title: 'Reporte de Accesos SMB', subtitle, date: dateStr })}
 
-    <!-- Header al estilo emails -->
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding-bottom:20px;border-bottom:2px solid #3b82f6;margin-bottom:28px;">
-      <div>
-        ${logoHtml}
-        <h1 style="margin:8px 0 2px;font-size:20px;color:#1e293b;">Reporte de Accesos SMB</h1>
-        ${clientName ? `<p style="margin:0;font-size:13px;color:#64748b;">Cliente: <strong>${clientName}</strong>${hostname ? ` &nbsp;·&nbsp; Servidor: ${hostname}` : ''}</p>` : `<p style="margin:0;font-size:13px;color:#64748b;">${serviceName}${hostname ? ` &nbsp;·&nbsp; ${hostname}` : ''}</p>`}
-      </div>
-      <div style="text-align:right;font-size:12px;color:#64748b;white-space:nowrap;padding-top:4px;">
-        <div style="font-weight:600;color:#374151;">Generado</div>
-        <div>${dateStr}</div>
-      </div>
-    </div>
-
-    <!-- Resumen ejecutivo -->
     ${kpisHtml}
-
-    <!-- Alertas -->
     ${noOfficeHtml}
     ${ghostUsersHtml}
 
-    <!-- Carpetas -->
-    <h2 style="font-size:14px;font-weight:700;color:#1e293b;margin:0 0 14px;text-transform:uppercase;letter-spacing:.5px;">Carpetas Compartidas</h2>
+    ${pdfSection('Carpetas Compartidas')}
     ${sharesHtml}
 
-    <!-- Equipos unificado -->
-    <h2 style="font-size:14px;font-weight:700;color:#1e293b;margin:28px 0 6px;text-transform:uppercase;letter-spacing:.5px;">Equipos</h2>
-    <p style="font-size:11px;color:#94a3b8;margin:0 0 12px;">
+    ${pdfSection('Equipos')}
+    <p style="font-size:11px;color:${BRAND.textSoft};margin:0 0 12px;">
       <span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#22c55e;"></span> Sesión activa</span>
       Fuentes: NAS${hasSuites ? ' · ManageEngine' : ''}${hasOwners ? ' · Entra ID' : ''}${hasDeviceReport ? ' · Inventario PowerShell' : ''}
     </p>
-    <div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+    <div style="border:1px solid ${BRAND.border};border-radius:8px;overflow:hidden;">
       <table style="width:100%;border-collapse:collapse;">
-        <thead><tr style="background:#f9fafb;">
+        <thead><tr style="background:${BRAND.bg};">
           ${th('Equipo')}${th('IP LAN')}${th('Usuario Windows / M365')}${th('Usuario NAS')}${th('OS')}${th('Office')}${th('Último acceso NAS')}
         </tr></thead>
         <tbody>${machineRows}</tbody>
       </table>
     </div>
 
-    <p style="color:#94a3b8;font-size:11px;text-align:center;margin-top:20px;padding-top:16px;border-top:1px solid #f1f5f9;">${companyName} &nbsp;·&nbsp; Reporte generado automáticamente &nbsp;·&nbsp; ${dateStr}</p>
-  </div>
-</body>
-</html>`;
+    <p class="footer" style="text-align:center;margin-top:20px;padding-top:16px;border-top:1px solid ${BRAND.border};">${companyName} &nbsp;·&nbsp; Reporte generado automáticamente &nbsp;·&nbsp; ${dateStr}</p>
+  `;
 
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const win = window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  openPrintWindow(`Reporte de Accesos SMB — ${clientName || serviceName}`, bodyContent);
 }
 
 function StatBadge({ label, value, color, onClick, active }: { label: string; value: number; color: string; onClick: () => void; active: boolean }) {
