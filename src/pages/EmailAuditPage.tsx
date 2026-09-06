@@ -155,6 +155,9 @@ export function EmailAuditPage({ token }: { token: string }) {
     <div style={styles.page}>
       <div style={{ ...styles.card, maxWidth: 620 }}>
         <div style={{ marginBottom: 24 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0B192C', padding: '5px 12px', borderRadius: 6, marginBottom: 12 }}>
+            <span style={{ color: '#06B6D4', fontSize: 11, fontWeight: 700, letterSpacing: '.5px' }}>CENAS IT</span>
+          </div>
           <p style={{ color: '#64748b', fontSize: 13, marginBottom: 4 }}>{clientName}</p>
           <h1 style={{ color: '#f1f5f9', fontSize: 22, fontWeight: 700, margin: 0 }}>
             Relevamiento de casillas de correo
@@ -284,6 +287,13 @@ export function EmailAuditPage({ token }: { token: string }) {
             {busy ? 'Enviando…' : 'Enviar información'}
           </button>
         </form>
+
+        <div style={{ marginTop: 28, paddingTop: 16, borderTop: '1px solid #1e293b', textAlign: 'center' }}>
+          <p style={{ color: '#475569', fontSize: 11, margin: 0 }}>
+            Gobernanza TI &amp; Procesos alineados a <strong style={{ color: '#64748b' }}>ISO/IEC 20000</strong>
+          </p>
+          <p style={{ color: '#334155', fontSize: 11, marginTop: 3 }}>Cenas IT Solutions — cenas.uy</p>
+        </div>
       </div>
     </div>
   );
@@ -356,8 +366,8 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 8,
   },
   submitBtn: {
-    background: '#2563eb',
-    color: '#fff',
+    background: '#06B6D4',
+    color: '#0B192C',
     border: 'none',
     borderRadius: 8,
     padding: '12px 0',

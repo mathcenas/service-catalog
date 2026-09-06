@@ -265,9 +265,15 @@ export function SharePage({ token }: Props) {
                   <p className="text-xs text-white/50">{userSettings?.company_name || 'Managed Services Portal'}</p>
                 </div>
               </div>
-              {statusPageUrl ? (
-                <a href={statusPageUrl} target="_blank" rel="noopener noreferrer">{badge}</a>
-              ) : badge}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 bg-[#1E293B] border border-slate-700/80 px-3 py-1 rounded-full text-xs">
+                  <span className="h-2 w-2 rounded-full bg-[#06B6D4] animate-pulse" />
+                  <span className="text-slate-300">Gestión bajo norma <strong className="text-white">ISO/IEC 20000</strong></span>
+                </div>
+                {statusPageUrl ? (
+                  <a href={statusPageUrl} target="_blank" rel="noopener noreferrer">{badge}</a>
+                ) : badge}
+              </div>
             </div>
           </div>
         </header>
@@ -299,8 +305,13 @@ export function SharePage({ token }: Props) {
         </main>
 
         <footer className="border-t border-gray-100 dark:border-gray-800 py-6">
-          <div className="max-w-5xl mx-auto px-4 text-center">
-            <p className="text-xs text-gray-400 dark:text-gray-600">Managed service portal</p>
+          <div className="max-w-5xl mx-auto px-4 text-center space-y-1">
+            <p className="text-xs text-gray-400 dark:text-gray-600">
+              Gobernanza TI y Monitoreo Proactivo operados por {userSettings?.company_name || 'Cenas IT Solutions'}.
+            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-600">
+              Procesos alineados a estándar <strong className="text-gray-500 dark:text-gray-500">ISO/IEC 20000</strong> para continuidad operativa y seguridad.
+            </p>
           </div>
         </footer>
       </div>

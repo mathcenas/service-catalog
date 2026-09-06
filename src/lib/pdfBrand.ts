@@ -80,6 +80,23 @@ export function pdfHeader(opts: {
   </div>`;
 }
 
+/** Methodology summary box — append at end of hours/task reports */
+export function pdfMethodologyBlock(): string {
+  return `
+  <div style="margin-top:32px;padding:16px 20px;border:1px solid ${BRAND.border};
+              border-left:4px solid ${BRAND.accent};border-radius:6px;background:${BRAND.bg};">
+    <p style="font-size:11px;font-weight:700;color:${BRAND.primary};margin-bottom:6px;
+              text-transform:uppercase;letter-spacing:.4px;">Gobernanza &amp; Operativa</p>
+    <p style="font-size:11px;color:${BRAND.textMid};line-height:1.65;margin:0;">
+      Las horas y tareas detalladas en este informe fueron ejecutadas bajo procedimientos de
+      control de cambios, gestión de incidencias e integración segura
+      (<strong style="color:${BRAND.textMain};">ISO/IEC&nbsp;20000</strong>),
+      garantizando la estabilidad de su entorno de producción.
+    </p>
+  </div>`;
+}
+
+
 /** Section heading inside a PDF */
 export function pdfSection(title: string): string {
   return `<h2 style="font-size:13px;font-weight:700;color:${BRAND.primary};
@@ -87,8 +104,9 @@ export function pdfSection(title: string): string {
                      padding-bottom:5px;border-bottom:2px solid ${BRAND.accent};">${title}</h2>`;
 }
 
-/** Open a new print window with the given HTML body content */
-export function openPrintWindow(title: string, bodyContent: string): void {
+/** Open a new print window with the given HTML body content.
+ *  companyName is used in the fixed footer; defaults to 'Cenas IT Solutions'. */
+export function openPrintWindow(title: string, bodyContent: string, companyName = 'Cenas IT Solutions'): void {
   const win = window.open('', '_blank');
   if (!win) return;
   win.document.write(`<!DOCTYPE html>
@@ -106,6 +124,18 @@ export function openPrintWindow(title: string, bodyContent: string): void {
   <div style="max-width:1100px;margin:0 auto;">
     ${bodyContent}
   </div>
+  <footer style="margin-top:auto;padding-top:20px;border-top:1px solid #e2e8f0;
+                 display:flex;justify-content:space-between;align-items:center;
+                 font-size:10px;color:#94a3b8;font-family:${BRAND_FONT};">
+    <div>
+      <span style="font-weight:700;color:#334155;">${companyName}</span> — cenas.uy
+    </div>
+    <div style="font-weight:600;color:${BRAND.primary};background:#f1f5f9;
+                padding:3px 10px;border-radius:4px;border:1px solid #e2e8f0;">
+      Gobernanza TI &amp; Procesos alineados a <strong>ISO/IEC&nbsp;20000</strong>
+    </div>
+    <div>Documento Oficial de Servicio</div>
+  </footer>
 </body>
 </html>`);
   win.document.close();

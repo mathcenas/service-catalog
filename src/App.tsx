@@ -25,10 +25,28 @@ function AppContent() {
     return <EmailAuditPage token={emailAuditMatch[1]} />;
   }
 
+  // Unknown public paths (not a known route pattern) → branded 404
+  const isKnownPath = path === '/' || shareMatch || aclReviewMatch || emailAuditMatch;
+  if (!isKnownPath && !loading && !user) {
+    return (
+      <div className="min-h-screen bg-[#0B192C] flex flex-col items-center justify-center px-4 text-center">
+        <div className="mb-6">
+          <div className="inline-flex items-center bg-[#1E293B] px-4 py-2 rounded-lg mb-8">
+            <span className="text-[#06B6D4] font-bold text-sm tracking-widest">CENAS IT</span>
+          </div>
+          <h1 className="text-5xl font-bold text-white mb-3">404</h1>
+          <p className="text-slate-400 text-base">Esta página no existe o el enlace es inválido.</p>
+          <p className="text-slate-500 text-sm mt-2">Si recibiste un enlace por correo, verificá que esté completo.</p>
+        </div>
+        <p className="text-slate-600 text-xs mt-8">Cenas IT Solutions — cenas.uy</p>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#06B6D4]"></div>
       </div>
     );
   }
