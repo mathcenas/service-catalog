@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { B, EMAIL_FONT } from "../_shared/emailBrand.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://servicios.cenas-support.com",
@@ -127,25 +128,30 @@ Deno.serve(async (req: Request) => {
           : null;
 
         const html = `
-          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;">
-            <div style="display:flex;align-items:center;gap:12px;padding-bottom:16px;border-bottom:2px solid ${color};margin-bottom:24px;">
-              <div style="background:${color}20;border:1px solid ${color}40;border-radius:8px;padding:8px 14px;">
-                <span style="color:${color};font-size:13px;font-weight:700;letter-spacing:1px;">${statusLabel}</span>
+          <div style="font-family:${EMAIL_FONT};max-width:560px;margin:0 auto;padding:32px 24px;background:#f8fafc;">
+            <div style="background:#ffffff;border-radius:12px;padding:24px;border:1px solid ${B.border};">
+              <div style="display:flex;align-items:center;gap:12px;padding-bottom:16px;border-bottom:2px solid ${color};margin-bottom:20px;">
+                <div style="background:${B.primary};padding:7px 13px;border-radius:7px;flex-shrink:0;">
+                  <span style="color:${B.accent};font-size:11px;font-weight:700;letter-spacing:.5px;">CENAS IT</span>
+                </div>
+                <div style="background:${color}18;border:1px solid ${color}40;border-radius:8px;padding:6px 12px;">
+                  <span style="color:${color};font-size:12px;font-weight:700;letter-spacing:.8px;">${statusLabel}</span>
+                </div>
+                <div>
+                  <div style="font-size:16px;font-weight:700;color:${B.primary};">Backup ${statusLabel}</div>
+                  <div style="font-size:12px;color:${B.textMid};">${serviceName}</div>
+                </div>
               </div>
-              <div>
-                <h2 style="margin:0;font-size:17px;color:#1e293b;">Backup ${statusLabel}</h2>
-                <p style="margin:2px 0 0;font-size:12px;color:#64748b;">${serviceName}</p>
-              </div>
+              <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+                ${job_name ? `<tr><td style="padding:6px 0;color:${B.textMid};width:120px;">Job</td><td style="color:${B.primary};font-weight:500;">${job_name}</td></tr>` : ""}
+                <tr><td style="padding:6px 0;color:${B.textMid};">Status</td><td style="color:${color};font-weight:600;">${statusLabel}</td></tr>
+                ${sizeStr ? `<tr><td style="padding:6px 0;color:${B.textMid};">Tamaño</td><td style="color:${B.textMain};">${sizeStr}</td></tr>` : ""}
+                ${durationStr ? `<tr><td style="padding:6px 0;color:${B.textMid};">Duración</td><td style="color:${B.textMain};">${durationStr}</td></tr>` : ""}
+                <tr><td style="padding:6px 0;color:${B.textMid};">Hora</td><td style="color:${B.textMain};">${new Date(backedUpAt).toLocaleString("en-US",{dateStyle:"medium",timeStyle:"short"})}</td></tr>
+                ${details ? `<tr><td style="padding:6px 0;color:${B.textMid};vertical-align:top;">Detalles</td><td style="color:#475569;white-space:pre-wrap;">${details}</td></tr>` : ""}
+              </table>
+              <p style="color:${B.textSoft};font-size:11px;text-align:center;margin:0;">Cenas IT — Alerta automática de backup</p>
             </div>
-            <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px;">
-              ${job_name ? `<tr><td style="padding:6px 0;color:#64748b;width:120px;">Job</td><td style="color:#1e293b;font-weight:500;">${job_name}</td></tr>` : ""}
-              <tr><td style="padding:6px 0;color:#64748b;">Status</td><td style="color:${color};font-weight:600;">${statusLabel}</td></tr>
-              ${sizeStr ? `<tr><td style="padding:6px 0;color:#64748b;">Size</td><td style="color:#1e293b;">${sizeStr}</td></tr>` : ""}
-              ${durationStr ? `<tr><td style="padding:6px 0;color:#64748b;">Duration</td><td style="color:#1e293b;">${durationStr}</td></tr>` : ""}
-              <tr><td style="padding:6px 0;color:#64748b;">Time</td><td style="color:#1e293b;">${new Date(backedUpAt).toLocaleString("en-US",{dateStyle:"medium",timeStyle:"short"})}</td></tr>
-              ${details ? `<tr><td style="padding:6px 0;color:#64748b;vertical-align:top;">Details</td><td style="color:#475569;white-space:pre-wrap;">${details}</td></tr>` : ""}
-            </table>
-            <p style="color:#94a3b8;font-size:11px;text-align:center;margin:0;">Cenas-Support — Automated Backup Alert</p>
           </div>`;
 
         await fetch("https://api.resend.com/emails", {

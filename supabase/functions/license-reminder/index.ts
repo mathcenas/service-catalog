@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { B, EMAIL_FONT, emailMeta } from "../_shared/emailBrand.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://servicios.cenas-support.com",
@@ -71,37 +72,48 @@ Deno.serve(async (req: Request) => {
         .eq("user_id", client.user_id)
         .maybeSingle();
 
-      const logoHtml = settings?.logo_url
-        ? `<img src="${settings.logo_url}" alt="Logo" style="max-height: 40px; max-width: 160px; margin-bottom: 16px;" />`
+      const companyName = settings?.company_name || "Cenas IT";
+      const logoHtmlInner = settings?.logo_url
+        ? `<img src="${settings.logo_url}" alt="Logo" style="max-height:32px;max-width:140px;" />`
         : "";
 
       const htmlBody = `
-        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 24px;">
-          <div style="border-bottom: 2px solid #d97706; padding-bottom: 16px; margin-bottom: 24px;">
-            ${logoHtml}
-            <h2 style="color: #1e293b; margin: 0; font-size: 20px;">License Renewal Reminder</h2>
-          </div>
+        <div style="font-family:${EMAIL_FONT};max-width:600px;margin:0 auto;padding:32px 24px;background:#f8fafc;">
+          <div style="background:#ffffff;border-radius:12px;padding:28px;border:1px solid ${B.border};">
 
-          <p style="color: #334155; font-size: 15px; line-height: 1.6;">
-            Hi ${client.contact_name || client.company_name},
-          </p>
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid ${B.border};">
+              <div style="background:${B.primary};padding:7px 13px;border-radius:7px;flex-shrink:0;">
+                <span style="color:${B.accent};font-size:11px;font-weight:700;letter-spacing:.5px;">${companyName.toUpperCase()}</span>
+              </div>
+              ${logoHtmlInner ? `<div style="flex-shrink:0;">${logoHtmlInner}</div>` : ""}
+              <div>
+                <span style="display:inline-block;background:#d9770618;color:#d97706;border:1px solid #d9770640;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;">Renovación</span>
+                <div style="font-size:15px;font-weight:700;color:${B.primary};margin-top:3px;">Recordatorio de Licencia</div>
+              </div>
+            </div>
 
-          <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 20px; margin: 20px 0;">
-            <h3 style="color: #92400e; margin: 0 0 8px; font-size: 17px;">${lic.software_name}</h3>
-            <p style="color: #78350f; margin: 0 0 8px; font-size: 14px;">
-              Your license expires in <strong>${daysLeft} day${daysLeft === 1 ? "" : "s"}</strong>
-              (${new Date(lic.expiration_date).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}).
+            <p style="color:${B.textMain};font-size:15px;line-height:1.6;margin:0 0 16px;">
+              Hola ${client.contact_name || client.company_name},
             </p>
-            ${lic.quantity ? `<p style="color: #78350f; margin: 0; font-size: 14px;">Quantity: ${lic.quantity} ${lic.quantity_label || "licenses"}</p>` : ""}
+
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:20px;margin:0 0 16px;">
+              <h3 style="color:#92400e;margin:0 0 8px;font-size:17px;">${lic.software_name}</h3>
+              <p style="color:#78350f;margin:0 0 8px;font-size:14px;">
+                Tu licencia vence en <strong>${daysLeft} día${daysLeft === 1 ? "" : "s"}</strong>
+                (${new Date(lic.expiration_date).toLocaleDateString("es-UY", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}).
+              </p>
+              ${lic.quantity ? `<p style="color:#78350f;margin:0;font-size:14px;">Cantidad: ${lic.quantity} ${lic.quantity_label || "licencias"}</p>` : ""}
+            </div>
+
+            <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 24px;">
+              Renovar a tiempo evita interrupciones en el servicio. Ante cualquier consulta, respondé este correo.
+            </p>
+
+            <p style="color:${B.textMid};font-size:13px;margin:0;padding-top:16px;border-top:1px solid ${B.border};">
+              ${companyName} — Gestión de Licencias
+            </p>
+            ${emailMeta(companyName)}
           </div>
-
-          <p style="color: #475569; font-size: 14px; line-height: 1.6;">
-            Please ensure timely renewal to avoid any service interruptions. If you have any questions or need assistance, simply reply to this email.
-          </p>
-
-          <p style="color: #64748b; font-size: 13px; margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 16px;">
-            ${settings?.company_name || "IT Services"} — License Management
-          </p>
         </div>
       `;
 

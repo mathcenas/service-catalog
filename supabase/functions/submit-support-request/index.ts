@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { B, EMAIL_FONT, emailMeta } from "../_shared/emailBrand.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -97,48 +98,51 @@ Deno.serve(async (req: Request) => {
       Critical: "#ef4444",
     };
 
-    const logoHtml = settings?.logo_url
-      ? `<img src="${settings.logo_url}" alt="Logo" style="max-height: 36px; max-width: 140px; margin-bottom: 12px;" />`
+    const companyName = settings?.company_name || "Cenas IT";
+    const logoHtmlInner = settings?.logo_url
+      ? `<img src="${settings.logo_url}" alt="Logo" style="max-height:32px;max-width:140px;" />`
       : "";
 
     const htmlBody = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px 24px;">
-        <div style="border-bottom: 2px solid #0f172a; padding-bottom: 16px; margin-bottom: 24px;">
-          ${logoHtml}
-          <h2 style="color: #1e293b; margin: 0; font-size: 18px;">Support Request</h2>
-          <p style="color: #64748b; margin: 4px 0 0; font-size: 12px;">${settings?.company_name || "Managed Services"}</p>
+      <div style="font-family:${EMAIL_FONT};max-width:600px;margin:0 auto;padding:32px 24px;background:#f8fafc;">
+        <div style="background:#ffffff;border-radius:12px;padding:28px;border:1px solid ${B.border};">
+
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid ${B.border};">
+            <div style="background:${B.primary};padding:7px 13px;border-radius:7px;flex-shrink:0;">
+              <span style="color:${B.accent};font-size:11px;font-weight:700;letter-spacing:.5px;">${companyName.toUpperCase()}</span>
+            </div>
+            ${logoHtmlInner ? `<div style="flex-shrink:0;">${logoHtmlInner}</div>` : ""}
+            <div>
+              <span style="display:inline-block;background:${priorityColors[priority]}18;color:${priorityColors[priority]};border:1px solid ${priorityColors[priority]}40;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;">${priority}</span>
+              <div style="font-size:16px;font-weight:700;color:${B.primary};margin-top:4px;">Solicitud de Soporte</div>
+            </div>
+          </div>
+
+          <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+            <tr>
+              <td style="padding:8px 12px;background:${B.bg};border:1px solid ${B.border};font-size:12px;color:${B.textMid};width:120px;">Cliente</td>
+              <td style="padding:8px 12px;border:1px solid ${B.border};font-size:14px;color:${B.primary};font-weight:500;">${client.company_name}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 12px;background:${B.bg};border:1px solid ${B.border};font-size:12px;color:${B.textMid};">Contacto</td>
+              <td style="padding:8px 12px;border:1px solid ${B.border};font-size:14px;color:${B.textMain};">${client.contact_name || client.email}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 12px;background:${B.bg};border:1px solid ${B.border};font-size:12px;color:${B.textMid};">Servicio</td>
+              <td style="padding:8px 12px;border:1px solid ${B.border};font-size:14px;color:${B.textMain};">${serviceName}</td>
+            </tr>
+          </table>
+
+          <div style="background:${B.bg};border:1px solid ${B.border};border-radius:8px;padding:16px;margin-bottom:20px;">
+            <p style="color:${B.primary};margin:0 0 8px;font-size:15px;font-weight:600;">${subject}</p>
+            <p style="color:#475569;margin:0;font-size:14px;line-height:1.6;white-space:pre-wrap;">${message}</p>
+          </div>
+
+          <p style="color:${B.textSoft};font-size:11px;margin:0;text-align:center;">
+            Enviado desde el Portal de Clientes &bull; ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+          </p>
+          ${emailMeta(companyName)}
         </div>
-
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-          <tr>
-            <td style="padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; font-size: 12px; color: #64748b; width: 120px;">Client</td>
-            <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-size: 14px; color: #1e293b; font-weight: 500;">${client.company_name}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; font-size: 12px; color: #64748b;">Contact</td>
-            <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-size: 14px; color: #1e293b;">${client.contact_name || client.email}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; font-size: 12px; color: #64748b;">Service</td>
-            <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-size: 14px; color: #1e293b;">${serviceName}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; font-size: 12px; color: #64748b;">Priority</td>
-            <td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-size: 14px;">
-              <span style="display: inline-block; background: ${priorityColors[priority]}20; color: ${priorityColors[priority]}; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;">${priority}</span>
-            </td>
-          </tr>
-        </table>
-
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-          <p style="color: #1e293b; margin: 0 0 8px; font-size: 15px; font-weight: 600;">${subject}</p>
-          <p style="color: #475569; margin: 0; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${message}</p>
-        </div>
-
-        <p style="color: #94a3b8; font-size: 11px; margin: 0; text-align: center;">
-          Submitted via Client Portal &bull; ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}<br/>
-          <span style="font-style: italic;">Correo generado por Task Tracker Pro, by Cenas Support</span>
-        </p>
       </div>
     `;
 
