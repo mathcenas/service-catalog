@@ -26,7 +26,21 @@ export const PDF_BASE_STYLES = `
   @media print {
     #print-btn { display: none !important; }
     body { padding: 20px; }
-    @page { size: A4; margin: 15mm; }
+    @page { size: A4; margin: 15mm 15mm 22mm; }
+    .pdf-footer { display: flex !important; }
+  }
+  .pdf-footer {
+    display: none;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    padding: 8px 15mm;
+    border-top: 1px solid ${BRAND.border};
+    background: #fff;
+    font-size: 9px;
+    color: ${BRAND.textSoft};
+    font-family: ${BRAND_FONT};
+    justify-content: space-between;
+    align-items: center;
   }
   #print-btn {
     position: fixed; top: 16px; right: 16px; z-index: 999;
@@ -80,6 +94,23 @@ export function pdfHeader(opts: {
   </div>`;
 }
 
+/** Methodology summary box — append at end of hours/task reports */
+export function pdfMethodologyBlock(): string {
+  return `
+  <div style="margin-top:32px;padding:16px 20px;border:1px solid ${BRAND.border};
+              border-left:4px solid ${BRAND.accent};border-radius:6px;background:${BRAND.bg};">
+    <p style="font-size:11px;font-weight:700;color:${BRAND.primary};margin-bottom:6px;
+              text-transform:uppercase;letter-spacing:.4px;">Gobernanza &amp; Operativa</p>
+    <p style="font-size:11px;color:${BRAND.textMid};line-height:1.65;margin:0;">
+      Las horas y tareas detalladas en este informe fueron ejecutadas bajo procedimientos de
+      control de cambios, gestión de incidencias e integración segura
+      (<strong style="color:${BRAND.textMain};">ISO/IEC&nbsp;20000</strong>),
+      garantizando la estabilidad de su entorno de producción.
+    </p>
+  </div>`;
+}
+
+
 /** Section heading inside a PDF */
 export function pdfSection(title: string): string {
   return `<h2 style="font-size:13px;font-weight:700;color:${BRAND.primary};
@@ -87,8 +118,9 @@ export function pdfSection(title: string): string {
                      padding-bottom:5px;border-bottom:2px solid ${BRAND.accent};">${title}</h2>`;
 }
 
-/** Open a new print window with the given HTML body content */
-export function openPrintWindow(title: string, bodyContent: string): void {
+/** Open a new print window with the given HTML body content.
+ *  companyName is used in the fixed footer; defaults to 'Cenas IT Solutions'. */
+export function openPrintWindow(title: string, bodyContent: string, companyName = 'Cenas IT Solutions'): void {
   const win = window.open('', '_blank');
   if (!win) return;
   win.document.write(`<!DOCTYPE html>
@@ -99,12 +131,24 @@ export function openPrintWindow(title: string, bodyContent: string): void {
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <style>${PDF_BASE_STYLES}</style>
+  <style>
+    ${PDF_BASE_STYLES}
+    /* CSS page counter */
+    @media print {
+      @page { counter-increment: page; }
+      .pdf-footer-page::after { content: "Página " counter(page); }
+    }
+  </style>
 </head>
 <body>
   <button id="print-btn" onclick="window.print()">⬇ Guardar PDF</button>
   <div style="max-width:1100px;margin:0 auto;">
     ${bodyContent}
+  </div>
+  <div class="pdf-footer">
+    <span>${companyName} — www.cenas.uy</span>
+    <span>Servicios gestionados bajo estándar ISO/IEC&nbsp;20000</span>
+    <span class="pdf-footer-page"></span>
   </div>
 </body>
 </html>`);
