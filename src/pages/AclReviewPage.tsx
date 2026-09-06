@@ -107,16 +107,27 @@ export function AclReviewPage({ token }: Props) {
             src={logo_url}
             alt=""
             draggable={false}
-            className="h-auto w-full max-w-[8rem] select-none object-contain opacity-[0.18] drop-shadow-[0_1px_6px_rgba(255,255,255,0.6)]"
+            className="h-auto w-full max-w-[8rem] select-none object-contain opacity-[0.10] drop-shadow-[0_1px_6px_rgba(255,255,255,0.6)]"
           />
         </div>
       )}
       {/* Header */}
-      <div className="bg-white border-b border-slate-200 shadow-sm">
+      <div className="share-header">
         <div className="max-w-2xl mx-auto px-4 py-5">
-          {logo_url && <img src={logo_url} alt="Logo" className="h-8 mb-3 object-contain" />}
-          <h1 className="text-xl font-bold text-slate-900">Revisión de Usuarios — {service_name}</h1>
-          <p className="text-sm text-slate-500 mt-1">{client_name} · Válido hasta {expiresDate}{daysLeft <= 3 && <span className="ml-2 text-amber-600 font-medium">({daysLeft}d restantes)</span>}</p>
+          <div className="flex items-center gap-3">
+            {logo_url ? (
+              <img src={logo_url} alt="Logo" className="h-8 max-w-[120px] object-contain brightness-0 invert" />
+            ) : (
+              <div className="bg-[#06B6D4]/20 p-2 rounded-lg">
+                <Users className="w-4 h-4 text-[#06B6D4]" />
+              </div>
+            )}
+            <div className="h-6 w-px bg-white/15" />
+            <div>
+              <h1 className="text-base font-bold text-white">Revisión de Accesos — {service_name}</h1>
+              <p className="text-xs text-white/50">{client_name} · Válido hasta {expiresDate}{daysLeft <= 3 && <span className="ml-1 text-amber-300 font-medium">({daysLeft}d)</span>}</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -260,7 +271,7 @@ export function AclReviewPage({ token }: Props) {
         <button
           onClick={handleSubmit}
           disabled={submitting}
-          className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-colors text-sm shadow-sm"
+          className="w-full flex items-center justify-center gap-2 bg-[#06B6D4] hover:bg-[#0891b2] disabled:opacity-60 text-[#0B192C] font-semibold py-3 rounded-xl transition-colors text-sm shadow-sm"
         >
           {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           {submitting ? 'Enviando...' : 'Enviar revisión'}
@@ -268,6 +279,17 @@ export function AclReviewPage({ token }: Props) {
 
         <p className="text-center text-xs text-slate-400">Al enviar, {company_name} recibirá tu respuesta por correo y gestionará los cambios necesarios.</p>
       </div>
+
+      <footer className="border-t border-slate-200 py-5 mt-4">
+        <div className="max-w-2xl mx-auto px-4 text-center space-y-1">
+          <p className="text-xs text-slate-400">
+            Gobernanza TI y Monitoreo Proactivo operados por <strong className="text-slate-500">{company_name}</strong>.
+          </p>
+          <p className="text-xs text-slate-400">
+            Procesos alineados a estándar <strong className="text-slate-500">ISO/IEC 20000</strong> para continuidad operativa y seguridad.
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }
