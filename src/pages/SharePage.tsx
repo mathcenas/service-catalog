@@ -64,7 +64,7 @@ function serviceMonthlyTotal(service: Service): number {
 }
 
 const ROADMAP_META: Record<RoadmapStatus, { color: string; bg: string; label: string; icon: any }> = {
-  'Next Release':  { color: 'text-blue-600 dark:text-blue-400',      bg: 'bg-blue-50 dark:bg-blue-950',    label: 'Next Release',  icon: Rocket },
+  'Next Release':  { color: 'text-brand-accent dark:text-brand-accent',      bg: 'bg-brand-accent/10 dark:bg-brand-accent/10',    label: 'Next Release',  icon: Rocket },
   'In Progress':   { color: 'text-amber-600 dark:text-amber-400',    bg: 'bg-amber-50 dark:bg-amber-950',  label: 'In Progress',   icon: Sparkles },
   'Planned':       { color: 'text-slate-600 dark:text-slate-400',    bg: 'bg-slate-100 dark:bg-slate-800', label: 'Planned',       icon: Calendar },
   'Released':      { color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950', label: 'Released', icon: CheckCircle2 },
@@ -202,7 +202,7 @@ export function SharePage({ token }: Props) {
     return (
       <div className={`${dark ? 'dark' : ''}`}>
         <div className="min-h-screen bg-slate-50 dark:bg-gray-950 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-600 dark:border-blue-400 border-t-transparent"></div>
+          <div className="animate-spin rounded-full h-10 w-10 border-2 border-brand-accent border-t-transparent"></div>
         </div>
       </div>
     );
@@ -248,21 +248,21 @@ export function SharePage({ token }: Props) {
           </div>
         )}
         {/* Header */}
-        <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+        <header className="share-header">
           <div className="max-w-5xl mx-auto px-4 py-5">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 {userSettings?.logo_url ? (
-                  <img src={userSettings.logo_url} alt="Logo" className="h-8 max-w-[120px] object-contain dark:brightness-110" />
+                  <img src={userSettings.logo_url} alt="Logo" className="h-8 max-w-[120px] object-contain brightness-0 invert" />
                 ) : (
-                  <div className="bg-slate-900 dark:bg-white p-2 rounded-lg">
-                    <Shield className="w-4 h-4 text-white dark:text-slate-900" />
+                  <div className="bg-brand-accent/20 p-2 rounded-lg">
+                    <Shield className="w-4 h-4 text-brand-accent" />
                   </div>
                 )}
-                <div className="h-6 w-px bg-gray-200 dark:bg-gray-700" />
+                <div className="h-6 w-px bg-white/15" />
                 <div>
-                  <h1 className="text-lg font-bold text-gray-900 dark:text-white">{client!.company_name}</h1>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{userSettings?.company_name || 'Managed Services Portal'}</p>
+                  <h1 className="text-lg font-bold text-white font-brand">{client!.company_name}</h1>
+                  <p className="text-xs text-white/50">{userSettings?.company_name || 'Managed Services Portal'}</p>
                 </div>
               </div>
               {statusPageUrl ? (
@@ -276,7 +276,7 @@ export function SharePage({ token }: Props) {
         <StatusBar services={services} />
 
         {/* Nav */}
-        <nav className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-10">
+        <nav className="share-nav sticky top-0 z-10">
           <div className="max-w-5xl mx-auto px-4 flex gap-1 overflow-x-auto">
             <NavBtn active={section === 'overview'} onClick={() => setSection('overview')}>Overview</NavBtn>
             <NavBtn active={section === 'services'} onClick={() => setSection('services')}>Services</NavBtn>
@@ -340,7 +340,7 @@ function ServiceBadge({ service }: { service: Service }) {
       <img src={service.uptime_badge_url!} alt={service.business_name || service.name} className="h-4" loading="lazy" />
       {pct && <span className={`text-[10px] font-semibold tabular-nums ${color}`}>{pct}%</span>}
       {service.uptime_status_url && (
-        <a href={service.uptime_status_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-600 dark:text-blue-400 hover:text-blue-500 font-medium">details</a>
+        <a href={service.uptime_status_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-brand-accent dark:text-brand-accent hover:text-brand-accent/80 font-medium">details</a>
       )}
     </div>
   );
@@ -363,8 +363,10 @@ function StatusBar({ services }: { services: Service[] }) {
 
 function NavBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-      active ? 'border-slate-900 dark:border-white text-slate-900 dark:text-white' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+    <button onClick={onClick} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap font-brand ${
+      active
+        ? 'border-brand-accent text-brand-accent'
+        : 'border-transparent text-white/55 hover:text-white/90'
     }`}>{children}</button>
   );
 }
@@ -584,7 +586,7 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
                   )}
                   {app.support_phone && (
                     <a href={`tel:${app.support_phone}`}
-                      className="text-xs text-blue-600 hover:text-blue-700 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-md font-medium">
+                      className="text-xs text-brand-accent hover:text-brand-accent/80 bg-brand-accent/10 px-2 py-1 rounded-md font-medium">
                       {app.support_phone}
                     </a>
                   )}
@@ -607,7 +609,7 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
               <span className={`w-2 h-2 rounded-full shrink-0 ${
                 s.operational_status === 'Operational' || !s.operational_status ? 'bg-emerald-500' :
                 s.operational_status === 'Degraded' ? 'bg-amber-500' :
-                s.operational_status === 'Down' ? 'bg-red-500' : 'bg-blue-500'
+                s.operational_status === 'Down' ? 'bg-red-500' : 'bg-brand-accent/100'
               }`} />
               <div className="flex-1 min-w-0">
                 <span className="text-sm font-medium text-gray-900 dark:text-white">{s.business_name || s.name}</span>
@@ -632,7 +634,7 @@ function CompletedUpdates({ items }: { items: RoadmapItem[] }) {
           <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Completed Updates
         </h2>
         {items.length > 3 && (
-          <button onClick={() => setExpanded(!expanded)} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+          <button onClick={() => setExpanded(!expanded)} className="text-xs text-brand-accent dark:text-brand-accent hover:underline">
             {expanded ? 'Show less' : `Show all ${items.length}`}
           </button>
         )}
@@ -647,7 +649,7 @@ function CompletedUpdates({ items }: { items: RoadmapItem[] }) {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {item.amount_type === 'hours' && item.amount && item.amount > 0 && (
-                <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded-full">{item.amount}h</span>
+                <span className="text-xs font-semibold text-brand-accent dark:text-brand-accent bg-brand-accent/10 dark:bg-brand-accent/10 px-2 py-0.5 rounded-full">{item.amount}h</span>
               )}
               {item.scheduled_date && (
                 <span className="text-xs text-gray-400">{new Date(item.scheduled_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
@@ -664,7 +666,7 @@ function StatCard({ label, value, accent = false }: { label: string; value: stri
   return (
     <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3">
       <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-0.5">{label}</div>
-      <div className={`text-xl font-bold ${accent ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-white'}`}>{value}</div>
+      <div className={`text-xl font-bold ${accent ? 'text-brand-accent dark:text-brand-accent' : 'text-gray-900 dark:text-white'}`}>{value}</div>
     </div>
   );
 }
@@ -909,7 +911,7 @@ function ServiceCard({ service, typeName, projectName, expanded, onToggle, heart
             <span className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${
               service.operational_status === 'Operational' || !service.operational_status ? 'bg-emerald-500' :
               service.operational_status === 'Degraded' ? 'bg-amber-500' :
-              service.operational_status === 'Down' ? 'bg-red-500' : 'bg-blue-500'
+              service.operational_status === 'Down' ? 'bg-red-500' : 'bg-brand-accent/100'
             }`} />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
@@ -1145,7 +1147,7 @@ function BackupHistory({ backups }: { backups: ServiceBackup[] }) {
         </table>
       </div>
       {backups.length > 10 && (
-        <button onClick={() => setShowAll(!showAll)} className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline">
+        <button onClick={() => setShowAll(!showAll)} className="mt-2 text-xs text-brand-accent dark:text-brand-accent hover:underline">
           {showAll ? 'Show less' : `Show all ${backups.length} records`}
         </button>
       )}
@@ -1168,7 +1170,7 @@ function Tag({ label }: { label: string }) {
 
 function BulletList({ title, items, color }: { title: string; items: string[]; color: string }) {
   if (items.length === 0) return null;
-  const textColor = color === 'emerald' ? 'text-emerald-700 dark:text-emerald-400' : color === 'blue' ? 'text-blue-700 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400';
+  const textColor = color === 'emerald' ? 'text-emerald-700 dark:text-emerald-400' : color === 'blue' ? 'text-brand-accent dark:text-brand-accent' : 'text-gray-600 dark:text-gray-400';
   return (
     <div>
       <div className={`text-[10px] uppercase tracking-wider font-semibold ${textColor} mb-1.5`}>{title}</div>
@@ -1218,7 +1220,7 @@ function SpeedChart({ heartbeats }: { heartbeats: ServiceHeartbeat[] }) {
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] uppercase tracking-wider text-gray-400 font-medium">Network (48h)</span>
         <div className="flex items-center gap-3 text-xs">
-          <span className="text-blue-600 dark:text-blue-400 font-medium">{latest.download.toFixed(0)} Mbps down</span>
+          <span className="text-brand-accent dark:text-brand-accent font-medium">{latest.download.toFixed(0)} Mbps down</span>
           <span className="text-emerald-600 dark:text-emerald-400 font-medium">{latest.upload.toFixed(0)} Mbps up</span>
           <span className="text-gray-500">{latest.ping.toFixed(0)}ms</span>
         </div>
@@ -1285,7 +1287,7 @@ function ChangesSection({ changes, services }: { changes: ServiceChange[]; servi
             <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
               <span>{new Date(c.change_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
               <span className="text-gray-300 dark:text-gray-600">-</span>
-              <span className="text-blue-600 dark:text-blue-400 font-medium">{getServiceName(c.service_id)}</span>
+              <span className="text-brand-accent dark:text-brand-accent font-medium">{getServiceName(c.service_id)}</span>
             </div>
             <p className="text-sm font-medium text-gray-900 dark:text-white">{c.summary}</p>
             {c.details && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{c.details}</p>}
@@ -1350,7 +1352,7 @@ function SupportHoursSection({ hours, roadmapItems, services }: { hours: Support
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Support Hours</h2>
         <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}
-          className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 outline-none">
+          className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg px-3 py-1.5 text-xs focus:ring-2 focus:ring-brand-accent outline-none">
           {availableMonths.map(m => {
             const [y, mo] = m.split('-');
             return <option key={m} value={m}>{new Date(parseInt(y), parseInt(mo) - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</option>;
@@ -1365,7 +1367,7 @@ function SupportHoursSection({ hours, roadmapItems, services }: { hours: Support
             <span className={`text-xs font-semibold ${pctUsed > 90 ? 'text-red-600' : pctUsed > 70 ? 'text-amber-600' : 'text-gray-900 dark:text-white'}`}>{pctUsed.toFixed(0)}%</span>
           </div>
           <div className="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-            <div className={`h-full rounded-full ${pctUsed > 90 ? 'bg-red-500' : pctUsed > 70 ? 'bg-amber-500' : 'bg-blue-500'}`} style={{ width: `${Math.min(pctUsed, 100)}%` }} />
+            <div className={`h-full rounded-full ${pctUsed > 90 ? 'bg-red-500' : pctUsed > 70 ? 'bg-amber-500' : 'bg-brand-accent/100'}`} style={{ width: `${Math.min(pctUsed, 100)}%` }} />
           </div>
         </div>
       )}
@@ -1379,7 +1381,7 @@ function SupportHoursSection({ hours, roadmapItems, services }: { hours: Support
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-gray-400">{new Date(entry.work_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
-                  {getServiceName(entry.service_id) && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">{getServiceName(entry.service_id)}</span>}
+                  {getServiceName(entry.service_id) && <span className="text-xs text-brand-accent dark:text-brand-accent font-medium">{getServiceName(entry.service_id)}</span>}
                   {entry.source === 'pipeline' && <span className="text-[10px] bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 rounded-full font-medium">Pipeline</span>}
                 </div>
                 {entry.description && <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5">{entry.description}</p>}
@@ -1461,7 +1463,7 @@ function SupportSection({ token, clientName, services }: { token: string; client
           <div>
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Service</label>
             <select value={serviceId} onChange={e => setServiceId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500">
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-accent">
               <option value="">General inquiry</option>
               {services.map(s => <option key={s.id} value={s.id}>{s.business_name || s.name}</option>)}
             </select>
@@ -1469,7 +1471,7 @@ function SupportSection({ token, clientName, services }: { token: string; client
           <div>
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Priority</label>
             <select value={priority} onChange={e => setPriority(e.target.value as any)}
-              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500">
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-accent">
               <option>Low</option><option>Medium</option><option>High</option><option>Critical</option>
             </select>
           </div>
@@ -1477,12 +1479,12 @@ function SupportSection({ token, clientName, services }: { token: string; client
         <div>
           <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Subject</label>
           <input type="text" value={subject} onChange={e => setSubject(e.target.value)} required placeholder="Brief summary"
-            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-accent" />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Description</label>
           <textarea value={message} onChange={e => setMessage(e.target.value)} rows={4} required placeholder="What's happening, when it started..."
-            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-accent resize-none" />
         </div>
         <button type="submit" disabled={sending}
           className="inline-flex items-center gap-2 bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-gray-100 text-white dark:text-gray-900 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">

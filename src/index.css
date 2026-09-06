@@ -1,3 +1,34 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Cenas IT Brand Tokens ──────────────────────────────────────────── */
+:root {
+  --color-primary: #0B192C;
+  --color-accent:  #06B6D4;
+  --color-surface: #1E293B;
+  --color-bg:      #F8FAFC;
+  --color-text:    #334155;
+}
+
+/* Dark mode keeps the same brand tokens — primary/accent don't flip */
+.dark {
+  --color-bg:   #030712;
+  --color-text: #E2E8F0;
+}
+
+/* ── Share Page: header brand strip ─────────────────────────────────── */
+.share-header {
+  background: var(--color-primary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.share-nav {
+  background: var(--color-primary);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* ── Global font application ─────────────────────────────────────────── */
+body {
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+}
