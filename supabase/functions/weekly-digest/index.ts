@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { B, EMAIL_FONT, emailMeta } from "../_shared/emailBrand.ts";
 
 // Can be called manually (POST with Authorization) or by pg_cron (POST with service role key)
 Deno.serve(async (req: Request) => {
@@ -176,29 +177,29 @@ Deno.serve(async (req: Request) => {
 
     const weekLabel = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
-    const html = `<div style="font-family:'Plus Jakarta Sans','Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;padding:32px 24px;background:#f8fafc;">
-      <div style="background:white;border-radius:12px;padding:28px;border:1px solid #e2e8f0;">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #e2e8f0;">
-          <div style="background:#0B192C;padding:8px 14px;border-radius:8px;">
-            <span style="color:#06B6D4;font-size:12px;font-weight:700;letter-spacing:.5px;">${senderName.toUpperCase()}</span>
+    const html = `<div style="font-family:${EMAIL_FONT};max-width:600px;margin:0 auto;padding:32px 24px;background:${B.bg};">
+      <div style="background:#ffffff;border-radius:12px;padding:28px;border:1px solid ${B.border};">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid ${B.border};">
+          <div style="background:${B.primary};padding:7px 13px;border-radius:7px;flex-shrink:0;">
+            <span style="color:${B.accent};font-size:11px;font-weight:700;letter-spacing:.5px;">${senderName.toUpperCase()}</span>
           </div>
-          <span style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;">Weekly Summary</span>
+          <span style="display:inline-block;background:${B.accent}18;color:${B.accent};border:1px solid ${B.accent}40;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;">Weekly Summary</span>
         </div>
-        <h1 style="font-size:20px;font-weight:700;color:#0B192C;margin:0 0 24px;">${weekLabel}</h1>
+        <h1 style="font-size:20px;font-weight:700;color:${B.primary};margin:0 0 24px;">${weekLabel}</h1>
 
         ${diskSmartRows ? section('Disk Health (SMART)', tableWrap(diskSmartRows, ['Servidor', 'Disco', 'Modelo', 'Estado', 'Detalles'])) : ''}
-        ${section('Backups (last 7 days)',
-          backupRows ? tableWrap(backupRows, ['Service', 'Client', 'Last Backup']) : '',
-          backupRows ? undefined : 'No backup-monitored services.'
+        ${section('Backups (últimos 7 días)',
+          backupRows ? tableWrap(backupRows, ['Servicio', 'Cliente', 'Último Backup']) : '',
+          backupRows ? undefined : 'Sin servicios con backup monitoreado.'
         )}
-        ${healthRows ? section('System Health', tableWrap(healthRows, ['Service', 'Status', 'Details'])) : ''}
-        ${renewalRows ? section('Upcoming Renewals (60 days)', tableWrap(renewalRows, ['Service', 'Client', 'Renewal Date'])) : ''}
-        ${changeRows ? section('Changes This Week', `<ul style="margin:0;padding-left:16px;">${changeRows}</ul>`) : ''}
-        ${roadmapRows ? section('Upcoming Roadmap', `<ul style="margin:0;padding-left:16px;">${roadmapRows}</ul>`) : ''}
+        ${healthRows ? section('System Health', tableWrap(healthRows, ['Servicio', 'Estado', 'Detalles'])) : ''}
+        ${renewalRows ? section('Próximas Renovaciones (60 días)', tableWrap(renewalRows, ['Servicio', 'Cliente', 'Fecha'])) : ''}
+        ${changeRows ? section('Cambios esta semana', `<ul style="margin:0;padding-left:16px;">${changeRows}</ul>`) : ''}
+        ${roadmapRows ? section('Roadmap próximo', `<ul style="margin:0;padding-left:16px;">${roadmapRows}</ul>`) : ''}
 
-        <p style="font-size:11px;color:#94a3b8;text-align:center;margin-top:24px;padding-top:16px;border-top:1px solid #e2e8f0;">
-          <span style="color:#0B192C;font-weight:600;">${senderName}</span> · Weekly Digest · <a href="#" style="color:#06B6D4;text-decoration:none;">Unsubscribe</a>
-        </p>
+        <div style="margin-top:24px;padding-top:16px;border-top:1px solid ${B.border};">
+          ${emailMeta(senderName)}
+        </div>
       </div>
     </div>`;
 

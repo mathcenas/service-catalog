@@ -133,10 +133,10 @@ export function AclReviewPage({ token }: Props) {
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
         {/* Instructions */}
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+        <div className="bg-[#06B6D4]/10 border border-[#06B6D4]/30 rounded-xl p-4 text-sm text-[#0B192C]">
           <p className="font-semibold mb-1">¿Cómo funciona?</p>
           <p>Revisá cada usuario y seleccioná la acción correspondiente. Podés agregar una nota si querés cambiar el acceso o el nombre. Al finalizar, hacé clic en <strong>Enviar revisión</strong>. {company_name} recibirá tu respuesta y gestionará los cambios.</p>
-          <p className="mt-2 text-blue-600 text-xs">Esta revisión se realiza cada 6 meses para garantizar que solo los usuarios correctos tengan acceso a los archivos compartidos.</p>
+          <p className="mt-2 text-[#06B6D4] text-xs">Esta revisión se realiza cada 6 meses para garantizar que solo los usuarios correctos tengan acceso a los archivos compartidos.</p>
         </div>
 
         {/* Shares summary (read-only) */}
