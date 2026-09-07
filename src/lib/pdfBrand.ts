@@ -26,7 +26,29 @@ export const PDF_BASE_STYLES = `
   @media print {
     #print-btn { display: none !important; }
     body { padding: 20px; }
-    @page { size: A4; margin: 15mm; }
+    @page {
+      size: A4;
+      margin: 15mm 15mm 22mm;
+      @bottom-left {
+        content: "Cenas IT Solutions — cenas.uy";
+        font-family: ${BRAND_FONT};
+        font-size: 8.5px;
+        color: #94A3B8;
+      }
+      @bottom-center {
+        content: "Servicios gestionados bajo estándar ISO/IEC 20000";
+        font-family: ${BRAND_FONT};
+        font-size: 8.5px;
+        color: #64748B;
+        font-style: italic;
+      }
+      @bottom-right {
+        content: "Página " counter(page) " de " counter(pages);
+        font-family: ${BRAND_FONT};
+        font-size: 8.5px;
+        color: #94A3B8;
+      }
+    }
   }
   #print-btn {
     position: fixed; top: 16px; right: 16px; z-index: 999;
@@ -124,18 +146,6 @@ export function openPrintWindow(title: string, bodyContent: string, companyName 
   <div style="max-width:1100px;margin:0 auto;">
     ${bodyContent}
   </div>
-  <footer style="margin-top:auto;padding-top:20px;border-top:1px solid #e2e8f0;
-                 display:flex;justify-content:space-between;align-items:center;
-                 font-size:10px;color:#94a3b8;font-family:${BRAND_FONT};">
-    <div>
-      <span style="font-weight:700;color:#334155;">${companyName}</span> — cenas.uy
-    </div>
-    <div style="font-weight:600;color:${BRAND.primary};background:#f1f5f9;
-                padding:3px 10px;border-radius:4px;border:1px solid #e2e8f0;">
-      Gobernanza TI &amp; Procesos alineados a <strong>ISO/IEC&nbsp;20000</strong>
-    </div>
-    <div>Documento Oficial de Servicio</div>
-  </footer>
 </body>
 </html>`);
   win.document.close();
