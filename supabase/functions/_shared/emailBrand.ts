@@ -14,6 +14,16 @@ export const B = {
 export const EMAIL_FONT =
   "'Plus Jakarta Sans','Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
 
+/** Public logo URL — override via LOGO_URL env var */
+export const LOGO_URL =
+  (typeof Deno !== "undefined" && Deno.env.get("LOGO_URL")) ||
+  "https://landing.cenas.uy/assets/brand/logo-dark.png";
+
+/** <img> tag ready to drop into email headers (light background) */
+export function emailLogo(companyName = "Cenas IT", height = 28): string {
+  return `<img src="${LOGO_URL}" alt="${companyName}" style="height:${height}px;object-fit:contain;flex-shrink:0;" />`;
+}
+
 /** Outer wrapper div — max-width 600, white background, brand font */
 export function emailWrap(content: string): string {
   return `<div style="font-family:${EMAIL_FONT};max-width:600px;margin:0 auto;padding:32px 24px;background:#f8fafc;">

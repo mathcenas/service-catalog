@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { B, EMAIL_FONT, emailHeader, emailPortalPanel, emailMeta } from "../_shared/emailBrand.ts";
+import { B, EMAIL_FONT, emailHeader, emailPortalPanel, emailMeta, emailLogo } from "../_shared/emailBrand.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://servicios.cenas-support.com",
@@ -128,7 +128,7 @@ Deno.serve(async (req: Request) => {
     if (RESEND_API_KEY) {
       const logoHtmlInner = logoUrl
         ? `<img src="${logoUrl}" alt="Logo" style="max-height:32px;max-width:140px;" />`
-        : "";
+        : emailLogo(companyName);
 
       const rowsHtml = responses.map(r => {
         const color = r.action === "mantener" ? "#16a34a" : r.action === "eliminar" ? "#dc2626" : "#d97706";

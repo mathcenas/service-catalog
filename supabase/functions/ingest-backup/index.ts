@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { B, EMAIL_FONT } from "../_shared/emailBrand.ts";
+import { B, EMAIL_FONT, emailLogo } from "../_shared/emailBrand.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://servicios.cenas-support.com",
@@ -120,6 +120,8 @@ Deno.serve(async (req: Request) => {
         const isFailure = normalizedStatus === "failed";
         const statusLabel = isFailure ? "FAILED" : "WARNING";
         const color = isFailure ? "#ef4444" : "#f97316";
+        const colorBg = isFailure ? "#fef2f2" : "#fff7ed";
+        const colorBorder = isFailure ? "#fecaca" : "#fed7aa";
         const durationStr = duration_seconds != null ? `${Math.round(duration_seconds / 60)} min` : null;
         const sizeStr = size_bytes != null
           ? size_bytes >= 1073741824 ? `${(size_bytes / 1073741824).toFixed(2)} GB`
@@ -130,27 +132,42 @@ Deno.serve(async (req: Request) => {
         const html = `
           <div style="font-family:${EMAIL_FONT};max-width:560px;margin:0 auto;padding:32px 24px;background:#f8fafc;">
             <div style="background:#ffffff;border-radius:12px;padding:24px;border:1px solid ${B.border};">
-              <div style="display:flex;align-items:center;gap:12px;padding-bottom:16px;border-bottom:2px solid ${color};margin-bottom:20px;">
-                <div style="background:${B.primary};padding:7px 13px;border-radius:7px;flex-shrink:0;">
-                  <span style="color:${B.accent};font-size:11px;font-weight:700;letter-spacing:.5px;">CENAS IT</span>
-                </div>
-                <div style="background:${color}18;border:1px solid ${color}40;border-radius:8px;padding:6px 12px;">
-                  <span style="color:${color};font-size:12px;font-weight:700;letter-spacing:.8px;">${statusLabel}</span>
-                </div>
-                <div>
-                  <div style="font-size:16px;font-weight:700;color:${B.primary};">Backup ${statusLabel}</div>
-                  <div style="font-size:12px;color:${B.textMid};">${serviceName}</div>
-                </div>
-              </div>
-              <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
-                ${job_name ? `<tr><td style="padding:6px 0;color:${B.textMid};width:120px;">Job</td><td style="color:${B.primary};font-weight:500;">${job_name}</td></tr>` : ""}
-                <tr><td style="padding:6px 0;color:${B.textMid};">Status</td><td style="color:${color};font-weight:600;">${statusLabel}</td></tr>
-                ${sizeStr ? `<tr><td style="padding:6px 0;color:${B.textMid};">Tamaño</td><td style="color:${B.textMain};">${sizeStr}</td></tr>` : ""}
-                ${durationStr ? `<tr><td style="padding:6px 0;color:${B.textMid};">Duración</td><td style="color:${B.textMain};">${durationStr}</td></tr>` : ""}
-                <tr><td style="padding:6px 0;color:${B.textMid};">Hora</td><td style="color:${B.textMain};">${new Date(backedUpAt).toLocaleString("en-US",{dateStyle:"medium",timeStyle:"short"})}</td></tr>
-                ${details ? `<tr><td style="padding:6px 0;color:${B.textMid};vertical-align:top;">Detalles</td><td style="color:#475569;white-space:pre-wrap;">${details}</td></tr>` : ""}
+
+              <table style="width:100%;border-collapse:collapse;padding-bottom:16px;border-bottom:2px solid ${color};margin-bottom:20px;">
+                <tr>
+                  <td style="vertical-align:middle;padding-right:12px;width:1%;">
+                    ${emailLogo(serviceName)}
+                  </td>
+                  <td style="vertical-align:middle;padding-right:12px;width:1%;">
+                    <div style="background:${colorBg};border:1px solid ${colorBorder};border-radius:6px;padding:4px 10px;white-space:nowrap;">
+                      <span style="color:${color};font-size:11px;font-weight:700;letter-spacing:.8px;">${statusLabel}</span>
+                    </div>
+                  </td>
+                  <td style="vertical-align:middle;">
+                    <div style="font-size:15px;font-weight:700;color:${B.primary};line-height:1.2;">Backup ${statusLabel}</div>
+                    <div style="font-size:12px;color:${B.textMid};margin-top:2px;">${serviceName}</div>
+                  </td>
+                </tr>
               </table>
-              <p style="color:${B.textSoft};font-size:11px;text-align:center;margin:0;">Cenas IT — Alerta automática de backup</p>
+
+              <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px;">
+                ${job_name ? `<tr><td style="padding:6px 0;color:${B.textMid};width:100px;">Job</td><td style="color:${B.primary};font-weight:600;">${job_name}</td></tr>` : ""}
+                <tr><td style="padding:6px 0;color:${B.textMid};">Status</td><td style="color:${color};font-weight:700;">${statusLabel}</td></tr>
+                ${sizeStr ? `<tr><td style="padding:6px 0;color:${B.textMid};">Tamaño</td><td style="color:${B.primary};">${sizeStr}</td></tr>` : ""}
+                ${durationStr ? `<tr><td style="padding:6px 0;color:${B.textMid};">Duración</td><td style="color:${B.primary};">${durationStr}</td></tr>` : ""}
+                <tr><td style="padding:6px 0;color:${B.textMid};">Hora</td><td style="color:${B.primary};">${new Date(backedUpAt).toLocaleString("es-UY",{dateStyle:"medium",timeStyle:"short"})}</td></tr>
+                ${details ? `<tr><td style="padding:10px 0 6px 0;color:${B.textMid};vertical-align:top;" colspan="2"><div style="font-size:11px;font-weight:600;color:${B.textMid};margin-bottom:4px;">Detalles del error:</div><div style="color:#b91c1c;background:#fff1f1;padding:10px;border-radius:6px;font-family:monospace;font-size:12px;white-space:pre-wrap;border:1px solid #fca5a5;">${details}</div></td></tr>` : ""}
+              </table>
+
+              <div style="border-top:1px solid ${B.border};padding-top:12px;text-align:center;">
+                <p style="color:${B.textSoft};font-size:11px;margin:0;">
+                  <strong>Cenas IT Solutions</strong> — Alerta automática de monitoreo &amp; backup
+                </p>
+                <p style="color:${B.textSoft};font-size:10px;margin:4px 0 0 0;">
+                  Procesos bajo norma ISO/IEC 20000 | <a href="https://cenas.uy" style="color:${B.textSoft};text-decoration:none;">cenas.uy</a>
+                </p>
+              </div>
+
             </div>
           </div>`;
 
