@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { B, EMAIL_FONT } from "../_shared/emailBrand.ts";
+import { B, EMAIL_FONT, emailLogo } from "../_shared/emailBrand.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://servicios.cenas-support.com",
@@ -131,9 +131,7 @@ Deno.serve(async (req: Request) => {
           <div style="font-family:${EMAIL_FONT};max-width:560px;margin:0 auto;padding:32px 24px;background:#f8fafc;">
             <div style="background:#ffffff;border-radius:12px;padding:24px;border:1px solid ${B.border};">
               <div style="display:flex;align-items:center;gap:12px;padding-bottom:16px;border-bottom:2px solid ${color};margin-bottom:20px;">
-                <div style="background:${B.primary};padding:7px 13px;border-radius:7px;flex-shrink:0;">
-                  <span style="color:${B.accent};font-size:11px;font-weight:700;letter-spacing:.5px;">CENAS IT</span>
-                </div>
+                ${emailLogo(serviceName)}
                 <div style="background:${color}18;border:1px solid ${color}40;border-radius:8px;padding:6px 12px;">
                   <span style="color:${color};font-size:12px;font-weight:700;letter-spacing:.8px;">${statusLabel}</span>
                 </div>

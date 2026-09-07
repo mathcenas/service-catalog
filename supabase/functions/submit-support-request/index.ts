@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { B, EMAIL_FONT, emailMeta } from "../_shared/emailBrand.ts";
+import { B, EMAIL_FONT, emailMeta, emailLogo } from "../_shared/emailBrand.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -101,7 +101,7 @@ Deno.serve(async (req: Request) => {
     const companyName = settings?.company_name || "Cenas IT";
     const logoHtmlInner = settings?.logo_url
       ? `<img src="${settings.logo_url}" alt="Logo" style="max-height:32px;max-width:140px;" />`
-      : "";
+      : emailLogo(companyName);
 
     const htmlBody = `
       <div style="font-family:${EMAIL_FONT};max-width:600px;margin:0 auto;padding:32px 24px;background:#f8fafc;">
