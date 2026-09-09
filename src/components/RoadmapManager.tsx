@@ -164,7 +164,7 @@ export function RoadmapManager({ clients, services }: Props) {
     }
   };
 
-  const sendNotifyEmail = async (item: RoadmapItem, isUpdate = false) => {
+  const sendNotifyEmail = async (item: RoadmapItem, isUpdate = false, updateNote?: string) => {
     if (!item.client_id) return false;
     const client = clients.find(c => c.id === item.client_id);
     if (!client?.email) return false;
@@ -214,6 +214,8 @@ export function RoadmapManager({ clients, services }: Props) {
         roadmap_item_id: item.id,
         category: item.category,
         event_type: 'notify',
+        new_status: isUpdate ? item.status : undefined,
+        update_note: updateNote || undefined,
       }),
     });
 
@@ -240,11 +242,11 @@ export function RoadmapManager({ clients, services }: Props) {
     setNotifying(null);
   };
 
-  const sendUpdateEmail = async (item: RoadmapItem) => {
+  const sendUpdateEmail = async (item: RoadmapItem, updateNote?: string) => {
     if (!item.client_id) return;
     setNotifying(item.id);
     try {
-      await sendNotifyEmail(item, true);
+      await sendNotifyEmail(item, true, updateNote);
     } catch (err) {
       alert(`Network error: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -547,7 +549,7 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
   onUpdate: (id: string, patch: Partial<RoadmapItem>) => void;
   onDelete: (id: string) => void;
   onNotify: (item: RoadmapItem) => void;
-  onSendUpdate: (item: RoadmapItem) => void;
+  onSendUpdate: (item: RoadmapItem, note?: string) => void;
   onMarkReleased: (item: RoadmapItem) => void;
   onClosePublish: (item: RoadmapItem) => void;
   closePublishResult: { closed: 'ok'|'err'; webhook: 'ok'|'err'|'skip'; email: 'ok'|'err'|'skip' } | null;
@@ -562,6 +564,8 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
   const [localTitle, setLocalTitle] = useState(item.title);
   const [localDesc, setLocalDesc] = useState(item.description || '');
   const [savedFlash, setSavedFlash] = useState(false);
+  const [showUpdateForm, setShowUpdateForm] = useState(false);
+  const [updateNote, setUpdateNote] = useState('');
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const descTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleDirty = useRef(false);
@@ -777,44 +781,92 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
 
         {/* Ticket actions — problem/change_request abiertos */}
         {isTicket && isOpen && (
-          <div className="col-span-full mt-2 pt-2 border-t border-gray-100 flex items-center gap-2 flex-wrap">
-            {item.status === 'Planned' && (
+          <div className="col-span-full mt-2 pt-2 border-t border-gray-100 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {item.status === 'Planned' && (
+                <button
+                  onClick={() => onUpdate(item.id, { status: 'In Progress' })}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-xs font-semibold transition-colors"
+                >
+                  <Wrench className="w-3.5 h-3.5" /> Tomar
+                </button>
+              )}
+              {item.status === 'In Progress' && (
+                <button
+                  onClick={() => onUpdate(item.id, { status: 'Next Release' })}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-xs font-semibold transition-colors"
+                >
+                  <Check className="w-3.5 h-3.5" /> Pendiente cierre
+                </button>
+              )}
+              {item.client_id && !showUpdateForm && (
+                <button
+                  onClick={() => setShowUpdateForm(true)}
+                  disabled={notifying}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
+                >
+                  <History className="w-3.5 h-3.5" /> Enviar actualización
+                </button>
+              )}
               <button
-                onClick={() => onUpdate(item.id, { status: 'In Progress' })}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-md text-xs font-semibold transition-colors"
+                onClick={() => onClosePublish(item)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold transition-colors"
               >
-                <Wrench className="w-3.5 h-3.5" /> Tomar
+                <CheckCheck className="w-3.5 h-3.5" /> Cerrar y Publicar
               </button>
-            )}
-            {item.status === 'In Progress' && (
-              <button
-                onClick={() => onUpdate(item.id, { status: 'Next Release' })}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-xs font-semibold transition-colors"
-              >
-                <Check className="w-3.5 h-3.5" /> Pendiente cierre
-              </button>
-            )}
-            {item.client_id && (
-              <button
-                onClick={() => onSendUpdate(item)}
-                disabled={notifying}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
-                title="Envía título y descripción actuales al cliente como 'Actualización'"
-              >
-                {notifying ? <span className="animate-pulse">Enviando...</span> : <><History className="w-3.5 h-3.5" /> Enviar actualización</>}
-              </button>
-            )}
-            <button
-              onClick={() => onClosePublish(item)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold transition-colors"
-            >
-              <CheckCheck className="w-3.5 h-3.5" /> Cerrar y Publicar
-            </button>
-            {closePublishResult && (
-              <div className="flex items-center gap-1.5 text-xs">
-                <ResultChip label="Closed" status={closePublishResult.closed} />
-                <ResultChip label="Webhook" status={closePublishResult.webhook} />
-                <ResultChip label="Email" status={closePublishResult.email} />
+              {closePublishResult && (
+                <div className="flex items-center gap-1.5 text-xs">
+                  <ResultChip label="Closed" status={closePublishResult.closed} />
+                  <ResultChip label="Webhook" status={closePublishResult.webhook} />
+                  <ResultChip label="Email" status={closePublishResult.email} />
+                </div>
+              )}
+            </div>
+            {showUpdateForm && item.client_id && (
+              <div className="flex items-start gap-2 bg-sky-50 border border-sky-200 rounded-lg p-2">
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-sky-700">Nota para el cliente</span>
+                    {item.status === 'In Progress' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-semibold">
+                        <Wrench className="w-2.5 h-2.5" /> En proceso
+                      </span>
+                    )}
+                    {item.status === 'Next Release' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-semibold">
+                        <Check className="w-2.5 h-2.5" /> Pendiente cierre
+                      </span>
+                    )}
+                    {item.status === 'Planned' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-[10px] font-semibold">
+                        Planificado
+                      </span>
+                    )}
+                  </div>
+                  <textarea
+                    value={updateNote}
+                    onChange={e => setUpdateNote(e.target.value)}
+                    placeholder="Ej: Comenzamos los trabajos hoy, estimamos terminar mañana..."
+                    rows={2}
+                    autoFocus
+                    className="w-full px-2 py-1.5 border border-sky-200 rounded-md text-xs text-gray-700 outline-none focus:ring-2 focus:ring-sky-400 resize-none bg-white"
+                  />
+                </div>
+                <div className="flex flex-col gap-1 shrink-0 pt-5">
+                  <button
+                    onClick={() => { onSendUpdate(item, updateNote); setShowUpdateForm(false); setUpdateNote(''); }}
+                    disabled={notifying}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
+                  >
+                    {notifying ? <span className="animate-pulse">...</span> : <><Send className="w-3 h-3" /> Enviar</>}
+                  </button>
+                  <button
+                    onClick={() => { setShowUpdateForm(false); setUpdateNote(''); }}
+                    className="inline-flex items-center justify-center px-2.5 py-1.5 bg-white hover:bg-gray-100 text-gray-500 rounded-md text-xs border border-gray-200 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
               </div>
             )}
           </div>
