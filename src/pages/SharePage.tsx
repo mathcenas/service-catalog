@@ -4,7 +4,7 @@ import {
   HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X,
   Sparkles, Rocket, DollarSign, Send, Loader2,
 } from 'lucide-react';
-import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat, ClientApp } from '../lib/supabase';
+import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapItemUpdate, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat, ClientApp } from '../lib/supabase';
 
 type Props = { token: string };
 type Section = 'overview' | 'services' | 'licenses' | 'changes' | 'hours' | 'support';
@@ -77,6 +77,7 @@ export function SharePage({ token }: Props) {
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
   const [changes, setChanges] = useState<ServiceChange[]>([]);
   const [roadmap, setRoadmap] = useState<RoadmapItem[]>([]);
+  const [roadmapUpdates, setRoadmapUpdates] = useState<RoadmapItemUpdate[]>([]);
   const [licenses, setLicenses] = useState<ClientLicense[]>([]);
   const [supportHours, setSupportHours] = useState<SupportHour[]>([]);
   const [heartbeats, setHeartbeats] = useState<ServiceHeartbeat[]>([]);
@@ -117,6 +118,16 @@ export function SharePage({ token }: Props) {
         supabase.from('roadmap_items').select('*').eq('user_id', tokenRow.user_id).eq('is_public', true).or(`client_id.eq.${tokenRow.client_id},client_id.is.null`).order('sort_order').order('created_at'),
         supabase.from('user_settings').select('company_name, logo_url').eq('user_id', tokenRow.user_id).maybeSingle(),
       ]);
+
+      if (roadmapData && roadmapData.length > 0) {
+        const ids = roadmapData.map((r: RoadmapItem) => r.id);
+        const { data: updatesData } = await supabase
+          .from('roadmap_item_updates')
+          .select('*')
+          .in('roadmap_item_id', ids)
+          .order('created_at', { ascending: true });
+        setRoadmapUpdates(updatesData || []);
+      }
 
       if (!clientData) { setNotFound(true); setLoading(false); return; }
 
@@ -299,7 +310,7 @@ export function SharePage({ token }: Props) {
           {section === 'overview' && <OverviewSection services={activeServices} roadmap={roadmap} changes={changes} getTypeName={getTypeName} backups={backups} uptimeEvents={uptimeEvents} supportHours={supportHours} systemHeartbeats={systemHeartbeats} clientApps={clientApps} licenses={licenses} />}
           {section === 'services' && <ServiceCatalog services={services} projects={projects} getTypeName={getTypeName} getProjectName={getProjectName} expandedService={expandedService} setExpandedService={setExpandedService} heartbeats={heartbeats} backups={backups} systemHeartbeats={systemHeartbeats} />}
           {section === 'licenses' && <LicensesSection licenses={licenses} services={services} />}
-          {section === ('tickets' as Section) && <TicketsSection items={roadmap.filter(r => r.category === 'problem' || r.category === 'change_request')} />}
+          {section === ('tickets' as Section) && <TicketsSection items={roadmap.filter(r => r.category === 'problem' || r.category === 'change_request')} updates={roadmapUpdates} />}
           {section === 'hours' && <SupportHoursSection hours={supportHours} roadmapItems={roadmap} services={services} />}
           {section === 'support' && <SupportSection token={token} clientName={client!.company_name} services={services} />}
         </main>
@@ -1508,12 +1519,29 @@ function SupportSection({ token, clientName, services }: { token: string; client
 }
 
 
-function TicketsSection({ items }: { items: RoadmapItem[] }) {
+const STATUS_META: Record<string, { label: string; dot: string; text: string }> = {
+  'Planned':      { label: 'Abierto',          dot: 'bg-gray-400',    text: 'text-gray-500 dark:text-gray-400' },
+  'In Progress':  { label: 'En proceso',        dot: 'bg-amber-400',   text: 'text-amber-600 dark:text-amber-400' },
+  'Next Release': { label: 'Pendiente cierre',  dot: 'bg-blue-400',    text: 'text-blue-600 dark:text-blue-400' },
+  'Released':     { label: 'Resuelto',          dot: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400' },
+};
+
+function TicketsSection({ items, updates }: { items: RoadmapItem[]; updates: RoadmapItemUpdate[] }) {
   const open = items.filter(i => i.status !== 'Released');
   const closed = items.filter(i => i.status === 'Released');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set(open.map(i => i.id)));
 
-  const badge = (category: string, status: string) => {
-    const isOpen = status !== 'Released';
+  const updatesFor = (id: string) => updates.filter(u => u.roadmap_item_id === id);
+  const formatDate = (d: string) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const formatTime = (d: string) => new Date(d).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  const toggle = (id: string) => setExpanded(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const catBadge = (category: string, isOpen: boolean) => {
     if (category === 'problem') return isOpen
       ? 'bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800'
       : 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700';
@@ -1522,51 +1550,106 @@ function TicketsSection({ items }: { items: RoadmapItem[] }) {
       : 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700';
   };
 
-  const label = (category: string) => category === 'problem' ? 'Problem' : 'Change Request';
-  const formatDate = (d: string) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const TicketCard = ({ item }: { item: RoadmapItem }) => {
+    const isOpen = item.status !== 'Released';
+    const itemUpdates = updatesFor(item.id);
+    const isExpanded = expanded.has(item.id);
+    const statusMeta = STATUS_META[item.status] || STATUS_META['Planned'];
 
-  const TicketRow = ({ item }: { item: RoadmapItem }) => (
-    <div className="flex items-start gap-3 py-3 border-b border-gray-100 dark:border-gray-800 last:border-0">
-      <span className={`mt-0.5 inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border shrink-0 ${badge(item.category, item.status)}`}>
-        {label(item.category)}
-      </span>
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm font-medium ${item.status === 'Released' ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-900 dark:text-white'}`}>
-          {item.title}
-        </p>
-        {item.description && (
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{item.description}</p>
+    // Build timeline: opening event first, then updates, newest last
+    const timeline = [
+      { type: 'open' as const, date: item.created_at, status: 'Planned', note: item.description },
+      ...itemUpdates.map(u => ({ type: 'update' as const, date: u.created_at, status: u.status || '', note: u.note })),
+    ];
+    const lastUpdate = itemUpdates[itemUpdates.length - 1];
+
+    return (
+      <div className={`bg-white dark:bg-gray-900 rounded-xl border ${isOpen ? 'border-gray-200 dark:border-gray-800' : 'border-gray-100 dark:border-gray-800 opacity-75'} overflow-hidden`}>
+        {/* Header */}
+        <button
+          onClick={() => toggle(item.id)}
+          className="w-full flex items-start gap-3 px-4 py-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+        >
+          <span className={`mt-0.5 inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border shrink-0 ${catBadge(item.category, isOpen)}`}>
+            {item.category === 'problem' ? 'Incidente' : 'Cambio'}
+          </span>
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm font-semibold ${isOpen ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'}`}>
+              {item.title}
+            </p>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className={`flex items-center gap-1 text-[11px] font-medium ${statusMeta.text}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dot}`} />
+                {statusMeta.label}
+              </span>
+              {itemUpdates.length > 0 && (
+                <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                  · última actualización {formatTime(lastUpdate.created_at)}
+                </span>
+              )}
+              {itemUpdates.length === 0 && (
+                <span className="text-[11px] text-gray-400 dark:text-gray-500">· abierto {formatDate(item.created_at)}</span>
+              )}
+            </div>
+          </div>
+          <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 mt-0.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+        </button>
+
+        {/* Timeline */}
+        {isExpanded && (
+          <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-800">
+            <div className="relative pt-4 space-y-0">
+              {/* vertical line */}
+              <div className="absolute left-[7px] top-4 bottom-4 w-px bg-gray-200 dark:bg-gray-700" />
+              {timeline.map((entry, idx) => {
+                const isLast = idx === timeline.length - 1;
+                const entryMeta = entry.type === 'open'
+                  ? { dot: 'bg-gray-400', label: 'Abierto' }
+                  : STATUS_META[entry.status] || { dot: 'bg-gray-400', label: entry.status };
+                return (
+                  <div key={idx} className="relative flex gap-3 pb-4 last:pb-0">
+                    <span className={`relative z-10 w-3.5 h-3.5 rounded-full border-2 border-white dark:border-gray-900 shrink-0 mt-0.5 ${isLast ? entryMeta.dot : 'bg-gray-300 dark:bg-gray-600'}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                          {entry.type === 'open' ? 'Apertura' : entryMeta.label}
+                        </span>
+                        <span className="text-[11px] text-gray-400 dark:text-gray-500">{formatTime(entry.date)}</span>
+                      </div>
+                      {entry.note && (
+                        <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5 leading-relaxed">{entry.note}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
       </div>
-      <div className="text-right shrink-0 text-xs text-gray-400 dark:text-gray-500">
-        {item.status === 'Released'
-          ? <span className="text-emerald-600 dark:text-emerald-400 font-medium">Resolved</span>
-          : <span className="text-amber-600 dark:text-amber-400 font-medium">{item.status}</span>}
-        <div className="mt-0.5">{formatDate(item.created_at)}</div>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="space-y-6">
       {open.length > 0 && (
         <section>
-          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 uppercase tracking-wider">Open</h3>
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 px-4">
-            {open.map(i => <TicketRow key={i.id} item={i} />)}
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 uppercase tracking-wider">Abiertos</h3>
+          <div className="space-y-3">
+            {open.map(i => <TicketCard key={i.id} item={i} />)}
           </div>
         </section>
       )}
       {closed.length > 0 && (
         <section>
-          <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-500 mb-3 uppercase tracking-wider">Resolved</h3>
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 px-4 opacity-70">
-            {closed.map(i => <TicketRow key={i.id} item={i} />)}
+          <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-500 mb-3 uppercase tracking-wider">Resueltos</h3>
+          <div className="space-y-3">
+            {closed.map(i => <TicketCard key={i.id} item={i} />)}
           </div>
         </section>
       )}
       {items.length === 0 && (
-        <div className="text-center py-12 text-gray-400 dark:text-gray-600 text-sm">No tickets</div>
+        <div className="text-center py-12 text-gray-400 dark:text-gray-600 text-sm">No hay tickets</div>
       )}
     </div>
   );
