@@ -27,6 +27,8 @@ interface NotifyPayload {
   roadmap_item_id?: string;
   category?: string;
   event_type?: 'notify' | 'released' | 'closed';
+  new_status?: string;
+  update_note?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -76,6 +78,8 @@ Deno.serve(async (req: Request) => {
       roadmap_item_id,
       category,
       event_type,
+      new_status,
+      update_note,
     } = payload;
 
     if (!client_email || !subject || !title) {
@@ -164,6 +168,26 @@ Deno.serve(async (req: Request) => {
             Hola ${client_name || ""},
           </p>
 
+          ${(() => {
+            const STATUS_BADGE: Record<string, { label: string; color: string; bg: string; border: string }> = {
+              'Planned':      { label: 'Planificado',      color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1' },
+              'In Progress':  { label: 'En proceso',       color: '#b45309', bg: '#fef3c7', border: '#fcd34d' },
+              'Next Release': { label: 'Pendiente cierre', color: '#1d4ed8', bg: '#eff6ff', border: '#93c5fd' },
+              'Released':     { label: 'Completado',       color: '#15803d', bg: '#f0fdf4', border: '#86efac' },
+            };
+            const badge = new_status ? STATUS_BADGE[new_status] : null;
+            return badge ? `
+              <div style="margin:0 0 12px;">
+                <span style="display:inline-flex;align-items:center;gap:6px;background:${badge.bg};border:1px solid ${badge.border};color:${badge.color};border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;letter-spacing:.3px;">
+                  Estado actualizado: ${badge.label}
+                </span>
+              </div>` : '';
+          })()}
+          ${update_note ? `
+          <div style="background:#f0f9ff;border-left:3px solid ${B.accent};border-radius:0 8px 8px 0;padding:14px 16px;margin:0 0 16px;">
+            <p style="color:#0369a1;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin:0 0 6px;">Actualización</p>
+            <p style="color:#0c4a6e;font-size:14px;line-height:1.6;margin:0;">${update_note.replace(/\n/g, "<br>")}</p>
+          </div>` : ""}
           <div style="background:${B.bg};border:1px solid ${B.border};border-radius:8px;padding:20px;margin:0 0 16px;">
             ${service_name ? `<p style="color:${B.textMid};margin:0 0 6px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">${service_name}</p>` : ""}
             <h3 style="color:${B.primary};margin:0 0 8px;font-size:17px;">${title}</h3>
