@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { Plus, Trash2, Eye, EyeOff, Save, Rocket, Sparkles, Database, CreditCard, Lightbulb, MapPin, User, Send, CalendarClock, BookOpen, Check, CheckCheck, CheckCircle2, AlertTriangle, AlertCircle, Wrench, RefreshCw, History } from 'lucide-react';
-import { supabase, Client, Service, RoadmapItem, ROADMAP_STATUSES, RoadmapStatus, ROADMAP_CATEGORIES, RoadmapCategory } from '../lib/supabase';
+import { supabase, Client, Service, RoadmapItem, ROADMAP_STATUSES, RoadmapStatus, ROADMAP_CATEGORIES, RoadmapCategory, RoadmapItemUpdate } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 const CATEGORY_META: Record<RoadmapCategory, { icon: typeof Rocket; color: string }> = {
@@ -246,6 +246,12 @@ export function RoadmapManager({ clients, services }: Props) {
     if (!item.client_id) return;
     setNotifying(item.id);
     try {
+      await supabase.from('roadmap_item_updates').insert({
+        roadmap_item_id: item.id,
+        user_id: user!.id,
+        note: updateNote || null,
+        status: item.status,
+      });
       await sendNotifyEmail(item, true, updateNote);
     } catch (err) {
       alert(`Network error: ${err instanceof Error ? err.message : String(err)}`);
