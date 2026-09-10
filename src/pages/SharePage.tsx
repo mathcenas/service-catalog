@@ -307,7 +307,7 @@ export function SharePage({ token }: Props) {
         </nav>
 
         <main className="max-w-5xl mx-auto px-4 py-6">
-          {section === 'overview' && <OverviewSection services={activeServices} roadmap={roadmap} changes={changes} getTypeName={getTypeName} backups={backups} uptimeEvents={uptimeEvents} supportHours={supportHours} systemHeartbeats={systemHeartbeats} clientApps={clientApps} licenses={licenses} />}
+          {section === 'overview' && <OverviewSection services={activeServices} roadmap={roadmap} changes={changes} getTypeName={getTypeName} backups={backups} uptimeEvents={uptimeEvents} supportHours={supportHours} systemHeartbeats={systemHeartbeats} clientApps={clientApps} licenses={licenses} riskFlags={client?.risk_flags ?? []} />}
           {section === 'services' && <ServiceCatalog services={services} projects={projects} getTypeName={getTypeName} getProjectName={getProjectName} expandedService={expandedService} setExpandedService={setExpandedService} heartbeats={heartbeats} backups={backups} systemHeartbeats={systemHeartbeats} />}
           {section === 'licenses' && <LicensesSection licenses={licenses} services={services} />}
           {section === ('tickets' as Section) && <TicketsSection items={roadmap.filter(r => r.category === 'problem' || r.category === 'change_request')} updates={roadmapUpdates} />}
@@ -395,10 +395,23 @@ function NavBtn({ active, onClick, children }: { active: boolean; onClick: () =>
 
 /* ---------- Overview ---------- */
 
-function OverviewSection({ services, roadmap, changes, getTypeName, backups, uptimeEvents, supportHours, systemHeartbeats, clientApps, licenses }: {
+const RISK_FLAG_LABELS: Record<string, string> = {
+  no_isp_redundancy:   'Sin redundancia de internet (ISP único)',
+  no_endpoint_backup:  'Sin backup de endpoints',
+  no_offsite_backup:   'Sin backup offsite',
+  no_321_rule:         'No cumple regla 3-2-1',
+  no_ups:              'Sin UPS',
+  no_mfa:              'Sin doble factor de autenticación',
+  no_password_manager: 'Sin gestión centralizada de contraseñas',
+  free_antivirus:      'Antivirus gratuito (sin gestión centralizada)',
+  no_bco_plan:         'Sin plan de BCO documentado',
+};
+
+function OverviewSection({ services, roadmap, changes, getTypeName, backups, uptimeEvents, supportHours, systemHeartbeats, clientApps, licenses, riskFlags }: {
   services: Service[]; roadmap: RoadmapItem[]; changes: ServiceChange[]; getTypeName: (id: string) => string;
   backups: ServiceBackup[]; uptimeEvents: UptimeEvent[]; supportHours: SupportHour[];
   systemHeartbeats: ServiceHeartbeat[]; clientApps: ClientApp[]; licenses: ClientLicense[];
+  riskFlags: string[];
 }) {
   const upcoming = roadmap.filter(r => r.status !== 'Released');
   const recentChanges = changes.slice(0, 3);
@@ -621,6 +634,21 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
 
       {roadmap.filter(r => r.status === 'Released').length > 0 && (
         <CompletedUpdates items={roadmap.filter(r => r.status === 'Released')} />
+      )}
+
+      {riskFlags.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Fuera de alcance</h2>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Los siguientes puntos no están incluidos en el servicio administrado actual.</p>
+          <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+            {riskFlags.map(flag => (
+              <div key={flag} className="px-4 py-2.5 flex items-center gap-2.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600 shrink-0" />
+                <span className="text-sm text-gray-600 dark:text-gray-300">{RISK_FLAG_LABELS[flag] ?? flag}</span>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
       <section>
