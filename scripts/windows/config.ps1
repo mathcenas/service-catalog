@@ -13,6 +13,7 @@ $SERVICE_ID    = "REEMPLAZAR_CON_UUID_DEL_SERVICIO"
 # Carpeta compartida a monitorear (dejar vacío si no se usa smb-check.ps1)
 $SMB_SERVICE_ID    = ""   # UUID del servicio en la app (distinto al $SERVICE_ID del server)
 $SMB_INGEST_SECRET = ""   # Ingest secret del servicio SMB (Settings del servicio en la app)
+$SMB_KUMA_PUSH_URL = ""   # Push monitor de Kuma para el share (distinto al del server)
 $SMB_PATH          = ""   # Path UNC, ej: \\servidor\carpeta
 $SMB_USER          = ""   # Usuario de solo lectura
 $SMB_PASS          = ""   # Contraseña en texto plano
