@@ -20,7 +20,7 @@ function Write-Log($msg) {
     Add-Content -Path $LogFile -Value $line
     Write-Host $line
 }
-Get-ChildItem "$LogDir\veeam-agent-report-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-31) } | Remove-Item -Force
+Get-ChildItem "$LogDir\veeam-agent-report-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) } | Remove-Item -Force
 
 Add-PSSnapin VeeamAgentPSSnapIn -ErrorAction SilentlyContinue
 

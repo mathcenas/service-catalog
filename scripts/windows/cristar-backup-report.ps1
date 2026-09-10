@@ -22,7 +22,7 @@ function Write-Log($msg) {
     Add-Content -Path $LogFile -Value $line
     Write-Host $line
 }
-Get-ChildItem "$LogDir\cristar-backup-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-31) } | Remove-Item -Force
+Get-ChildItem "$LogDir\cristar-backup-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) } | Remove-Item -Force
 
 $LOG_PATH = "C:\Sistema\Temp\Backup_log"
 $today    = (Get-Date).ToString("dd/MM/yyyy")

@@ -26,7 +26,7 @@ function Write-Log($msg) {
     Write-Host $line
 }
 # Borrar logs de más de 31 días
-Get-ChildItem "$LogDir\system-health-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-31) } | Remove-Item -Force
+Get-ChildItem "$LogDir\system-health-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) } | Remove-Item -Force
 
 $headers = @{
     "Content-Type"    = "application/json"
