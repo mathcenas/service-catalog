@@ -32,7 +32,7 @@ function Write-Log($msg) {
     Write-Host $line
 }
 Get-ChildItem "$LogDir\system-health-server-*.log" |
-    Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-31) } |
+    Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) } |
     Remove-Item -Force
 
 $headers = @{

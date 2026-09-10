@@ -11,7 +11,7 @@
 #   0 * * * * /srv/scripts/system-health.sh
 # =============================================================
 
-SCRIPT_VERSION="1.4.0"
+SCRIPT_VERSION="1.5.0"
 
 # ---------- Cargar .env ----------
 # Orden: arg CLI → /etc/backup-ingest.env → $SCRIPT_DIR/.env
@@ -40,8 +40,8 @@ fi
 # ---------- Internos ----------
 HEARTBEAT_URL="${SUPABASE_URL}/functions/v1/ingest-heartbeat"
 KUMA_PUSH_URL="${KUMA_PUSH_URL:-}"
-LOG_FILE="${LOG_FILE:-/var/log/system-health.log}"
-MAX_LOG_BYTES=5242880  # 5 MB
+LOG_FILE="${LOG_FILE:-${SCRIPT_DIR}/system-health.log}"
+LOG_RETAIN_DAYS=90
 
 # ---------- Logger ----------
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOG_FILE"; }
@@ -56,10 +56,18 @@ notify_kuma() {
     >/dev/null 2>&1 || true
 }
 
-# Rotar log si pasa de 5 MB
-if [ -f "$LOG_FILE" ] && [ "$(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0)" -gt "$MAX_LOG_BYTES" ]; then
-  mv "$LOG_FILE" "${LOG_FILE%.log}-$(date '+%Y%m').log"
+# Crear carpeta de logs si no existe
+LOG_DIR="$(dirname "$LOG_FILE")"
+mkdir -p "$LOG_DIR" 2>/dev/null || true
+
+# Rotar diariamente: renombrar system-health.log → system-health-YYYY-MM-DD.log al primer run del día
+LOG_DATE_FILE="${LOG_FILE%.log}-$(date '+%Y-%m-%d').log"
+if [ -f "$LOG_FILE" ] && [ ! -f "$LOG_DATE_FILE" ] && [ -s "$LOG_FILE" ]; then
+  mv "$LOG_FILE" "$LOG_DATE_FILE"
 fi
+
+# Borrar logs con más de 90 días
+find "$LOG_DIR" -maxdepth 1 -name "system-health-????-??-??.log" -mtime +"$LOG_RETAIN_DAYS" -delete 2>/dev/null || true
 
 # Forzar locale C para que los decimales usen punto (evita coma en locales es/pt)
 export LC_ALL=C LANG=C

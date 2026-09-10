@@ -22,7 +22,7 @@ function Write-Log($msg) {
     Write-Host $line
 }
 Get-ChildItem "$LogDir\smb-acl-*.log" -ErrorAction SilentlyContinue |
-    Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-31) } |
+    Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) } |
     Remove-Item -Force
 
 # ---------- URL del endpoint ----------

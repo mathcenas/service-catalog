@@ -27,7 +27,7 @@ function Write-Log($msg) {
     Add-Content -Path $LogFile -Value $line
     Write-Host $line
 }
-Get-ChildItem "$LogDir\kopia-report-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-31) } | Remove-Item -Force
+Get-ChildItem "$LogDir\kopia-report-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) } | Remove-Item -Force
 
 # ---------- Chequeo Tailscale (opcional) ----------
 if ($TAILSCALE_IP) {

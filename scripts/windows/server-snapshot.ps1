@@ -22,7 +22,7 @@ function Write-Log($msg) {
     Add-Content -Path $LogFile -Value $line
     Write-Host $line
 }
-Get-ChildItem "$LogDir\server-snapshot-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-31) } | Remove-Item -Force
+Get-ChildItem "$LogDir\server-snapshot-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) } | Remove-Item -Force
 
 # ---------- Fuentes ----------
 $CsvFile   = "C:\Monitor\RDS_Telemetry.csv"
