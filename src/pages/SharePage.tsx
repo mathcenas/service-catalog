@@ -207,7 +207,7 @@ export function SharePage({ token }: Props) {
   const getProjectName = (id?: string): string | null => id ? projects.find(p => p.id === id)?.name || null : null;
   const activeServices = useMemo(() => services.filter(s => s.status === 'Active'), [services]);
   const allOperational = useMemo(() => activeServices.every(s => s.operational_status === 'Operational' || !s.operational_status), [activeServices]);
-  const statusPageUrl = useMemo(() => activeServices.find(s => s.uptime_status_url)?.uptime_status_url || null, [activeServices]);
+  const statusPageUrl = client?.uptime_status_url || null;
 
   if (loading) {
     return (
