@@ -41,7 +41,7 @@ $headers = @{
     "Content-Type"    = "application/json"
     "apikey"          = $ANON_KEY
     "Authorization"   = "Bearer $ANON_KEY"
-    "X-Ingest-Secret" = $INGEST_SECRET
+    "X-Ingest-Secret" = $SMB_INGEST_SECRET
 }
 
 function Send-Heartbeat($status, $message, $payload) {
