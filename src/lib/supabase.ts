@@ -21,6 +21,7 @@ export type Client = {
   address?: string;
   status: 'Active' | 'Inactive' | 'Pending';
   notes?: string;
+  risk_flags?: string[];
   created_at: string;
   updated_at: string;
 };

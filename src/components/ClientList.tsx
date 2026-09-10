@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Mail, Phone, Building2, Share2, Search, MoreHorizontal, Pencil, Trash2, Server, ExternalLink, AppWindow, FileText } from 'lucide-react';
+import { Mail, Phone, Building2, Share2, Search, MoreHorizontal, Pencil, Trash2, Server, ExternalLink, AppWindow, FileText, AlertTriangle, Check } from 'lucide-react';
 import { Client, Service, supabase } from '../lib/supabase';
 import { EditClientModal } from './EditClientModal';
 import { ShareTokenModal } from './ShareTokenModal';
@@ -12,6 +12,121 @@ type Props = {
   onUpdate: () => void;
 };
 
+const RISK_CATEGORIES: { label: string; flags: { id: string; label: string }[] }[] = [
+  {
+    label: 'Conectividad',
+    flags: [{ id: 'no_isp_redundancy', label: 'Sin redundancia de internet (ISP único)' }],
+  },
+  {
+    label: 'Backups',
+    flags: [
+      { id: 'no_endpoint_backup', label: 'Sin backup de endpoints' },
+      { id: 'no_offsite_backup', label: 'Sin backup offsite' },
+      { id: 'no_321_rule', label: 'No cumple regla 3-2-1' },
+    ],
+  },
+  {
+    label: 'Infraestructura',
+    flags: [{ id: 'no_ups', label: 'Sin UPS' }],
+  },
+  {
+    label: 'Seguridad',
+    flags: [
+      { id: 'no_mfa', label: 'Sin doble factor de autenticación' },
+      { id: 'no_password_manager', label: 'Sin gestión centralizada de contraseñas' },
+      { id: 'free_antivirus', label: 'Antivirus gratuito (sin gestión centralizada)' },
+    ],
+  },
+  {
+    label: 'Continuidad',
+    flags: [{ id: 'no_bco_plan', label: 'Sin plan de BCO documentado' }],
+  },
+];
+
+const RESTORE_TEST_MAX_DAYS = 90;
+
+function isRestoreTestStale(services: Service[]): boolean {
+  return services.every(s => {
+    if (!s.last_restore_test_at) return true;
+    const days = (Date.now() - new Date(s.last_restore_test_at).getTime()) / 86400000;
+    return days > RESTORE_TEST_MAX_DAYS;
+  });
+}
+
+function RiskFlagsPanel({
+  client,
+  clientServices,
+  onSaved,
+}: {
+  client: Client;
+  clientServices: Service[];
+  onSaved: (flags: string[]) => void;
+}) {
+  const [flags, setFlags] = useState<string[]>(client.risk_flags ?? []);
+  const [saving, setSaving] = useState(false);
+  const autoRestoreStale = isRestoreTestStale(clientServices);
+
+  const toggle = (id: string) =>
+    setFlags(prev => prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]);
+
+  const save = async () => {
+    setSaving(true);
+    await supabase.from('clients').update({ risk_flags: flags }).eq('id', client.id);
+    setSaving(false);
+    onSaved(flags);
+  };
+
+  return (
+    <div className="px-5 py-4 border-t border-gray-100 bg-gray-50/50 flex flex-col gap-4">
+      {/* Auto-detected */}
+      {autoRestoreStale && (
+        <div className="flex items-start gap-2.5 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2.5">
+          <span className="text-xs font-bold text-violet-700 bg-violet-200 rounded-full w-5 h-5 flex items-center justify-center shrink-0 mt-0.5">⚡</span>
+          <div>
+            <p className="text-xs font-semibold text-violet-700">Sin pruebas de restauración periódicas</p>
+            <p className="text-xs text-violet-500 mt-0.5">Detectado automáticamente — ningún servicio registra restore test en los últimos {RESTORE_TEST_MAX_DAYS} días</p>
+          </div>
+        </div>
+      )}
+
+      {/* Manual flags */}
+      {RISK_CATEGORIES.map(cat => (
+        <div key={cat.label} className="flex flex-col gap-1">
+          <p className="text-[10px] font-bold tracking-widest uppercase text-gray-400 pb-1 border-b border-gray-100">{cat.label}</p>
+          {cat.flags.map(flag => {
+            const checked = flags.includes(flag.id);
+            return (
+              <label key={flag.id} className="flex items-center gap-2.5 py-1 px-1 rounded-md cursor-pointer hover:bg-gray-100 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggle(flag.id)}
+                  className="w-3.5 h-3.5 rounded accent-red-500 cursor-pointer"
+                />
+                <span className={`text-sm ${checked ? 'text-red-600 font-medium' : 'text-gray-700'}`}>
+                  {flag.label}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      ))}
+
+      {/* Save row */}
+      <div className="flex justify-end gap-2 pt-1 border-t border-gray-100">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-50"
+        >
+          <Check className="w-3 h-3" />
+          {saving ? 'Guardando…' : 'Guardar cambios'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function ClientList({ clients, services, onUpdate }: Props) {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [sharingClient, setSharingClient] = useState<Client | null>(null);
@@ -20,7 +135,9 @@ export function ClientList({ clients, services, onUpdate }: Props) {
   const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Inactive' | 'Pending'>('all');
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [expandedApps, setExpandedApps] = useState<string | null>(null);
+  const [expandedRisks, setExpandedRisks] = useState<string | null>(null);
   const [briefClient, setBriefClient] = useState<Client | null>(null);
+  const [clientRiskFlags, setClientRiskFlags] = useState<Record<string, string[]>>({});
 
   const serviceCountMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -28,6 +145,16 @@ export function ClientList({ clients, services, onUpdate }: Props) {
       if (s.status === 'Active') {
         map.set(s.client_id, (map.get(s.client_id) || 0) + 1);
       }
+    });
+    return map;
+  }, [services]);
+
+  const servicesByClient = useMemo(() => {
+    const map = new Map<string, Service[]>();
+    services.forEach(s => {
+      const list = map.get(s.client_id) ?? [];
+      list.push(s);
+      map.set(s.client_id, list);
     });
     return map;
   }, [services]);
@@ -49,6 +176,13 @@ export function ClientList({ clients, services, onUpdate }: Props) {
     setDeletingId(null);
     setOpenMenu(null);
     onUpdate();
+  };
+
+  const getRiskCount = (client: Client) => {
+    const flags = clientRiskFlags[client.id] ?? client.risk_flags ?? [];
+    const clientSvcs = servicesByClient.get(client.id) ?? [];
+    const autoCount = isRestoreTestStale(clientSvcs) ? 1 : 0;
+    return flags.length + autoCount;
   };
 
   if (clients.length === 0) {
@@ -107,124 +241,152 @@ export function ClientList({ clients, services, onUpdate }: Props) {
             </div>
           ) : filtered.map(client => {
             const svcCount = serviceCountMap.get(client.id) || 0;
-            return (
-              <div
-                key={client.id}
-                className="px-5 py-4 flex items-center gap-4 hover:bg-slate-50/60 transition-colors group"
-              >
-                {/* Avatar */}
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
-                  client.status === 'Active' ? 'bg-blue-50 text-blue-700' :
-                  client.status === 'Inactive' ? 'bg-gray-100 text-gray-500' :
-                  'bg-amber-50 text-amber-700'
-                }`}>
-                  {client.company_name.charAt(0).toUpperCase()}
-                </div>
+            const riskCount = getRiskCount(client);
+            const clientSvcs = servicesByClient.get(client.id) ?? [];
+            const isRisksOpen = expandedRisks === client.id;
+            const isAppsOpen = expandedApps === client.id;
 
-                {/* Main info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-gray-900 truncate">{client.company_name}</span>
-                    <span className={`shrink-0 w-2 h-2 rounded-full ${
-                      client.status === 'Active' ? 'bg-emerald-500' :
-                      client.status === 'Inactive' ? 'bg-gray-300' :
-                      'bg-amber-400'
-                    }`} title={client.status} />
+            return (
+              <div key={client.id} className="divide-y divide-gray-100">
+                {/* Row */}
+                <div className="px-5 py-4 flex items-center gap-4 hover:bg-slate-50/60 transition-colors group">
+                  {/* Avatar */}
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
+                    client.status === 'Active' ? 'bg-blue-50 text-blue-700' :
+                    client.status === 'Inactive' ? 'bg-gray-100 text-gray-500' :
+                    'bg-amber-50 text-amber-700'
+                  }`}>
+                    {client.company_name.charAt(0).toUpperCase()}
                   </div>
-                  <div className="flex items-center gap-3 mt-0.5">
-                    <span className="text-xs text-gray-500 truncate">{client.contact_name}</span>
-                    {client.email && (
-                      <span className="hidden sm:inline-flex items-center gap-1 text-xs text-gray-400">
-                        <Mail className="w-3 h-3" /> {client.email}
+
+                  {/* Main info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-900 truncate">{client.company_name}</span>
+                      <span className={`shrink-0 w-2 h-2 rounded-full ${
+                        client.status === 'Active' ? 'bg-emerald-500' :
+                        client.status === 'Inactive' ? 'bg-gray-300' :
+                        'bg-amber-400'
+                      }`} title={client.status} />
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      <span className="text-xs text-gray-500 truncate">{client.contact_name}</span>
+                      {client.email && (
+                        <span className="hidden sm:inline-flex items-center gap-1 text-xs text-gray-400">
+                          <Mail className="w-3 h-3" /> {client.email}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Meta */}
+                  <div className="hidden md:flex items-center gap-3 shrink-0">
+                    {client.phone && (
+                      <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+                        <Phone className="w-3 h-3" /> {client.phone}
+                      </span>
+                    )}
+                    {svcCount > 0 && (
+                      <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                        <Server className="w-3 h-3" /> {svcCount}
+                      </span>
+                    )}
+                    {riskCount > 0 && (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
+                        <AlertTriangle className="w-3 h-3" /> {riskCount}
                       </span>
                     )}
                   </div>
-                </div>
 
-                {/* Meta */}
-                <div className="hidden md:flex items-center gap-4 shrink-0">
-                  {client.phone && (
-                    <span className="inline-flex items-center gap-1 text-xs text-gray-500">
-                      <Phone className="w-3 h-3" /> {client.phone}
-                    </span>
-                  )}
-                  {svcCount > 0 && (
-                    <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                      <Server className="w-3 h-3" /> {svcCount}
-                    </span>
-                  )}
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-1 shrink-0 relative">
-                  <button
-                    onClick={() => setExpandedApps(expandedApps === client.id ? null : client.id)}
-                    className={`p-2 rounded-lg transition-colors opacity-0 group-hover:opacity-100 ${expandedApps === client.id ? 'text-violet-600 bg-violet-50' : 'text-gray-400 hover:text-violet-600 hover:bg-violet-50'}`}
-                    title="Apps & Software"
-                  >
-                    <AppWindow className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setBriefClient(client)}
-                    className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                    title="Generar resumen"
-                  >
-                    <FileText className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setSharingClient(client)}
-                    className="p-2 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                    title="Share portal"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setEditingClient(client)}
-                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                    title="Edit"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <div className="relative">
+                  {/* Actions */}
+                  <div className="flex items-center gap-1 shrink-0 relative">
                     <button
-                      onClick={() => setOpenMenu(openMenu === client.id ? null : client.id)}
-                      className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                      onClick={() => { setExpandedRisks(isRisksOpen ? null : client.id); setExpandedApps(null); }}
+                      className={`p-2 rounded-lg transition-colors opacity-0 group-hover:opacity-100 ${isRisksOpen ? 'text-red-600 bg-red-50 opacity-100' : 'text-gray-400 hover:text-red-500 hover:bg-red-50'} ${riskCount > 0 ? 'opacity-100' : ''}`}
+                      title="Riesgos / Alcance"
                     >
-                      <MoreHorizontal className="w-4 h-4" />
+                      <AlertTriangle className="w-4 h-4" />
                     </button>
-                    {openMenu === client.id && (
-                      <>
-                        <div className="fixed inset-0 z-10" onClick={() => setOpenMenu(null)} />
-                        <div className="absolute right-0 top-full mt-1 bg-white rounded-lg border border-gray-200 shadow-lg z-20 py-1 w-40">
-                          <button
-                            onClick={() => { setEditingClient(client); setOpenMenu(null); }}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                          >
-                            <Pencil className="w-3.5 h-3.5" /> Edit
-                          </button>
-                          <button
-                            onClick={() => { setSharingClient(client); setOpenMenu(null); }}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                          >
-                            <Share2 className="w-3.5 h-3.5" /> Share Portal
-                          </button>
-                          <div className="border-t border-gray-100 my-1" />
-                          <button
-                            onClick={() => handleDelete(client.id)}
-                            disabled={deletingId === client.id}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" /> Delete
-                          </button>
-                        </div>
-                      </>
-                    )}
+                    <button
+                      onClick={() => { setExpandedApps(isAppsOpen ? null : client.id); setExpandedRisks(null); }}
+                      className={`p-2 rounded-lg transition-colors opacity-0 group-hover:opacity-100 ${isAppsOpen ? 'text-violet-600 bg-violet-50 opacity-100' : 'text-gray-400 hover:text-violet-600 hover:bg-violet-50'}`}
+                      title="Apps & Software"
+                    >
+                      <AppWindow className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setBriefClient(client)}
+                      className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                      title="Generar resumen"
+                    >
+                      <FileText className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setSharingClient(client)}
+                      className="p-2 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                      title="Share portal"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setEditingClient(client)}
+                      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                      title="Edit"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <div className="relative">
+                      <button
+                        onClick={() => setOpenMenu(openMenu === client.id ? null : client.id)}
+                        className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                      >
+                        <MoreHorizontal className="w-4 h-4" />
+                      </button>
+                      {openMenu === client.id && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setOpenMenu(null)} />
+                          <div className="absolute right-0 top-full mt-1 bg-white rounded-lg border border-gray-200 shadow-lg z-20 py-1 w-40">
+                            <button
+                              onClick={() => { setEditingClient(client); setOpenMenu(null); }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                            >
+                              <Pencil className="w-3.5 h-3.5" /> Edit
+                            </button>
+                            <button
+                              onClick={() => { setSharingClient(client); setOpenMenu(null); }}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                            >
+                              <Share2 className="w-3.5 h-3.5" /> Share Portal
+                            </button>
+                            <div className="border-t border-gray-100 my-1" />
+                            <button
+                              onClick={() => handleDelete(client.id)}
+                              disabled={deletingId === client.id}
+                              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
-                {expandedApps === client.id && (
-                  <div className="px-5 pb-4 border-t border-gray-100 mt-2 pt-2">
+
+                {/* Apps panel */}
+                {isAppsOpen && (
+                  <div className="px-5 py-4 bg-gray-50/50">
                     <ClientAppsManager clientId={client.id} />
                   </div>
+                )}
+
+                {/* Risk flags panel */}
+                {isRisksOpen && (
+                  <RiskFlagsPanel
+                    client={{ ...client, risk_flags: clientRiskFlags[client.id] ?? client.risk_flags ?? [] }}
+                    clientServices={clientSvcs}
+                    onSaved={flags => setClientRiskFlags(prev => ({ ...prev, [client.id]: flags }))}
+                  />
                 )}
               </div>
             );
