@@ -9,6 +9,13 @@ $ANON_KEY      = "REEMPLAZAR_CON_SUPABASE_ANON_KEY"
 $INGEST_SECRET = "REEMPLAZAR_CON_INGEST_SECRET_DEL_SERVICIO"
 $SERVICE_ID    = "REEMPLAZAR_CON_UUID_DEL_SERVICIO"
 
+# ---------- smb-check.ps1 ----------
+# Carpeta compartida a monitorear (dejar vacío si no se usa smb-check.ps1)
+$SMB_SERVICE_ID = ""   # UUID del servicio en la app (distinto al $SERVICE_ID del server)
+$SMB_PATH       = ""   # Path UNC, ej: \\servidor\carpeta
+$SMB_USER       = ""   # Usuario de solo lectura
+$SMB_PASS       = ""   # Contraseña en texto plano
+
 # IP privada de Tailscale del servidor de destino (cloud del cliente)
 # Si se configura, kopia-report.ps1 verifica conectividad antes de reportar
 # Dejar vacío para omitir el chequeo
