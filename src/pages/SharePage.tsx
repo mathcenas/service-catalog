@@ -1085,7 +1085,7 @@ function TechnicalDetails({ service, heartbeats, backups, latestDbCheck, showCos
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-gray-200 dark:border-gray-700">
           <BulletList title="Included" items={service.includes || []} color="emerald" />
           <BulletList title="Not Included" items={service.excludes || []} color="gray" />
-          <BulletList title="Your Role" items={service.client_responsibilities || []} color="blue" />
+          <BulletList title="Your Role (Client)" items={service.client_responsibilities || []} color="blue" />
         </div>
       ) : null}
 
