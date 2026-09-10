@@ -29,7 +29,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
     infrastructure_cost: service.infrastructure_cost?.toString() || '',
     cloud_backup_enabled: service.cloud_backup_enabled ?? false,
     cloud_backup_retention_days: service.cloud_backup_retention_days?.toString() || '',
-    telemetry_enabled: service.telemetry_enabled ?? true,
+    telemetry_enabled: service.telemetry_enabled ?? false,
     business_name: service.business_name || '',
     business_description: service.business_description || '',
     sla_level: service.sla_level || '',

@@ -21,6 +21,14 @@ if (-not (Get-Command Invoke-Kuma -ErrorAction SilentlyContinue)) {
     function Invoke-Kuma { param([string]$Status, [string]$Msg) }
 }
 
+function Invoke-SmbKuma {
+    param([string]$Status, [string]$Msg)
+    if (-not $SMB_KUMA_PUSH_URL) { return }
+    $base = $SMB_KUMA_PUSH_URL -replace '\?.*', ''
+    $url  = "${base}?status=${Status}&msg=$([uri]::EscapeDataString($Msg))&ping=0"
+    try { Invoke-RestMethod -Uri $url -Method Get -TimeoutSec 10 | Out-Null } catch {}
+}
+
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -58,7 +66,7 @@ function Send-Heartbeat($status, $message, $payload) {
     } catch {
         Write-Log "ERROR al enviar heartbeat: $_"
     }
-    Invoke-Kuma -Status $(if ($status -eq 'error') { 'down' } elseif ($status -eq 'warning') { 'warn' } else { 'up' }) -Msg $message
+    Invoke-SmbKuma -Status $(if ($status -eq 'error') { 'down' } elseif ($status -eq 'warning') { 'warn' } else { 'up' }) -Msg $message
 }
 
 # ---------- Montar share con credenciales ----------

@@ -30,7 +30,7 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
     infrastructure_cost: '',
     cloud_backup_enabled: false,
     cloud_backup_retention_days: '',
-    telemetry_enabled: true,
+    telemetry_enabled: false,
     business_name: '',
     business_description: '',
     sla_level: '',
