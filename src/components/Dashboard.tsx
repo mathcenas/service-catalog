@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings, Clock, CheckCircle2, AlertTriangle, Wrench, XCircle, Globe, MonitorSmartphone, Mail } from 'lucide-react';
+import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings, Clock, CheckCircle2, AlertTriangle, Wrench, XCircle, Globe, MonitorSmartphone, Mail, Menu, X } from 'lucide-react';
 import { supabase, Client, Service, Project, ServiceType } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { ClientList } from './ClientList';
@@ -33,6 +33,7 @@ type Stats = {
 export function Dashboard() {
   const { signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'projects' | 'services' | 'payments' | 'licenses' | 'roadmap' | 'hours' | 'monthly_summary' | 'telemetry' | 'infrastructure' | 'software' | 'email_audit' | 'data' | 'settings'>('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [stats, setStats] = useState<Stats>({
     totalClients: 0,
     activeClients: 0,
@@ -170,20 +171,28 @@ export function Dashboard() {
           />
         </div>
       )}
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-56 shrink-0 bg-white border-r border-gray-200 flex flex-col min-h-screen sticky top-0 h-screen">
+      <aside className={`fixed inset-y-0 left-0 z-50 w-56 bg-white border-r border-gray-200 flex flex-col transition-transform duration-200 md:static md:translate-x-0 md:shrink-0 md:h-screen md:sticky md:top-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center gap-2.5 px-4 h-14 border-b border-gray-100">
           <div className="bg-blue-600 p-1.5 rounded-lg">
             <Server className="w-4 h-4 text-white" />
           </div>
           <span className="text-sm font-bold text-gray-900">Client Manager</span>
+          <button className="ml-auto md:hidden text-gray-400 hover:text-gray-600" onClick={() => setSidebarOpen(false)}>
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
         <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
           {navItems.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => setActiveTab(id as typeof activeTab)}
+              onClick={() => { setActiveTab(id as typeof activeTab); setSidebarOpen(false); }}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === id
                   ? 'bg-blue-50 text-blue-700'
@@ -209,7 +218,19 @@ export function Dashboard() {
 
       {/* Main content */}
       <div className="flex-1 min-w-0">
-        <div className="max-w-6xl mx-auto px-6 py-8">
+        {/* Mobile top bar */}
+        <div className="md:hidden flex items-center gap-3 px-4 h-14 bg-white border-b border-gray-200 sticky top-0 z-30">
+          <button onClick={() => setSidebarOpen(true)} className="text-gray-500 hover:text-gray-700">
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="bg-blue-600 p-1 rounded-md">
+            <Server className="w-3.5 h-3.5 text-white" />
+          </div>
+          <span className="text-sm font-bold text-gray-900">
+            {navItems.find(n => n.id === activeTab)?.label ?? 'Client Manager'}
+          </span>
+        </div>
+        <div className="max-w-6xl mx-auto px-4 py-6 md:px-6 md:py-8">
 
         {activeTab === 'dashboard' && (
           <div className="space-y-8">
@@ -638,6 +659,7 @@ function OperationalStatusPanel({ services, clients }: { services: Service[]; cl
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );
