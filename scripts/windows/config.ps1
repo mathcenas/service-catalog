@@ -16,6 +16,10 @@ $SMB_INGEST_SECRET = ""   # Ingest secret del servicio SMB (Settings del servici
 $SMB_KUMA_PUSH_URL = ""   # Push monitor de Kuma para el share (distinto al del server)
 $SMB_PATH          = ""   # Ruta local de la carpeta compartida, ej: C:\Compartidos\Ventas
 
+# Ventana de búsqueda para veeam-agent-report.ps1
+# Diario → 25  |  Semanal → 170  (7 días + 2 hs de margen)
+$VEEAM_LOOKBACK_HOURS = 25
+
 # IP privada de Tailscale del servidor de destino (cloud del cliente)
 # Si se configura, kopia-report.ps1 verifica conectividad antes de reportar
 # Dejar vacío para omitir el chequeo
