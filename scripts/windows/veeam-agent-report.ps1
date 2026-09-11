@@ -32,27 +32,17 @@ $since = (Get-Date).AddHours(-25)
 
 $events = @()
 try {
+    # Veeam Agent escribe en su propio log "Veeam Agent" (no en Application)
     $events = Get-WinEvent -FilterHashtable @{
-        LogName      = 'Application'
-        ProviderName = 'Veeam Agent'
-        Id           = 190
-        StartTime    = $since
-    } -ErrorAction Stop | Sort-Object TimeCreated -Descending
+        LogName   = 'Veeam Agent'
+        StartTime = $since
+    } -ErrorAction Stop |
+        Where-Object { $_.Message -match 'finish|success|warning|failed|error' } |
+        Sort-Object TimeCreated -Descending
 } catch {
-    # Fallback: buscar cualquier evento de Veeam Agent con resultado
-    try {
-        $events = Get-WinEvent -FilterHashtable @{
-            LogName      = 'Application'
-            ProviderName = 'Veeam Agent'
-            StartTime    = $since
-        } -ErrorAction Stop |
-            Where-Object { $_.Message -match 'backup job|result|success|warning|failed' -and $_.Id -in @(190,191,192,193,194,195) } |
-            Sort-Object TimeCreated -Descending
-    } catch {
-        Write-Log "No se encontraron eventos de Veeam Agent en los últimos 25 hs"
-        Invoke-Kuma -Status "warn" -Msg "Sin eventos de Veeam Agent"
-        exit
-    }
+    Write-Log "No se encontraron eventos de Veeam Agent en los últimos 25 hs"
+    Invoke-Kuma -Status "warn" -Msg "Sin eventos de Veeam Agent"
+    exit
 }
 
 if (-not $events -or $events.Count -eq 0) {
