@@ -28,20 +28,22 @@ Get-ChildItem "$LogDir\veeam-agent-report-*.log" -ErrorAction SilentlyContinue |
 # ---------- Leer sesiones del Event Log ----------
 # Veeam Agent escribe en el log "Application" con source "Veeam Agent"
 # EventId 190 = job finalizado (Success/Warning/Failed)
-$since = (Get-Date).AddHours(-25)
+# Ventana de búsqueda: ajustar en config.ps1 según frecuencia del job
+# Diario: 25 hs | Semanal: 170 hs (7 días + 2 hs de margen)
+$lookbackHours = if ($VEEAM_LOOKBACK_HOURS) { $VEEAM_LOOKBACK_HOURS } else { 25 }
+$since = (Get-Date).AddHours(-$lookbackHours)
 
 $events = @()
 try {
-    # Veeam Agent escribe en su propio log "Veeam Agent" (no en Application)
+    # Veeam Agent escribe en su propio log "Veeam Agent", EventId 190 = job finalizado
     $events = Get-WinEvent -FilterHashtable @{
         LogName   = 'Veeam Agent'
+        Id        = 190
         StartTime = $since
-    } -ErrorAction Stop |
-        Where-Object { $_.Message -match 'finish|success|warning|failed|error' } |
-        Sort-Object TimeCreated -Descending
+    } -ErrorAction Stop | Sort-Object TimeCreated -Descending
 } catch {
-    Write-Log "No se encontraron eventos de Veeam Agent en los últimos 25 hs"
-    Invoke-Kuma -Status "warn" -Msg "Sin eventos de Veeam Agent"
+    Write-Log "No completed sessions found in last $lookbackHours hours"
+    Invoke-Kuma -Status "warn" -Msg "Sin backup Veeam en $lookbackHours hs"
     exit
 }
 
@@ -63,40 +65,27 @@ $reported = 0
 foreach ($ev in $events) {
     $msg = $ev.Message
 
-    # Determinar resultado desde el mensaje del evento
+    # Formato real: "Veeam Agent 'Job NOMBRE' finished with Warning/Success/Failed"
     $status = "warning"
-    if ($msg -match 'successfully|success' -and $msg -notmatch 'warning') {
-        $status = "success"
-    } elseif ($msg -match 'failed|error') {
-        $status = "failed"
-    } elseif ($msg -match 'warning|with warnings') {
-        $status = "warning"
-    }
+    if ($msg -match 'finished successfully|finished with Success') { $status = "success" }
+    elseif ($msg -match 'finished with Warning') { $status = "warning" }
+    elseif ($msg -match 'finished with (Error|Fail)') { $status = "failed" }
 
-    # Extraer nombre del job (ej: "Backup job 'MiJob' has been finished")
+    # Extraer nombre del job
     $jobName = "Veeam Agent"
-    if ($msg -match "job '([^']+)'") { $jobName = "Veeam Agent - $($Matches[1])" }
-    elseif ($msg -match 'job "([^"]+)"') { $jobName = "Veeam Agent - $($Matches[1])" }
+    if ($msg -match "'([^']+)'\s+finished") { $jobName = $Matches[1] }
 
-    # Extraer tamaño si está disponible en el mensaje
-    $sizeBytes = 0
-    if ($msg -match 'Processed:\s*([\d,\.]+)\s*GB') {
-        $sizeBytes = [long]([double]($Matches[1] -replace ',','.') * 1GB)
-    } elseif ($msg -match 'Processed:\s*([\d,\.]+)\s*MB') {
-        $sizeBytes = [long]([double]($Matches[1] -replace ',','.') * 1MB)
-    }
-
-    $backedUpAt = $ev.TimeCreated.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-
-    # Truncar mensaje de detalles
+    # Extraer espacio libre si aparece en el mensaje
     $details = ($msg -replace '\r?\n', ' ').Trim()
     if ($details.Length -gt 500) { $details = $details.Substring(0, 497) + '...' }
+
+    $backedUpAt = $ev.TimeCreated.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
     $body = @{
         service_id       = $SERVICE_ID
         job_name         = $jobName
         status           = $status
-        size_bytes       = $sizeBytes
+        size_bytes       = 0
         duration_seconds = 0
         details          = $details
         backed_up_at     = $backedUpAt
@@ -105,14 +94,16 @@ foreach ($ev in $events) {
 
     try {
         Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body -ErrorAction Stop | Out-Null
-        Write-Log "$(if ($status -eq 'success') { '✅' } elseif ($status -eq 'warning') { '⚠️' } else { '❌' }) $jobName → $status | $([math]::Round($sizeBytes/1GB,2)) GB"
+        $icon = if ($status -eq 'success') { '✅' } elseif ($status -eq 'warning') { '⚠️' } else { '❌' }
+        Write-Log "$icon $jobName → $status"
         $reported++
     } catch {
         Write-Log "❌ $jobName Error al enviar: $($_.Exception.Message)"
     }
 }
 
-$kumaStatus = if ($events[0].Message -match 'failed|error') { 'down' } elseif ($events[0].Message -match 'warning') { 'warn' } else { 'up' }
-Invoke-Kuma -Status $kumaStatus -Msg "Veeam: $reported sesiones reportadas"
+$lastMsg   = $events[0].Message
+$kumaStatus = if ($lastMsg -match 'finished with (Error|Fail)') { 'down' } elseif ($lastMsg -match 'finished with Warning') { 'warn' } else { 'up' }
+Invoke-Kuma -Status $kumaStatus -Msg "Veeam: $reported sesión/es | últimas $lookbackHours hs"
 
 Write-Log "Fin — $reported sesión/es reportadas"
