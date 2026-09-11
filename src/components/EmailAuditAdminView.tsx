@@ -64,9 +64,12 @@ export function EmailAuditAdminView({ clients }: Props) {
     if (!createClientId) return;
     setCreating(true);
     const client = clients.find(c => c.id === createClientId);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setCreating(false); return; }
     const { error } = await supabase.from('email_audit_tokens').insert({
       client_id:   createClientId,
       client_name: client?.company_name ?? createClientId,
+      user_id:     user.id,
     });
     setCreating(false);
     if (!error) {
