@@ -120,7 +120,7 @@ try {
             power_on_hours   = $pohours
             pct_used         = $wearLevel
             tbw              = $null
-            reallocated_sectors = if ($null -ne $readErrors) { $readErrors + ($writeErrors ?? 0) } else { $null }
+            reallocated_sectors = if ($null -ne $readErrors) { $readErrors + (if ($null -ne $writeErrors) { $writeErrors } else { 0 }) } else { $null }
         }
     }
 } catch {
