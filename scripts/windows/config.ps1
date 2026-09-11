@@ -14,9 +14,7 @@ $SERVICE_ID    = "REEMPLAZAR_CON_UUID_DEL_SERVICIO"
 $SMB_SERVICE_ID    = ""   # UUID del servicio en la app (distinto al $SERVICE_ID del server)
 $SMB_INGEST_SECRET = ""   # Ingest secret del servicio SMB (Settings del servicio en la app)
 $SMB_KUMA_PUSH_URL = ""   # Push monitor de Kuma para el share (distinto al del server)
-$SMB_PATH          = ""   # Path UNC, ej: \\servidor\carpeta
-$SMB_USER          = ""   # Usuario de solo lectura
-$SMB_PASS          = ""   # Contraseña en texto plano
+$SMB_PATH          = ""   # Ruta local de la carpeta compartida, ej: C:\Compartidos\Ventas
 
 # IP privada de Tailscale del servidor de destino (cloud del cliente)
 # Si se configura, kopia-report.ps1 verifica conectividad antes de reportar
