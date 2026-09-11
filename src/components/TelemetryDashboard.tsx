@@ -203,7 +203,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
   const [statusFilter, setStatusFilter] = useState<'all' | 'ok' | 'warning' | 'error' | 'stale' | 'no-data'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAllBackups, setShowAllBackups] = useState(false);
-  const [viewMode, setViewMode] = useState<'cards' | 'log'>('cards');
+  const [viewMode, setViewMode] = useState<'cards' | 'log' | 'backups' | 'acl'>('cards');
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState<string>('Cenas-Support');
   const [sendingReview, setSendingReview] = useState<string | null>(null);
@@ -539,19 +539,21 @@ export function TelemetryDashboard({ services, clients }: Props) {
 
       {/* Filters + view toggle */}
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search service, client..."
-            className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-        </div>
-        <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-          <option value="all">All clients</option>
-          {clients.filter(c => c.status === 'Active').map(c => (
-            <option key={c.id} value={c.id}>{c.company_name}</option>
-          ))}
-        </select>
+        {(viewMode === 'cards' || viewMode === 'log') && (<>
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search service, client..."
+              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+            <option value="all">All clients</option>
+            {clients.filter(c => c.status === 'Active').map(c => (
+              <option key={c.id} value={c.id}>{c.company_name}</option>
+            ))}
+          </select>
+        </>)}
         <div className="ml-auto inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
           <button onClick={() => setViewMode('cards')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'cards' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
@@ -560,6 +562,14 @@ export function TelemetryDashboard({ services, clients }: Props) {
           <button onClick={() => setViewMode('log')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'log' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
             <List className="w-3.5 h-3.5" /> Log
+          </button>
+          <button onClick={() => setViewMode('backups')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'backups' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+            <HardDrive className="w-3.5 h-3.5" /> Backups
+          </button>
+          <button onClick={() => setViewMode('acl')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'acl' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+            <Users className="w-3.5 h-3.5" /> ACL
           </button>
         </div>
       </div>
@@ -737,7 +747,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
       )}
 
       {/* Backup History */}
-      <div className="space-y-4">
+      {viewMode === 'backups' && <div className="space-y-4">
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div className="flex items-center gap-2">
             <HardDrive className="w-5 h-5 text-gray-500" />
@@ -831,10 +841,17 @@ export function TelemetryDashboard({ services, clients }: Props) {
             </div>
           );
         })()}
-      </div>
+      </div>}
 
       {/* NAS SMB Access Control */}
-      {aclSnapshots.length > 0 && (
+      {viewMode === 'acl' && aclSnapshots.length === 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-gray-500 font-medium">Sin snapshots ACL todavía</p>
+          <p className="text-gray-400 text-sm mt-1">Los scripts NAS/SMB envían reportes de acceso automáticamente.</p>
+        </div>
+      )}
+      {viewMode === 'acl' && aclSnapshots.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-start justify-between flex-wrap gap-4">
             <div className="flex items-center gap-2">
