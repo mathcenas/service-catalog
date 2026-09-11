@@ -19,6 +19,7 @@ export function EditClientModal({ client, onClose, onSuccess }: Props) {
     address: client.address || '',
     status: client.status,
     notes: client.notes || '',
+    uptime_status_url: client.uptime_status_url || '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -168,6 +169,19 @@ export function EditClientModal({ client, onClose, onSuccess }: Props) {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Status Page URL (Uptime Kuma)
+            </label>
+            <input
+              type="url"
+              value={formData.uptime_status_url}
+              onChange={(e) => setFormData({ ...formData, uptime_status_url: e.target.value })}
+              placeholder="https://status.tudominio.com/status/cliente"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            />
           </div>
 
           <div>

@@ -466,12 +466,6 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                   placeholder="https://status.example.com/api/badge/1/uptime/24" />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Public Status Page URL</label>
-                <input type="url" value={formData.uptime_status_url} onChange={e => set('uptime_status_url', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  placeholder="https://status.example.com/status/main" />
-              </div>
             </div>
             {formData.uptime_badge_url && (
               <div className="mt-3 flex items-center gap-2">

@@ -22,6 +22,7 @@ export type Client = {
   status: 'Active' | 'Inactive' | 'Pending';
   notes?: string;
   risk_flags?: string[];
+  uptime_status_url?: string;
   created_at: string;
   updated_at: string;
 };
