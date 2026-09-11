@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Mail, Phone, Building2, Share2, Search, MoreHorizontal, Pencil, Trash2, Server, ExternalLink, AppWindow, FileText, AlertTriangle, Check } from 'lucide-react';
+import { Mail, Phone, Building2, Share2, Search, MoreHorizontal, Pencil, Trash2, Server, ExternalLink, AppWindow, FileText, AlertTriangle, Check, Newspaper } from 'lucide-react';
 import { Client, Service, supabase } from '../lib/supabase';
 import { EditClientModal } from './EditClientModal';
 import { ShareTokenModal } from './ShareTokenModal';
@@ -130,6 +130,8 @@ function RiskFlagsPanel({
 export function ClientList({ clients, services, onUpdate }: Props) {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [sharingClient, setSharingClient] = useState<Client | null>(null);
+  const [digestPreview, setDigestPreview] = useState<{ html: string; name: string } | null>(null);
+  const [loadingDigest, setLoadingDigest] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Inactive' | 'Pending'>('all');
@@ -138,6 +140,28 @@ export function ClientList({ clients, services, onUpdate }: Props) {
   const [expandedRisks, setExpandedRisks] = useState<string | null>(null);
   const [briefClient, setBriefClient] = useState<Client | null>(null);
   const [clientRiskFlags, setClientRiskFlags] = useState<Record<string, string[]>>({});
+
+  async function previewDigest(client: Client) {
+    setLoadingDigest(client.id);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const SUPABASE_URL = (supabase as any).supabaseUrl as string;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/client-weekly-digest`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+          'apikey': (supabase as any).supabaseKey as string,
+        },
+        body: JSON.stringify({ preview: true, client_id: client.id }),
+      });
+      const json = await res.json();
+      if (json.html) setDigestPreview({ html: json.html, name: client.company_name });
+    } catch (e) {
+      console.error('digest preview error', e);
+    }
+    setLoadingDigest(null);
+  }
 
   const serviceCountMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -358,6 +382,16 @@ export function ClientList({ clients, services, onUpdate }: Props) {
                             >
                               <Share2 className="w-3.5 h-3.5" /> Share Portal
                             </button>
+                            {client.digest_enabled && (
+                              <button
+                                onClick={() => { previewDigest(client); setOpenMenu(null); }}
+                                disabled={loadingDigest === client.id}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                              >
+                                <Newspaper className="w-3.5 h-3.5" />
+                                {loadingDigest === client.id ? 'Cargando…' : 'Preview Digest'}
+                              </button>
+                            )}
                             <div className="border-t border-gray-100 my-1" />
                             <button
                               onClick={() => handleDelete(client.id)}
@@ -422,6 +456,32 @@ export function ClientList({ clients, services, onUpdate }: Props) {
           client={briefClient}
           onClose={() => setBriefClient(null)}
         />
+      )}
+
+      {/* Digest preview modal */}
+      {digestPreview && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Preview — Resumen Semanal</p>
+                <p className="font-semibold text-gray-900">{digestPreview.name}</p>
+              </div>
+              <button onClick={() => setDigestPreview(null)} className="text-gray-400 hover:text-gray-600">
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 bg-slate-50">
+              <iframe
+                srcDoc={digestPreview.html}
+                title="Digest preview"
+                className="w-full rounded border border-gray-200 bg-white"
+                style={{ minHeight: 600 }}
+                sandbox="allow-same-origin"
+              />
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

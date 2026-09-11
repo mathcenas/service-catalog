@@ -20,6 +20,7 @@ export function EditClientModal({ client, onClose, onSuccess }: Props) {
     status: client.status,
     notes: client.notes || '',
     uptime_status_url: client.uptime_status_url || '',
+    digest_enabled: client.digest_enabled ?? false,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -182,6 +183,20 @@ export function EditClientModal({ client, onClose, onSuccess }: Props) {
               placeholder="https://status.tudominio.com/status/cliente"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
             />
+          </div>
+
+          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <div>
+              <p className="text-sm font-medium text-gray-700">Resumen semanal por email</p>
+              <p className="text-xs text-gray-500 mt-0.5">Envía un digest semanal al cliente con estado de servicios, backups y renovaciones</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFormData(f => ({ ...f, digest_enabled: !f.digest_enabled }))}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${formData.digest_enabled ? 'bg-blue-600' : 'bg-gray-300'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${formData.digest_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
           </div>
 
           <div>
