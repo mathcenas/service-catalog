@@ -9,6 +9,8 @@ type Token = {
   client_name: string;
   expires_at: string;
   created_at: string;
+  first_opened_at: string | null;
+  open_count: number;
 };
 
 type Account = {
@@ -188,6 +190,13 @@ export function EmailAuditAdminView({ clients }: Props) {
                         <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">expirado</span>
                       ) : (
                         <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">activo</span>
+                      )}
+                      {tok.open_count > 0 ? (
+                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600" title={`Primer apertura: ${new Date(tok.first_opened_at!).toLocaleString('es-UY')}`}>
+                          👁 {tok.open_count} {tok.open_count === 1 ? 'apertura' : 'aperturas'}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-300">no abierto</span>
                       )}
                       <span className="text-xs text-gray-400">
                         vence {new Date(tok.expires_at).toLocaleDateString('es-UY')}
