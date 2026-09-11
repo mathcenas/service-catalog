@@ -23,6 +23,7 @@ export type Client = {
   notes?: string;
   risk_flags?: string[];
   uptime_status_url?: string;
+  digest_enabled?: boolean;
   created_at: string;
   updated_at: string;
 };
