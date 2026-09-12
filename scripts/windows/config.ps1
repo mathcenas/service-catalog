@@ -2,6 +2,7 @@
 # config.ps1 — Configuración por cliente/servidor
 # Copiar este archivo por cada cliente y ajustar los valores
 # =============================================================
+$SCRIPT_VERSION = "1.0.0"
 
 $INGEST_URL    = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-backup"
 $HEARTBEAT_URL = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-heartbeat"

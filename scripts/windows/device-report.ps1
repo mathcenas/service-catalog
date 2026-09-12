@@ -17,6 +17,7 @@
 #   .\device-report.ps1            # usa el CSV_DESTINO configurado abajo
 #   .\device-report.ps1 -Console   # muestra resultado en pantalla tambien
 # =============================================================
+$SCRIPT_VERSION = "1.0.0"
 
 # ╔══════════════════════════════════════════════════════════════╗
 # ║               CONFIGURAR POR CLIENTE                        ║

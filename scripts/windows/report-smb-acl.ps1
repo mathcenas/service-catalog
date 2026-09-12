@@ -5,6 +5,7 @@
 # Schedulear (opcional, ej: semanalmente):
 #   schtasks /create /tn "SMB ACL Report" /tr "powershell -File C:\Scripts\report-smb-acl.ps1" /sc weekly /d MON /st 06:00
 # =============================================================
+$SCRIPT_VERSION = "1.0.0"
 
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy

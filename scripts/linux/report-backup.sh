@@ -9,6 +9,7 @@
 # Ejemplo: report-backup.sh "OMV Daily" 0 /srv/uuid.../daily.0
 # Requiere: /etc/backup-ingest.env
 # =============================================================
+SCRIPT_VERSION="1.0.0"
 
 source /etc/backup-ingest.env
 

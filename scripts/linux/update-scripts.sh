@@ -42,6 +42,8 @@ declare -A SCRIPTS=(
   ["mikrotik-heartbeat.sh"]="scripts/linux/mikrotik-heartbeat.sh"
   ["update-scripts.sh"]="scripts/linux/update-scripts.sh"
 )
+# Nota: backup.env.example y system-health.env.example no se actualizan
+# automáticamente para no sobreescribir configuración local.
 
 # ── helpers ──────────────────────────────────────────────────
 log()  { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
