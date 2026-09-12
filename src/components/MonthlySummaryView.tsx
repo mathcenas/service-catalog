@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase, Client, Service } from '../lib/supabase';
-import { Calendar, ChevronLeft, ChevronRight, Clock, Shield, CheckCircle2, Server, AlertCircle } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Clock, Shield, CheckCircle2, Server, AlertCircle, GitCommit } from 'lucide-react';
 
 type Props = { clients: Client[]; services: Service[] };
 
@@ -8,11 +8,13 @@ type SummaryData = {
   incidentCount: number;
   backupTotal: number;
   backupSuccess: number;
+  backupFailed: number;
   hoursUsed: number;
   hoursAvailable: number;
   roadmapCompleted: number;
   servicesMonitored: number;
   heartbeatServices: number;
+  serviceChanges: number;
 };
 
 function prevMonth(y: number, m: number) { return m === 1 ? [y - 1, 12] : [y, m - 1]; }
@@ -63,6 +65,7 @@ export function MonthlySummaryView({ clients, services }: Props) {
       { data: hoursRows },
       { data: roadmapRows },
       { data: heartbeatRows },
+      { data: changesRows },
     ] = await Promise.all([
       supabase.from('roadmap_items')
         .select('id')
@@ -72,12 +75,11 @@ export function MonthlySummaryView({ clients, services }: Props) {
         .lte('created_at', to + 'T23:59:59'),
 
       serviceIds.length > 0
-        ? supabase.from('service_heartbeats')
-            .select('metadata')
+        ? supabase.from('service_backups')
+            .select('status')
             .in('service_id', serviceIds)
-            .eq('source', 'backup-folder')
-            .gte('created_at', from)
-            .lte('created_at', to + 'T23:59:59')
+            .gte('backed_up_at', from)
+            .lte('backed_up_at', to + 'T23:59:59')
         : Promise.resolve({ data: [] }),
 
       supabase.from('support_hours')
@@ -101,14 +103,20 @@ export function MonthlySummaryView({ clients, services }: Props) {
             .gte('created_at', from)
             .lte('created_at', to + 'T23:59:59')
         : Promise.resolve({ data: [] }),
+
+      serviceIds.length > 0
+        ? supabase.from('service_changes')
+            .select('id')
+            .in('service_id', serviceIds)
+            .gte('changed_at', from)
+            .lte('changed_at', to + 'T23:59:59')
+        : Promise.resolve({ data: [] }),
     ]);
 
-    const backupList = (backupRows ?? []) as { metadata: Record<string, unknown> | null }[];
+    const backupList = (backupRows ?? []) as { status: string }[];
     const backupTotal = backupList.length;
-    const backupSuccess = backupList.filter(r => {
-      const m = r.metadata;
-      return m && (m.status === 'ok' || m.status === 'success' || m.ok === true || m.ok === 'true');
-    }).length;
+    const backupSuccess = backupList.filter(r => r.status === 'success').length;
+    const backupFailed = backupList.filter(r => r.status === 'failed').length;
 
     const hoursUsed = (hoursRows ?? []).reduce((sum, r) => sum + (r.hours ?? 0), 0);
 
@@ -124,11 +132,13 @@ export function MonthlySummaryView({ clients, services }: Props) {
       incidentCount: (incidents ?? []).length,
       backupTotal,
       backupSuccess,
+      backupFailed,
       hoursUsed,
       hoursAvailable: contractedHours,
       roadmapCompleted: (roadmapRows ?? []).length,
       servicesMonitored: clientServices.length,
       heartbeatServices: uniqueHeartbeatServices.size,
+      serviceChanges: (changesRows ?? []).length,
     });
     setLoading(false);
   }
@@ -199,7 +209,7 @@ export function MonthlySummaryView({ clients, services }: Props) {
               label="Backups"
               value={data.backupTotal > 0 ? `${data.backupSuccess}/${data.backupTotal}` : '—'}
               sub={data.backupTotal > 0
-                ? `${Math.round((data.backupSuccess / data.backupTotal) * 100)}% exitosos`
+                ? `${Math.round((data.backupSuccess / data.backupTotal) * 100)}% exitosos${data.backupFailed > 0 ? ` · ${data.backupFailed} fallidos` : ''}`
                 : 'Sin registros'}
             />
             <StatCard
@@ -225,6 +235,13 @@ export function MonthlySummaryView({ clients, services }: Props) {
               label="Servicios activos"
               value={data.servicesMonitored}
               sub={`${data.heartbeatServices} con telemetría en el mes`}
+            />
+            <StatCard
+              icon={GitCommit}
+              color="blue"
+              label="Cambios realizados"
+              value={data.serviceChanges}
+              sub={data.serviceChanges === 0 ? 'Sin cambios registrados' : 'cambios en servicios'}
             />
             {data.backupTotal > 0 && data.backupSuccess < data.backupTotal && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
