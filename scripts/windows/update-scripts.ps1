@@ -21,12 +21,12 @@
 #   GITHUB_REPO    owner/repo      (default: mathcenas/service-catalog)
 #   GITHUB_BRANCH  rama            (default: main)
 # =============================================================
-$SCRIPT_VERSION = "1.0.0"
-
 param(
   [switch]$Check,
   [switch]$Force
 )
+
+$SCRIPT_VERSION = "1.0.0"
 
 $ErrorActionPreference = "Stop"
 
