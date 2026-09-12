@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Mail, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Plus } from 'lucide-react';
+import { Mail, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Plus, Trash2 } from 'lucide-react';
 import { supabase, Client } from '../lib/supabase';
 
 type Token = {
@@ -35,6 +35,7 @@ export function EmailAuditAdminView({ clients }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Create token modal state
   const [showCreate, setShowCreate] = useState(false);
@@ -86,6 +87,14 @@ export function EmailAuditAdminView({ clients }: Props) {
     navigator.clipboard.writeText(url).catch(() => {});
     setCopiedToken(token);
     setTimeout(() => setCopiedToken(null), 1500);
+  }
+
+  async function deleteToken(tokenId: string, clientName: string) {
+    if (!window.confirm(`¿Borrar el enlace de "${clientName}"? Esta acción no se puede deshacer.`)) return;
+    setDeletingId(tokenId);
+    await supabase.from('email_audit_tokens').delete().eq('id', tokenId);
+    setDeletingId(null);
+    load();
   }
 
   function toggleExpand(tokenId: string) {
@@ -238,6 +247,14 @@ export function EmailAuditAdminView({ clients }: Props) {
                           : <ChevronDown className="w-4 h-4" />}
                       </button>
                     )}
+                    <button
+                      onClick={() => deleteToken(tok.id, tok.client_name)}
+                      disabled={deletingId === tok.id}
+                      className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40"
+                      title="Borrar enlace"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
 

@@ -159,10 +159,10 @@ export function EmailAuditPage({ token }: { token: string }) {
     <div style={styles.page}>
       <div style={{ ...styles.card, maxWidth: 620 }}>
         <div style={{ marginBottom: 24 }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0B192C', padding: '6px 14px', borderRadius: 6, marginBottom: 12 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0B192C', padding: '10px 20px', borderRadius: 8, marginBottom: 16 }}>
             {logoUrl
-              ? <img src={logoUrl} alt={companyName} style={{ height: 22, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
-              : <span style={{ color: '#06B6D4', fontSize: 11, fontWeight: 700, letterSpacing: '.5px' }}>{companyName.toUpperCase()}</span>
+              ? <img src={logoUrl} alt={companyName} style={{ height: 32, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+              : <span style={{ color: '#06B6D4', fontSize: 15, fontWeight: 700, letterSpacing: '.5px' }}>{companyName.toUpperCase()}</span>
             }
           </div>
           <p style={{ color: '#64748b', fontSize: 13, marginBottom: 4 }}>{clientName}</p>
