@@ -258,6 +258,8 @@ export type ShareToken = {
   label: string;
   expires_at?: string;
   created_at: string;
+  open_count: number;
+  first_opened_at: string | null;
 };
 
 export type SupportHour = {

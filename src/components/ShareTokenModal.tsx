@@ -132,8 +132,20 @@ export function ShareTokenModal({ client, onClose }: Props) {
                   <div className="flex items-start justify-between mb-2">
                     <div>
                       <div className="font-medium text-sm text-gray-900">{token.label}</div>
-                      <div className="text-xs text-gray-500 mt-0.5">
-                        Created {new Date(token.created_at).toLocaleDateString()}
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className="text-xs text-gray-500">
+                          Created {new Date(token.created_at).toLocaleDateString()}
+                        </span>
+                        {token.open_count > 0 ? (
+                          <span
+                            className="text-xs px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600"
+                            title={`Primer apertura: ${new Date(token.first_opened_at!).toLocaleString('es-UY')}`}
+                          >
+                            👁 {token.open_count} {token.open_count === 1 ? 'apertura' : 'aperturas'}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-300">no abierto</span>
+                        )}
                       </div>
                     </div>
                     <div className="flex gap-2">

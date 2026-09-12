@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Mail, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Plus } from 'lucide-react';
+import { Mail, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Plus, Trash2, Send } from 'lucide-react';
 import { supabase, Client } from '../lib/supabase';
 
 type Token = {
@@ -27,14 +27,28 @@ type Submission = {
   submitted_at: string;
 };
 
+type EmailSend = {
+  id: string;
+  client_email: string;
+  client_id: string | null;
+  email_type: string | null;
+  subject: string | null;
+  open_count: number;
+  opened_at: string | null;
+  created_at: string;
+};
+
 type Props = { clients: Client[] };
 
 export function EmailAuditAdminView({ clients }: Props) {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [emailSends, setEmailSends] = useState<EmailSend[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showSends, setShowSends] = useState(false);
   const [loading, setLoading] = useState(true);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Create token modal state
   const [showCreate, setShowCreate] = useState(false);
@@ -47,7 +61,7 @@ export function EmailAuditAdminView({ clients }: Props) {
 
   async function load() {
     setLoading(true);
-    const [{ data: toks }, { data: subs }] = await Promise.all([
+    const [{ data: toks }, { data: subs }, { data: sends }] = await Promise.all([
       supabase
         .from('email_audit_tokens')
         .select('*')
@@ -56,9 +70,15 @@ export function EmailAuditAdminView({ clients }: Props) {
         .from('email_audit_submissions')
         .select('*')
         .order('submitted_at', { ascending: false }),
+      supabase
+        .from('email_opens')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100),
     ]);
     setTokens(toks ?? []);
     setSubmissions(subs ?? []);
+    setEmailSends(sends ?? []);
     setLoading(false);
   }
 
@@ -86,6 +106,14 @@ export function EmailAuditAdminView({ clients }: Props) {
     navigator.clipboard.writeText(url).catch(() => {});
     setCopiedToken(token);
     setTimeout(() => setCopiedToken(null), 1500);
+  }
+
+  async function deleteToken(tokenId: string, clientName: string) {
+    if (!window.confirm(`¿Borrar el enlace de "${clientName}"? Esta acción no se puede deshacer.`)) return;
+    setDeletingId(tokenId);
+    await supabase.from('email_audit_tokens').delete().eq('id', tokenId);
+    setDeletingId(null);
+    load();
   }
 
   function toggleExpand(tokenId: string) {
@@ -166,6 +194,59 @@ export function EmailAuditAdminView({ clients }: Props) {
         </div>
       )}
 
+      {/* Email sends section */}
+      <div className="border border-gray-200 rounded-xl overflow-hidden">
+        <button
+          onClick={() => setShowSends(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Send className="w-4 h-4 text-gray-500" />
+            <span className="font-medium text-sm text-gray-700">Emails enviados</span>
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600">{emailSends.length}</span>
+          </div>
+          {showSends ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+        </button>
+        {showSends && (
+          emailSends.length === 0 ? (
+            <div className="px-4 py-6 text-center text-sm text-gray-400">No hay emails registrados todavía.</div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {emailSends.map(s => {
+                const clientName = clients.find(c => c.id === s.client_id)?.company_name;
+                return (
+                  <div key={s.id} className="flex items-center gap-3 px-4 py-2.5">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm text-gray-800 truncate">{s.client_email}</span>
+                        {clientName && <span className="text-xs text-gray-400">({clientName})</span>}
+                        {s.email_type && (
+                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">{s.email_type}</span>
+                        )}
+                      </div>
+                      {s.subject && <p className="text-xs text-gray-400 truncate mt-0.5">{s.subject}</p>}
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0 text-xs text-gray-400">
+                      <span>{new Date(s.created_at).toLocaleDateString('es-UY')}</span>
+                      {s.open_count > 0 ? (
+                        <span
+                          className="px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600"
+                          title={s.opened_at ? `Primer apertura: ${new Date(s.opened_at).toLocaleString('es-UY')}` : ''}
+                        >
+                          👁 {s.open_count}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">no abierto</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        )}
+      </div>
+
       {/* Token list */}
       {tokens.length === 0 ? (
         <div className="text-center py-16 text-gray-400 text-sm">
@@ -238,6 +319,14 @@ export function EmailAuditAdminView({ clients }: Props) {
                           : <ChevronDown className="w-4 h-4" />}
                       </button>
                     )}
+                    <button
+                      onClick={() => deleteToken(tok.id, tok.client_name)}
+                      disabled={deletingId === tok.id}
+                      className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors disabled:opacity-40"
+                      title="Borrar enlace"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
 
