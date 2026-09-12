@@ -22,6 +22,8 @@ if ! command -v jq >/dev/null 2>&1; then
     dnf install -y -q jq >/dev/null 2>&1
   elif command -v yum >/dev/null 2>&1; then
     yum install -y -q jq >/dev/null 2>&1
+  elif command -v apk >/dev/null 2>&1; then
+    apk add --quiet jq >/dev/null 2>&1
   fi
   if ! command -v jq >/dev/null 2>&1; then
     echo "ERROR: no se pudo instalar jq automáticamente. Ejecuta 'apt install jq' manualmente." >&2
