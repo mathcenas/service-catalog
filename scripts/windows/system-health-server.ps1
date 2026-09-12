@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.1.0"
+$SCRIPT_VERSION = "1.2.0"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -161,7 +161,18 @@ try {
     Write-Log "❌ network Error: $($_.Exception.Message)"
 }
 
-# ---------- 3. RDP (Sesiones / TCP / Desconexiones / Disk Latency) ----------
+# ---------- 3. RDP + AnyDesk (Sesiones / TCP / Desconexiones / Disk Latency) ----------
+
+# AnyDesk — reiniciar si esta caido
+$adService = Get-Service -Name "AnyDesk" -ErrorAction SilentlyContinue
+if ($adService -and $adService.Status -ne 'Running') {
+    try {
+        Restart-Service -Name "AnyDesk" -Force -ErrorAction Stop
+        Write-Log "⚠️ AnyDesk: servicio reiniciado automaticamente"
+    } catch {
+        Write-Log "❌ AnyDesk: no se pudo reiniciar: $($_.Exception.Message)"
+    }
+}
 
 # Verificar y auto-reiniciar TermService si esta caido
 $rdpService   = Get-Service -Name "TermService" -ErrorAction SilentlyContinue

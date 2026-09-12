@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.2.0"
+$SCRIPT_VERSION = "1.3.0"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -205,7 +205,20 @@ try {
     Write-Log "❌ speedtest Error: $($_.Exception.Message)"
 }
 
-# ---------- 3. RDP (servicio + puerto + auto-restart) ----------
+# ---------- 3. Servicios de acceso remoto (RDP + AnyDesk) ----------
+
+# AnyDesk — reiniciar si esta caido
+$adService = Get-Service -Name "AnyDesk" -ErrorAction SilentlyContinue
+if ($adService -and $adService.Status -ne 'Running') {
+    try {
+        Restart-Service -Name "AnyDesk" -Force -ErrorAction Stop
+        Write-Log "⚠️ AnyDesk: servicio reiniciado automaticamente"
+    } catch {
+        Write-Log "❌ AnyDesk: no se pudo reiniciar: $($_.Exception.Message)"
+    }
+}
+
+# RDP — verificar TermService + puerto
 $rdpService   = Get-Service -Name "TermService" -ErrorAction SilentlyContinue
 $rdpSvcStatus = if ($rdpService) { $rdpService.Status.ToString() } else { "NotFound" }
 $rdpListening = (Get-NetTCPConnection -LocalPort 3389 -State Listen -ErrorAction SilentlyContinue).Count -gt 0
