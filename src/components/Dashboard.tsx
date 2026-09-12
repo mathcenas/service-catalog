@@ -660,7 +660,6 @@ function OperationalStatusPanel({ services, clients }: { services: Service[]; cl
           );
         })}
       </div>
-      </div>
     </div>
   );
 }
