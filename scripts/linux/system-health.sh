@@ -11,7 +11,7 @@
 #   0 * * * * /srv/scripts/system-health.sh
 # =============================================================
 
-SCRIPT_VERSION="1.5.0"
+SCRIPT_VERSION="1.5.1"
 
 # ---------- Cargar .env ----------
 # Orden: arg CLI → /etc/backup-ingest.env → $SCRIPT_DIR/.env
@@ -185,8 +185,12 @@ if command -v smbstatus >/dev/null 2>&1; then
 fi
 
 # ---------- Docker containers ----------
+# DOCKER_IGNORE: lista de nombres separados por coma para excluir del monitoreo
+# Ejemplo en .env: DOCKER_IGNORE="backup-temp,test-container"
 DOCKER_JSON="[]"
 DOCKER_DOWN=""
+DOCKER_IGNORE="${DOCKER_IGNORE:-}"
+
 if command -v docker >/dev/null 2>&1; then
   DOCKER_JSON="["
   first_doc=1
@@ -195,6 +199,12 @@ if command -v docker >/dev/null 2>&1; then
     cname=$(echo "$line" | awk -F'|' '{print $1}')
     cstate=$(echo "$line" | awk -F'|' '{print $2}')
     cstatus=$(echo "$line" | awk -F'|' '{print $3}')
+
+    # Ignorar contenedores definidos en DOCKER_IGNORE
+    if [[ -n "$DOCKER_IGNORE" && ",$DOCKER_IGNORE," =~ ,"$cname", ]]; then
+      continue
+    fi
+
     [[ $first_doc -eq 0 ]] && DOCKER_JSON+=","
     DOCKER_JSON+="{\"name\":\"${cname}\",\"state\":\"${cstate}\",\"status\":\"${cstatus}\"}"
     first_doc=0
