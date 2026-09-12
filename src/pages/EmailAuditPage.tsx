@@ -22,6 +22,8 @@ export function EmailAuditPage({ token }: { token: string }) {
   const [contactName, setContactName] = useState('');
   const [accounts, setAccounts] = useState<Account[]>([emptyAccount()]);
   const [errorMsg, setErrorMsg] = useState('');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState('Cenas IT');
   const fileRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
@@ -33,6 +35,8 @@ export function EmailAuditPage({ token }: { token: string }) {
       }
       setClientName(data.client_name);
       setTokenId(data.token_id);
+      if (data.logo_url) setLogoUrl(data.logo_url);
+      if (data.company_name) setCompanyName(data.company_name);
       setPageState('form');
     })();
   }, [token]);
@@ -155,8 +159,11 @@ export function EmailAuditPage({ token }: { token: string }) {
     <div style={styles.page}>
       <div style={{ ...styles.card, maxWidth: 620 }}>
         <div style={{ marginBottom: 24 }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0B192C', padding: '5px 12px', borderRadius: 6, marginBottom: 12 }}>
-            <span style={{ color: '#06B6D4', fontSize: 11, fontWeight: 700, letterSpacing: '.5px' }}>CENAS IT</span>
+          <div style={{ display: 'inline-flex', alignItems: 'center', background: '#0B192C', padding: '6px 14px', borderRadius: 6, marginBottom: 12 }}>
+            {logoUrl
+              ? <img src={logoUrl} alt={companyName} style={{ height: 22, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+              : <span style={{ color: '#06B6D4', fontSize: 11, fontWeight: 700, letterSpacing: '.5px' }}>{companyName.toUpperCase()}</span>
+            }
           </div>
           <p style={{ color: '#64748b', fontSize: 13, marginBottom: 4 }}>{clientName}</p>
           <h1 style={{ color: '#f1f5f9', fontSize: 22, fontWeight: 700, margin: 0 }}>
@@ -292,7 +299,7 @@ export function EmailAuditPage({ token }: { token: string }) {
           <p style={{ color: '#475569', fontSize: 11, margin: 0 }}>
             Gobernanza TI &amp; Procesos alineados a <strong style={{ color: '#64748b' }}>ISO/IEC 20000</strong>
           </p>
-          <p style={{ color: '#334155', fontSize: 11, marginTop: 3 }}>Cenas IT Solutions — cenas.uy</p>
+          <p style={{ color: '#334155', fontSize: 11, marginTop: 3 }}>{companyName}</p>
         </div>
       </div>
     </div>
