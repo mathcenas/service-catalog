@@ -15,8 +15,19 @@ SCRIPT_VERSION="1.6.0"
 
 # ---------- Verificación de dependencias ----------
 if ! command -v jq >/dev/null 2>&1; then
-  echo "ERROR: 'jq' no está instalado. Ejecuta 'apt install jq' para continuar." >&2
-  exit 1
+  echo "jq no encontrado — instalando..." >&2
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get install -y -qq jq >/dev/null 2>&1
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y -q jq >/dev/null 2>&1
+  elif command -v yum >/dev/null 2>&1; then
+    yum install -y -q jq >/dev/null 2>&1
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "ERROR: no se pudo instalar jq automáticamente. Ejecuta 'apt install jq' manualmente." >&2
+    exit 1
+  fi
+  echo "jq instalado correctamente." >&2
 fi
 
 # ---------- Cargar .env ----------
