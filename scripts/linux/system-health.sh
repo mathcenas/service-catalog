@@ -311,10 +311,10 @@ if command -v smartctl >/dev/null 2>&1; then
     fi
     [[ "$disk_status" == "error" || "$disk_status" == "warning" ]] && STATUS="warning"
 
-    # Escapar strings
-    dev_model_esc="${dev_model//\"/\\'}"
-    dev_serial_esc="${dev_serial//\"/\\'}"
-    dev_capacity_esc="${dev_capacity//\"/\\'}"
+    # Escapar strings para JSON
+    dev_model_esc="${dev_model//\"/\\\"}"
+    dev_serial_esc="${dev_serial//\"/\\\"}"
+    dev_capacity_esc="${dev_capacity//\"/\\\"}"
 
     [[ "$DISK_SMART_JSON" == "[]" ]] && DISK_SMART_JSON="["
     [[ "$DISK_SMART_JSON" != "[" ]] && DISK_SMART_JSON+=","
