@@ -1,14 +1,14 @@
 # =============================================================
-# update-scripts.ps1 — Auto-actualización de scripts Windows
+# update-scripts.ps1 - Auto-actualizacion de scripts Windows
 #
-# Descarga la última versión de los scripts desde GitHub y los
-# instala en el mismo directorio donde está este script
+# Descarga la ultima version de los scripts desde GitHub y los
+# instala en el mismo directorio donde esta este script
 # (normalmente C:\Scripts\ o donde lo pongas).
 #
 # Uso:
 #   .\update-scripts.ps1              # actualiza todos
 #   .\update-scripts.ps1 -Check       # solo compara versiones
-#   .\update-scripts.ps1 -Force       # instala aunque la versión sea igual
+#   .\update-scripts.ps1 -Force       # instala aunque la version sea igual
 #
 # Tarea programada cada 48h (ejecutar como admin, una sola vez):
 #   $trigger = New-ScheduledTaskTrigger -RepetitionInterval (New-TimeSpan -Hours 48) -Once -At (Get-Date)
@@ -35,7 +35,7 @@ $GithubBranch = if ($env:GITHUB_BRANCH) { $env:GITHUB_BRANCH } else { "main" }
 $InstallDir   = $PSScriptRoot   # mismo directorio que este script
 $RawBase      = "https://raw.githubusercontent.com/$GithubRepo/$GithubBranch"
 
-# Scripts a gestionar: nombre_local → ruta en repo
+# Scripts a gestionar: nombre_local -> ruta en repo
 $Scripts = [ordered]@{
   "config.ps1"                  = "scripts/windows/config.ps1"
   "system-health.ps1"           = "scripts/windows/system-health.ps1"
@@ -51,7 +51,7 @@ $Scripts = [ordered]@{
   "device-report.ps1"           = "scripts/windows/device-report.ps1"
   "update-scripts.ps1"          = "scripts/windows/update-scripts.ps1"
 }
-# Nota: config.ps1 se actualiza pero NO sobreescribe — se guarda como config.ps1.new
+# Nota: config.ps1 se actualiza pero NO sobreescribe - se guarda como config.ps1.new
 # para que puedas revisar cambios antes de aplicarlos.
 
 # ── helpers ──────────────────────────────────────────────────
@@ -82,7 +82,7 @@ function Download-Temp {
 }
 
 # ── main ─────────────────────────────────────────────────────
-Log "update-scripts.ps1 v$SCRIPT_VERSION — repo: $GithubRepo@$GithubBranch"
+Log "update-scripts.ps1 v$SCRIPT_VERSION - repo: $GithubRepo@$GithubBranch"
 
 $updated = 0; $skipped = 0; $errors = 0
 $selfUpdatePending = $null
@@ -94,7 +94,7 @@ foreach ($scriptName in $Scripts.Keys) {
 
   $tmp = Download-Temp -Url $url
   if (-not $tmp) {
-    Warn "${scriptName}: no se pudo descargar — saltando"
+    Warn "${scriptName}: no se pudo descargar - saltando"
     $errors++
     continue
   }
@@ -104,48 +104,48 @@ foreach ($scriptName in $Scripts.Keys) {
 
   if ($Check) {
     if ($remoteVer -gt $localVer) {
-      Log "${scriptName}: actualización disponible $localVer → $remoteVer"
+      Log "${scriptName}: actualizacion disponible $localVer -> $remoteVer"
     } else {
-      Log "${scriptName}: al día ($localVer)"
+      Log "${scriptName}: al dia ($localVer)"
     }
     Remove-Item $tmp -Force
     continue
   }
 
   if (-not $Force -and $remoteVer -le $localVer) {
-    Log "${scriptName}: al día ($localVer) — sin cambios"
+    Log "${scriptName}: al dia ($localVer) - sin cambios"
     Remove-Item $tmp -Force
     $skipped++
     continue
   }
 
-  # config.ps1 → guardar como .new para revisión manual
+  # config.ps1 -> guardar como .new para revision manual
   if ($scriptName -eq "config.ps1") {
     $newPath = "$dest.new"
     Move-Item $tmp $newPath -Force
-    Ok "${scriptName}: $localVer → $remoteVer (guardado como config.ps1.new — revisar antes de aplicar)"
+    Ok "${scriptName}: $localVer -> $remoteVer (guardado como config.ps1.new - revisar antes de aplicar)"
     $updated++
     continue
   }
 
-  # update-scripts.ps1 → reemplazar después del loop para no pisar el script en ejecución
+  # update-scripts.ps1 -> reemplazar despues del loop para no pisar el script en ejecucion
   if ($scriptName -eq "update-scripts.ps1" -and $dest -eq $MyInvocation.MyCommand.Path) {
     $selfUpdatePending = @{ tmp = $tmp; dest = $dest; from = $localVer; to = $remoteVer }
     continue
   }
 
   Move-Item $tmp $dest -Force
-  Ok "${scriptName}: $localVer → $remoteVer"
+  Ok "${scriptName}: $localVer -> $remoteVer"
   $updated++
 }
 
-# Auto-actualización de este script (al final, una vez terminado el loop)
+# Auto-actualizacion de este script (al final, una vez terminado el loop)
 if ($selfUpdatePending) {
   Move-Item $selfUpdatePending.tmp $selfUpdatePending.dest -Force
-  Ok "update-scripts.ps1: $($selfUpdatePending.from) → $($selfUpdatePending.to)"
+  Ok "update-scripts.ps1: $($selfUpdatePending.from) -> $($selfUpdatePending.to)"
   $updated++
 }
 
 if (-not $Check) {
-  Log "Listo — actualizados: $updated · sin cambios: $skipped · errores: $errors"
+  Log "Listo - actualizados: $updated - sin cambios: $skipped - errores: $errors"
 }
