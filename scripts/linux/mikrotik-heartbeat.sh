@@ -5,6 +5,7 @@
 # Correr cada minuto via cron:
 #   * * * * * /srv/network-monitor/mikrotik-heartbeat.sh
 # =============================================================
+SCRIPT_VERSION="1.0.0"
 
 # ---------- Config global ----------
 SUPABASE_URL="https://REEMPLAZAR.supabase.co"
