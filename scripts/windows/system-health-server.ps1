@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.0.0"
+$SCRIPT_VERSION = "1.2.0"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -161,7 +161,38 @@ try {
     Write-Log "❌ network Error: $($_.Exception.Message)"
 }
 
-# ---------- 3. RDP (Sesiones / TCP / Desconexiones / Disk Latency) ----------
+# ---------- 3. RDP + AnyDesk (Sesiones / TCP / Desconexiones / Disk Latency) ----------
+
+# AnyDesk — reiniciar si esta caido
+$adService = Get-Service -Name "AnyDesk" -ErrorAction SilentlyContinue
+if ($adService -and $adService.Status -ne 'Running') {
+    try {
+        Restart-Service -Name "AnyDesk" -Force -ErrorAction Stop
+        Write-Log "⚠️ AnyDesk: servicio reiniciado automaticamente"
+    } catch {
+        Write-Log "❌ AnyDesk: no se pudo reiniciar: $($_.Exception.Message)"
+    }
+}
+
+# Verificar y auto-reiniciar TermService si esta caido
+$rdpService   = Get-Service -Name "TermService" -ErrorAction SilentlyContinue
+$rdpSvcStatus = if ($rdpService) { $rdpService.Status.ToString() } else { "NotFound" }
+$rdpListening = (Get-NetTCPConnection -LocalPort 3389 -State Listen -ErrorAction SilentlyContinue).Count -gt 0
+$rdpRestarted = $false
+
+if ($rdpService -and $rdpService.Status -ne 'Running') {
+    try {
+        Restart-Service -Name "TermService" -Force -ErrorAction Stop
+        Start-Sleep -Seconds 3
+        $rdpService   = Get-Service -Name "TermService" -ErrorAction SilentlyContinue
+        $rdpSvcStatus = $rdpService.Status.ToString()
+        $rdpListening = (Get-NetTCPConnection -LocalPort 3389 -State Listen -ErrorAction SilentlyContinue).Count -gt 0
+        $rdpRestarted = $true
+        Write-Log "⚠️ RDP: TermService estaba detenido - reiniciado automaticamente"
+    } catch {
+        Write-Log "❌ RDP: no se pudo reiniciar TermService: $($_.Exception.Message)"
+    }
+}
 
 # Sesiones activas (quser)
 try {
@@ -209,8 +240,9 @@ try {
 }
 $rdpWarnThreshold = [math]::Floor($maxAllowed * 0.85)
 
-$rdpStatus = if   ($sessions -ge $maxAllowed -or $disconnects -gt 3)    { "error" }
-             elseif ($sessions -ge $rdpWarnThreshold)                    { "warning" }
+$rdpStatus = if   ($rdpSvcStatus -ne 'Running' -or -not $rdpListening)  { "error" }
+             elseif ($sessions -ge $maxAllowed -or $disconnects -gt 3)  { "error" }
+             elseif ($sessions -ge $rdpWarnThreshold -or $rdpRestarted) { "warning" }
              elseif ($rdpConnections -eq 0 -and $sessions -gt 0)        { "warning" }
              else { "ok" }
 
@@ -218,17 +250,22 @@ $diskIOStatus = if   ($diskLatency -gt 0.050) { "error" }
                 elseif ($diskLatency -gt 0.030) { "warning" }
                 else { "ok" }
 
-# El status general del POST es el peor de los dos
 $rdpOverallStatus = if ($diskIOStatus -eq "error" -or $rdpStatus -eq "error") { "error" }
                     elseif ($diskIOStatus -eq "warning" -or $rdpStatus -eq "warning") { "warning" }
                     else { "ok" }
+
+$rdpMsg = "TermService: $rdpSvcStatus | Sessions: $sessions/$maxAllowed | TCP 3389: $rdpConnections | Disconnects (${RdpEventWindow}m): $disconnects | DiskIO: ${diskLatency}s"
+if ($rdpRestarted) { $rdpMsg += " | AUTO-REINICIADO" }
 
 $rdpBody = @{
     service_id = $SERVICE_ID
     source     = "rdp"
     status     = $rdpOverallStatus
-    message    = "Sessions: $sessions/$maxAllowed | TCP 3389: $rdpConnections | Disconnects (${RdpEventWindow}m): $disconnects | DiskIO: ${diskLatency}s"
+    message    = $rdpMsg
     payload    = @{
+        service_status      = $rdpSvcStatus
+        port_listening      = $rdpListening
+        auto_restarted      = $rdpRestarted
         rdp_sessions        = $sessions
         rdp_max_allowed     = $maxAllowed
         rdp_tcp_connections = $rdpConnections
@@ -240,7 +277,8 @@ $rdpBody = @{
 
 try {
     Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $rdpBody | Out-Null
-    Write-Log "✅ rdp → $rdpOverallStatus | Sessions: $sessions | Disconnects: $disconnects | DiskIO: ${diskLatency}s"
+    $icon = if ($rdpOverallStatus -eq 'error') {'❌'} elseif ($rdpOverallStatus -eq 'warning') {'⚠️'} else {'✅'}
+    Write-Log "$icon rdp → $rdpOverallStatus | TermService: $rdpSvcStatus | Sessions: $sessions | Disconnects: $disconnects | DiskIO: ${diskLatency}s$(if ($rdpRestarted) {' | AUTO-REINICIADO'})"
 } catch {
     Write-Log "❌ rdp Error: $($_.Exception.Message)"
 }

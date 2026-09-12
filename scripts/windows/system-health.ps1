@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.1.0"
+$SCRIPT_VERSION = "1.3.0"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -203,6 +203,67 @@ try {
     Write-Log "✅ speedtest → $netStatus | $netMsg"
 } catch {
     Write-Log "❌ speedtest Error: $($_.Exception.Message)"
+}
+
+# ---------- 3. Servicios de acceso remoto (RDP + AnyDesk) ----------
+
+# AnyDesk — reiniciar si esta caido
+$adService = Get-Service -Name "AnyDesk" -ErrorAction SilentlyContinue
+if ($adService -and $adService.Status -ne 'Running') {
+    try {
+        Restart-Service -Name "AnyDesk" -Force -ErrorAction Stop
+        Write-Log "⚠️ AnyDesk: servicio reiniciado automaticamente"
+    } catch {
+        Write-Log "❌ AnyDesk: no se pudo reiniciar: $($_.Exception.Message)"
+    }
+}
+
+# RDP — verificar TermService + puerto
+$rdpService   = Get-Service -Name "TermService" -ErrorAction SilentlyContinue
+$rdpSvcStatus = if ($rdpService) { $rdpService.Status.ToString() } else { "NotFound" }
+$rdpListening = (Get-NetTCPConnection -LocalPort 3389 -State Listen -ErrorAction SilentlyContinue).Count -gt 0
+$rdpRestarted = $false
+
+if ($rdpService -and $rdpService.Status -ne 'Running') {
+    try {
+        Restart-Service -Name "TermService" -Force -ErrorAction Stop
+        Start-Sleep -Seconds 3
+        $rdpService   = Get-Service -Name "TermService" -ErrorAction SilentlyContinue
+        $rdpSvcStatus = $rdpService.Status.ToString()
+        $rdpListening = (Get-NetTCPConnection -LocalPort 3389 -State Listen -ErrorAction SilentlyContinue).Count -gt 0
+        $rdpRestarted = $true
+        Write-Log "⚠️ RDP: TermService estaba detenido - reiniciado automaticamente"
+    } catch {
+        Write-Log "❌ RDP: no se pudo reiniciar TermService: $($_.Exception.Message)"
+    }
+}
+
+$rdpStatus = if   ($rdpSvcStatus -ne 'Running' -or -not $rdpListening) { "failed" }
+             elseif ($rdpRestarted)                                      { "warning" }
+             else                                                         { "success" }
+
+$rdpMsg = "TermService: $rdpSvcStatus | Puerto 3389: $(if ($rdpListening) {'escuchando'} else {'cerrado'})"
+if ($rdpRestarted) { $rdpMsg += " | AUTO-REINICIADO" }
+
+$rdpBody = @{
+    service_id = $SERVICE_ID
+    source     = "rdp"
+    status     = $rdpStatus
+    message    = $rdpMsg
+    payload    = @{
+        service_status = $rdpSvcStatus
+        port_listening = $rdpListening
+        auto_restarted = $rdpRestarted
+        script_version = $SCRIPT_VERSION
+    }
+} | ConvertTo-Json -Depth 3
+
+try {
+    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $rdpBody | Out-Null
+    $icon = if ($rdpStatus -eq 'failed') {'❌'} elseif ($rdpStatus -eq 'warning') {'⚠️'} else {'✅'}
+    Write-Log "$icon rdp → $rdpStatus | $rdpMsg"
+} catch {
+    Write-Log "❌ rdp Error: $($_.Exception.Message)"
 }
 
 Invoke-Kuma -Status "up" -Msg "system-health OK"
