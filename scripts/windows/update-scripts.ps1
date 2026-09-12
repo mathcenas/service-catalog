@@ -26,13 +26,16 @@ param(
   [switch]$Force
 )
 
-$SCRIPT_VERSION = "1.1.0"
+$SCRIPT_VERSION = "1.2.0"
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "SilentlyContinue"
+
+# TLS 1.2 explicito (requerido por GitHub en entornos con PS5 / .NET 4.x)
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $GithubRepo   = if ($env:GITHUB_REPO)   { $env:GITHUB_REPO }   else { "mathcenas/service-catalog" }
 $GithubBranch = if ($env:GITHUB_BRANCH) { $env:GITHUB_BRANCH } else { "main" }
-$InstallDir   = $PSScriptRoot   # mismo directorio que este script
+$InstallDir   = $PSScriptRoot
 $RawBase      = "https://raw.githubusercontent.com/$GithubRepo/$GithubBranch"
 $LogFile      = Join-Path $InstallDir "update-scripts.log"
 $VersionsFile = Join-Path $InstallDir "installed-versions.json"
@@ -76,32 +79,52 @@ function Get-ScriptVersion {
   try { return [version]$ver } catch { return [version]"0.0.0" }
 }
 
+function Get-FileSha256 {
+  param([string]$Path)
+  try {
+    $hash = Get-FileHash -Path $Path -Algorithm SHA256 -ErrorAction Stop
+    return $hash.Hash.ToLower()
+  } catch { return $null }
+}
+
 function Download-Temp {
   param([string]$Url)
   $tmp = [System.IO.Path]::GetTempFileName()
   try {
     Invoke-WebRequest -Uri $Url -OutFile $tmp -UseBasicParsing -ErrorAction Stop
-    if ((Get-Item $tmp).Length -lt 100) {
-      throw "Archivo sospechosamente pequeno ($((Get-Item $tmp).Length) bytes)"
+    $size = (Get-Item $tmp).Length
+    if ($size -lt 100) {
+      throw "Archivo sospechosamente pequeno ($size bytes) — posible error de GitHub"
     }
     return $tmp
   } catch {
     Remove-Item $tmp -Force -ErrorAction SilentlyContinue
-    Warn "  Error descargando ${Url}: $($_.Exception.Message)"
     return $null
   }
+}
+
+function Backup-Script {
+  param([string]$Path)
+  if (-not (Test-Path $Path)) { return }
+  try {
+    Copy-Item $Path "$Path.bak" -Force -ErrorAction Stop
+  } catch {}
 }
 
 function Write-VersionsFile {
   $versions = [ordered]@{}
   foreach ($scriptName in $Scripts.Keys) {
     $dest = Join-Path $InstallDir $scriptName
+    if (-not (Test-Path $dest)) { continue }
     $ver  = Get-ScriptVersion -Path $dest
-    if ($ver -gt [version]"0.0.0") {
-      $versions[$scriptName] = $ver.ToString()
+    $sha  = Get-FileSha256 -Path $dest
+    $versions[$scriptName] = [ordered]@{
+      version   = $ver.ToString()
+      sha256    = $sha
+      updated   = (Get-Item $dest).LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
     }
   }
-  $versions | ConvertTo-Json | Set-Content -Path $VersionsFile -Encoding UTF8
+  $versions | ConvertTo-Json -Depth 3 | Set-Content -Path $VersionsFile -Encoding UTF8
 }
 
 # Rotar log si supera 1 MB
@@ -119,61 +142,77 @@ $updated = 0; $skipped = 0; $errors = 0
 $selfUpdatePending = $null
 
 foreach ($scriptName in $Scripts.Keys) {
-  $repoPath = $Scripts[$scriptName]
-  $dest     = Join-Path $InstallDir $scriptName
-  $url      = "$RawBase/$repoPath"
+  try {
+    $repoPath = $Scripts[$scriptName]
+    $dest     = Join-Path $InstallDir $scriptName
+    $url      = "$RawBase/$repoPath"
 
-  $tmp = Download-Temp -Url $url
-  if (-not $tmp) {
-    $errors++
-    continue
-  }
-
-  $remoteVer = Get-ScriptVersion -Path $tmp
-  $localVer  = Get-ScriptVersion -Path $dest
-
-  if ($Check) {
-    if ($remoteVer -gt $localVer) {
-      Log "${scriptName}: actualizacion disponible $localVer -> $remoteVer"
-    } else {
-      Log "${scriptName}: al dia ($localVer)"
+    $tmp = Download-Temp -Url $url
+    if (-not $tmp) {
+      Warn "${scriptName}: no se pudo descargar - saltando"
+      $errors++
+      continue
     }
-    Remove-Item $tmp -Force
-    continue
-  }
 
-  if (-not $Force -and $remoteVer -le $localVer) {
-    Log "${scriptName}: al dia ($localVer) - sin cambios"
-    Remove-Item $tmp -Force
-    $skipped++
-    continue
-  }
+    $remoteVer = Get-ScriptVersion -Path $tmp
+    $localVer  = Get-ScriptVersion -Path $dest
 
-  # config.ps1 -> guardar como .new para revision manual
-  if ($scriptName -eq "config.ps1") {
-    $newPath = "$dest.new"
-    Move-Item $tmp $newPath -Force
-    Ok "${scriptName}: $localVer -> $remoteVer (guardado como config.ps1.new - revisar antes de aplicar)"
+    if ($Check) {
+      if ($remoteVer -gt $localVer) {
+        Log "${scriptName}: actualizacion disponible $localVer -> $remoteVer"
+      } else {
+        Log "${scriptName}: al dia ($localVer)"
+      }
+      Remove-Item $tmp -Force
+      continue
+    }
+
+    if (-not $Force -and $remoteVer -le $localVer) {
+      Log "${scriptName}: al dia ($localVer) - sin cambios"
+      Remove-Item $tmp -Force
+      $skipped++
+      continue
+    }
+
+    # config.ps1 -> guardar como .new para revision manual
+    if ($scriptName -eq "config.ps1") {
+      $newPath = "$dest.new"
+      Move-Item $tmp $newPath -Force
+      Ok "${scriptName}: $localVer -> $remoteVer (guardado como config.ps1.new - revisar antes de aplicar)"
+      $updated++
+      continue
+    }
+
+    # update-scripts.ps1 -> reemplazar despues del loop para no pisar el script en ejecucion
+    if ($scriptName -eq "update-scripts.ps1" -and $dest -eq $MyInvocation.MyCommand.Path) {
+      $selfUpdatePending = @{ tmp = $tmp; dest = $dest; from = $localVer; to = $remoteVer }
+      continue
+    }
+
+    $sha = Get-FileSha256 -Path $tmp
+    Backup-Script -Path $dest
+    Move-Item $tmp $dest -Force
+    Ok "${scriptName}: $localVer -> $remoteVer | sha256: $($sha.Substring(0,16))..."
     $updated++
-    continue
-  }
 
-  # update-scripts.ps1 -> reemplazar despues del loop para no pisar el script en ejecucion
-  if ($scriptName -eq "update-scripts.ps1" -and $dest -eq $MyInvocation.MyCommand.Path) {
-    $selfUpdatePending = @{ tmp = $tmp; dest = $dest; from = $localVer; to = $remoteVer }
-    continue
+  } catch {
+    Err "${scriptName}: error inesperado - $($_.Exception.Message)"
+    $errors++
   }
-
-  Move-Item $tmp $dest -Force
-  Ok "${scriptName}: $localVer -> $remoteVer"
-  $updated++
 }
 
 # Auto-actualizacion de este script (al final, una vez terminado el loop)
 if ($selfUpdatePending) {
-  Move-Item $selfUpdatePending.tmp $selfUpdatePending.dest -Force
-  Ok "update-scripts.ps1: $($selfUpdatePending.from) -> $($selfUpdatePending.to)"
-  $updated++
+  try {
+    $sha = Get-FileSha256 -Path $selfUpdatePending.tmp
+    Backup-Script -Path $selfUpdatePending.dest
+    Move-Item $selfUpdatePending.tmp $selfUpdatePending.dest -Force
+    Ok "update-scripts.ps1: $($selfUpdatePending.from) -> $($selfUpdatePending.to) | sha256: $($sha.Substring(0,16))..."
+    $updated++
+  } catch {
+    Err "update-scripts.ps1: error al auto-actualizar - $($_.Exception.Message)"
+    $errors++
+  }
 }
 
 if (-not $Check) {
