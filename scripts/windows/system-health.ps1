@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.3.0"
+$SCRIPT_VERSION = "1.4.0"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -150,7 +150,7 @@ try {
     Write-Log "❌ system-health Error: $($_.Exception.Message)"
 }
 
-# ---------- 2. RED (ping + packet loss) ----------
+# ---------- 2. RED (ping + speedtest) ----------
 $targetHost = "1.1.1.1"
 $pingCount  = 5
 $pingResult = Test-Connection -ComputerName $targetHost -Count $pingCount -ErrorAction SilentlyContinue
@@ -163,10 +163,6 @@ if ($pingResult) {
     $packetLoss = 100; $avgPing = 0
 }
 
-$netStatus = if ($packetLoss -eq 100) { "failed" }
-             elseif ($packetLoss -gt 15 -or $avgPing -gt 150) { "warning" }
-             else { "success" }
-
 # Speedtest (opcional — requiere speedtest.exe en C:\Scripts\)
 $downloadMbps = 0; $uploadMbps = 0
 $speedtestPath = "$PSScriptRoot\speedtest.exe"
@@ -177,6 +173,12 @@ if (Test-Path $speedtestPath) {
         $uploadMbps   = [math]::Round($speedData.upload.bandwidth / 125000, 1)
     } catch {}
 }
+
+# Ping 100% loss con speedtest OK = ICMP bloqueado por firewall, no es falla real
+$netStatus = if ($packetLoss -eq 100 -and $downloadMbps -eq 0) { "failed" }
+             elseif ($packetLoss -eq 100) { "warning" }
+             elseif ($packetLoss -gt 15 -or $avgPing -gt 150) { "warning" }
+             else { "success" }
 
 $netPayload = @{
     ping_ms         = $avgPing
