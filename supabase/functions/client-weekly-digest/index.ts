@@ -265,6 +265,25 @@ Deno.serve(async (req: Request) => {
 
     if (toEmails.length === 0) continue;
 
+    // Insert tracking record and embed pixel
+    const trackingId = crypto.randomUUID();
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const pixelUrl = `${supabaseUrl}/functions/v1/track-open?t=${trackingId}`;
+
+    await supabase.from("email_opens").insert({
+      user_id:    userId || client.user_id,
+      client_id:  client.id,
+      client_email: toEmails[0],
+      tracking_id: trackingId,
+      email_type: "digest",
+      subject:    `Resumen semanal — ${weekLabel}`,
+    });
+
+    const htmlWithPixel = html.replace(
+      "</div>\n    </div>",
+      `<img src="${pixelUrl}" width="1" height="1" style="display:block;width:1px;height:1px;border:0;" alt="" /></div>\n    </div>`,
+    );
+
     await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
@@ -273,7 +292,7 @@ Deno.serve(async (req: Request) => {
         to:      toEmails,
         cc:      ccEmails.length ? ccEmails : undefined,
         subject: `Resumen semanal — ${weekLabel}`,
-        html,
+        html:    htmlWithPixel,
       }),
     });
 

@@ -50,6 +50,15 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  // Track open
+  await supabase
+    .from("acl_review_tokens")
+    .update({
+      open_count: (reviewToken.open_count ?? 0) + 1,
+      first_opened_at: reviewToken.first_opened_at ?? new Date().toISOString(),
+    })
+    .eq("id", reviewToken.id);
+
   // Fetch admin user_settings for logo/company
   const { data: settings } = await supabase
     .from("user_settings")
