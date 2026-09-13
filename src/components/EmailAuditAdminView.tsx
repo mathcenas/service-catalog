@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Mail, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Plus, Trash2, Send } from 'lucide-react';
+import { Mail, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Plus, Trash2, Send, Monitor } from 'lucide-react';
 import { supabase, Client } from '../lib/supabase';
 
 type Token = {
@@ -29,6 +29,7 @@ type Submission = {
 
 type EmailSend = {
   id: string;
+  tracking_id: string;
   client_email: string;
   client_id: string | null;
   email_type: string | null;
@@ -55,13 +56,21 @@ export function EmailAuditAdminView({ clients }: Props) {
   const [createClientId, setCreateClientId] = useState('');
   const [creating, setCreating] = useState(false);
 
+  // Monitor links state
+  const [monitorLinks, setMonitorLinks] = useState<EmailSend[]>([]);
+  const [showMonitor, setShowMonitor] = useState(false);
+  const [showCreateMonitor, setShowCreateMonitor] = useState(false);
+  const [monitorLabel, setMonitorLabel] = useState('');
+  const [creatingMonitor, setCreatingMonitor] = useState(false);
+  const [copiedMonitor, setCopiedMonitor] = useState<string | null>(null);
+
   useEffect(() => {
     load();
   }, []);
 
   async function load() {
     setLoading(true);
-    const [{ data: toks }, { data: subs }, { data: sends }] = await Promise.all([
+    const [{ data: toks }, { data: subs }, { data: sends }, { data: monitors }] = await Promise.all([
       supabase
         .from('email_audit_tokens')
         .select('*')
@@ -73,12 +82,19 @@ export function EmailAuditAdminView({ clients }: Props) {
       supabase
         .from('email_opens')
         .select('*')
+        .not('email_type', 'eq', 'page_view')
         .order('created_at', { ascending: false })
         .limit(100),
+      supabase
+        .from('email_opens')
+        .select('*')
+        .eq('email_type', 'page_view')
+        .order('created_at', { ascending: false }),
     ]);
     setTokens(toks ?? []);
     setSubmissions(subs ?? []);
     setEmailSends(sends ?? []);
+    setMonitorLinks(monitors ?? []);
     setLoading(false);
   }
 
@@ -106,6 +122,42 @@ export function EmailAuditAdminView({ clients }: Props) {
     navigator.clipboard.writeText(url).catch(() => {});
     setCopiedToken(token);
     setTimeout(() => setCopiedToken(null), 1500);
+  }
+
+  async function createMonitorLink() {
+    const label = monitorLabel.trim() || 'Demo';
+    setCreatingMonitor(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setCreatingMonitor(false); return; }
+    const { error } = await supabase.from('email_opens').insert({
+      user_id:      user.id,
+      client_email: label,
+      email_type:   'page_view',
+      subject:      label,
+    });
+    setCreatingMonitor(false);
+    if (!error) {
+      setShowCreateMonitor(false);
+      setMonitorLabel('');
+      load();
+    }
+  }
+
+  function copyMonitorLink(trackingId: string) {
+    const url = `${window.location.origin}/client-monitor.html?t=${trackingId}`;
+    navigator.clipboard.writeText(url).catch(() => {});
+    setCopiedMonitor(trackingId);
+    setTimeout(() => setCopiedMonitor(null), 1500);
+  }
+
+  async function deleteMonitorLink(id: string, name: string) {
+    if (!window.confirm(`¿Borrar el enlace de monitor para "${name}"?`)) return;
+    await supabase.from('email_opens').delete().eq('id', id);
+    load();
+  }
+
+  function monitorUrl(m: EmailSend) {
+    return `${origin}/client-monitor.html?t=${m.tracking_id}`;
   }
 
   async function deleteToken(tokenId: string, clientName: string) {
@@ -193,6 +245,119 @@ export function EmailAuditAdminView({ clients }: Props) {
           </div>
         </div>
       )}
+
+      {/* Monitor Links section */}
+      <div className="border border-gray-200 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
+          <button
+            onClick={() => setShowMonitor(v => !v)}
+            className="flex items-center gap-2 flex-1"
+          >
+            <Monitor className="w-4 h-4 text-gray-500" />
+            <span className="font-medium text-sm text-gray-700">Monitor Links</span>
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600">{monitorLinks.length}</span>
+            {showMonitor ? <ChevronUp className="w-4 h-4 text-gray-400 ml-auto" /> : <ChevronDown className="w-4 h-4 text-gray-400 ml-auto" />}
+          </button>
+          <button
+            onClick={() => setShowCreateMonitor(true)}
+            className="ml-3 flex items-center gap-1 px-2.5 py-1.5 text-xs bg-brand-accent text-white rounded-lg hover:opacity-90 transition-opacity"
+          >
+            <Plus className="w-3 h-3" />
+            Nuevo
+          </button>
+        </div>
+        {showCreateMonitor && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl">
+              <h3 className="font-semibold text-gray-900 mb-1">Nuevo monitor link</h3>
+              <p className="text-xs text-gray-400 mb-4">Usá una etiqueta para identificar de dónde viene el tráfico.</p>
+              <label className="block text-sm text-gray-600 mb-1">Etiqueta</label>
+              <input
+                type="text"
+                placeholder="ej: Landing principal, LinkedIn, WhatsApp"
+                value={monitorLabel}
+                onChange={e => setMonitorLabel(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && createMonitorLink()}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => { setShowCreateMonitor(false); setMonitorLabel(''); }}
+                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={createMonitorLink}
+                  disabled={creatingMonitor}
+                  className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {creatingMonitor ? 'Creando…' : 'Crear enlace'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {showMonitor && (
+          monitorLinks.length === 0 ? (
+            <div className="px-4 py-6 text-center text-sm text-gray-400">No hay monitor links todavía.</div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {monitorLinks.map(m => {
+                const clientName = m.subject || m.client_email;
+                const url = monitorUrl(m);
+                return (
+                  <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-gray-800">{clientName}</span>
+                        {m.open_count > 0 ? (
+                          <span
+                            className="text-xs px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600"
+                            title={m.opened_at ? `Primer apertura: ${new Date(m.opened_at).toLocaleString('es-UY')}` : ''}
+                          >
+                            👁 {m.open_count}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-300">no abierto</span>
+                        )}
+                      </div>
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-500 hover:underline font-mono truncate max-w-xs block mt-0.5"
+                      >
+                        {url}
+                      </a>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 text-xs text-gray-400">
+                      <span>{new Date(m.created_at).toLocaleDateString('es-UY')}</span>
+                      <button
+                        onClick={() => copyMonitorLink(m.tracking_id)}
+                        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                        title="Copiar enlace"
+                      >
+                        {copiedMonitor === m.tracking_id
+                          ? <Check className="w-4 h-4 text-green-500" />
+                          : <Copy className="w-4 h-4" />}
+                      </button>
+                      <button
+                        onClick={() => deleteMonitorLink(m.id, clientName)}
+                        className="p-1.5 rounded-lg hover:bg-red-50 text-gray-300 hover:text-red-500"
+                        title="Borrar enlace"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
+        )}
+      </div>
 
       {/* Email sends section */}
       <div className="border border-gray-200 rounded-xl overflow-hidden">
