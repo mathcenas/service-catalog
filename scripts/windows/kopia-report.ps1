@@ -22,20 +22,16 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 # Kopia devuelve MM/dd/yyyy HH:mm:ss o yyyy-MM-ddTHH:mm:ssZ según versión.
 function Parse-KopiaDate([string]$s) {
     if (-not $s) { return $null }
+    $ic   = [System.Globalization.CultureInfo]::InvariantCulture
     $fmts = @(
         "MM/dd/yyyy HH:mm:ss",
         "yyyy-MM-ddTHH:mm:ssZ",
         "yyyy-MM-ddTHH:mm:ss",
         "yyyy-MM-dd HH:mm:ss"
     )
-    $ic = [System.Globalization.CultureInfo]::InvariantCulture
     foreach ($fmt in $fmts) {
-        $dt = $null
-        if ([datetime]::TryParseExact($s, $fmt, $ic, [System.Globalization.DateTimeStyles]::None, [ref]$dt)) {
-            return $dt
-        }
+        try { return [datetime]::ParseExact($s, $fmt, $ic) } catch {}
     }
-    # Último recurso con InvariantCulture
     try { return [datetime]::Parse($s, $ic) } catch {}
     return $null
 }
