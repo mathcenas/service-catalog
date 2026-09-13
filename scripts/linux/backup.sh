@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Version: 1.0.0
+# Version: 1.2.0
 #
 # backup.sh - Backup genérico para VPS con Docker + notificación a Uptime Kuma (push monitor)
 #             + reporte a Supabase ingest
