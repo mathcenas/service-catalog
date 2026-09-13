@@ -142,16 +142,36 @@ send_email() {
     return 0
   fi
 
-  local to_json html_body payload response http_code body_resp
+  local to_json variables payload response http_code body_resp
   to_json="$(printf '%s' "$RESEND_TO" | tr ',' '\n' | sed '/^[[:space:]]*$/d' | jq -R . | jq -s .)"
-  html_body="$(printf '%s' "$body" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/$/<br>/')"
+
+  local template_alias
+  if [[ "$status" == "up" ]]; then
+    template_alias="backup-warning"
+  else
+    template_alias="backup-failed-alert"
+  fi
+
+  # Parsear líneas "Clave: Valor" del body en variables para el template
+  variables="$(
+    jq -n --arg host "$HOST_TAG" '{"host": $host}' \
+    | while IFS= read -r line; do
+        [[ -z "$line" || "$line" != *": "* ]] && continue
+        key="${line%%: *}"
+        val="${line#*: }"
+        jq --arg k "$key" --arg v "$val" '. + {($k): $v}'
+      done <<< "$body"
+  )"
+  # Fallback si el parseo produjo vacío
+  [[ -z "$variables" ]] && variables="{\"host\": \"$HOST_TAG\"}"
 
   payload="$(jq -n \
     --arg from "$RESEND_FROM" \
     --argjson to "$to_json" \
     --arg subject "$subject" \
-    --arg html "$html_body" \
-    '{from: $from, to: $to, subject: $subject, html: $html}')"
+    --arg alias "$template_alias" \
+    --argjson vars "$variables" \
+    '{from: $from, to: $to, subject: $subject, template_alias: $alias, variables: $vars}')"
 
   response="$(curl -sS --max-time 15 -w '\n%{http_code}' -X POST "https://api.resend.com/emails" \
     -H "Authorization: Bearer ${RESEND_API_KEY}" \

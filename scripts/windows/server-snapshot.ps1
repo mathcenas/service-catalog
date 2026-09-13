@@ -1,4 +1,4 @@
-# =============================================================
+﻿# =============================================================
 # server-snapshot.ps1 — Lee RDS_Backup_Monitor.csv y envía
 # filas nuevas al Service Catalog Telemetry
 # Schedulear en Task Scheduler cada 1–5 minutos

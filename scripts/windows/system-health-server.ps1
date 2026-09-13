@@ -1,4 +1,4 @@
-# =============================================================
+﻿# =============================================================
 # system-health-server.ps1 — Windows Server: Hardware + Red + RDP
 # Schedulear en Task Scheduler cada 5 minutos
 # Requiere: config.ps1 en la misma carpeta

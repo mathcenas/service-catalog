@@ -1,4 +1,4 @@
-# =============================================================
+﻿# =============================================================
 # smb-check.ps1 — Monitoreo y reporte ACL de carpeta compartida SMB
 #
 # Corre en el mismo servidor que hostea la carpeta compartida.

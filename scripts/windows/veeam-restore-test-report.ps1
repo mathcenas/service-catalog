@@ -1,4 +1,4 @@
-# =============================================================
+﻿# =============================================================
 # veeam-restore-test-report.ps1 — Reporta el resultado de una
 # prueba de restauración de Veeam al Service Catalog
 # Ejecutar manualmente después de cada prueba de restore

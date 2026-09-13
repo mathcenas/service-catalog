@@ -1,4 +1,4 @@
-# =============================================================
+﻿# =============================================================
 # system-health.ps1 — Hardware + red + speedtest (opcional)
 # Schedulear en Task Scheduler cada 1 hora
 # Requiere: config.ps1 en la misma carpeta

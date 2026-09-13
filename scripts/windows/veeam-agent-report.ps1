@@ -1,4 +1,4 @@
-# =============================================================
+﻿# =============================================================
 # veeam-agent-report.ps1 — Reporta jobs de Veeam Agent for Windows
 # Para servidores/PCs standalone sin Veeam B&R central
 # Lee sesiones desde el Event Log de Windows y las envía a Telemetría
@@ -151,4 +151,4 @@ if ($events.Count -gt 0 -and (Get-Command "Invoke-Kuma" -ErrorAction SilentlyCon
     Invoke-Kuma -Status $kumaStatus -Msg "Veeam: $reported evento(s) enviado(s) | últimas $lookbackHours hs"
 }
 
-Write-Log "Fin — $reported evento(s) enviado(s) a telemetría."
+Write-Log "Fin - $reported evento(s) enviado(s) a telemetria."
