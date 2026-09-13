@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.4.1"
+$SCRIPT_VERSION = "1.4.2"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -108,6 +108,12 @@ try {
         if ($dStatus -ne 'ok' -and $hwStatus -eq 'success') { $hwStatus = 'warning' }
         if ($dStatus -eq 'error' -and $hwStatus -ne 'failed') { $hwStatus = 'warning' }
 
+        $reallocSectors = $null
+        if ($null -ne $readErrors) {
+            $writeErrVal = if ($null -ne $writeErrors) { $writeErrors } else { 0 }
+            $reallocSectors = $readErrors + $writeErrVal
+        }
+
         $diskSmartList += @{
             dev              = $pd.DeviceId
             type             = $devType
@@ -120,7 +126,7 @@ try {
             power_on_hours   = $pohours
             pct_used         = $wearLevel
             tbw              = $null
-            reallocated_sectors = if ($null -ne $readErrors) { $readErrors + (if ($null -ne $writeErrors) { $writeErrors } else { 0 }) } else { $null }
+            reallocated_sectors = $reallocSectors
         }
     }
 } catch {
