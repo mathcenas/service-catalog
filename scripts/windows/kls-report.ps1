@@ -15,7 +15,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.0.0"
+$SCRIPT_VERSION = "1.0.1"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -56,8 +56,8 @@ Get-ChildItem "$LogDir\kls-report-*.log" -ErrorAction SilentlyContinue |
 # ---------- Buscar log más reciente ----------
 $since = (Get-Date).AddMinutes(-$KLS_LOOKBACK_MINUTES)
 
-$logFiles = Get-ChildItem -Path $KLS_LOG_DIR -Filter "*.log" -ErrorAction SilentlyContinue |
-    Where-Object { $_.LastWriteTime -gt $since } |
+$logFiles = Get-ChildItem -Path $KLS_LOG_DIR -ErrorAction SilentlyContinue |
+    Where-Object { $_.Extension -in @('.log', '.txt') -and $_.LastWriteTime -gt $since } |
     Sort-Object LastWriteTime -Descending
 
 if ($KLS_JOB_NAME) {
