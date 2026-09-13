@@ -60,7 +60,7 @@ export function EmailAuditAdminView({ clients }: Props) {
   const [monitorLinks, setMonitorLinks] = useState<EmailSend[]>([]);
   const [showMonitor, setShowMonitor] = useState(false);
   const [showCreateMonitor, setShowCreateMonitor] = useState(false);
-  const [monitorClientId, setMonitorClientId] = useState('');
+  const [monitorLabel, setMonitorLabel] = useState('');
   const [creatingMonitor, setCreatingMonitor] = useState(false);
   const [copiedMonitor, setCopiedMonitor] = useState<string | null>(null);
 
@@ -125,22 +125,20 @@ export function EmailAuditAdminView({ clients }: Props) {
   }
 
   async function createMonitorLink() {
-    if (!monitorClientId) return;
+    const label = monitorLabel.trim() || 'Demo';
     setCreatingMonitor(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setCreatingMonitor(false); return; }
-    const client = clients.find(c => c.id === monitorClientId);
     const { error } = await supabase.from('email_opens').insert({
       user_id:      user.id,
-      client_id:    monitorClientId,
-      client_email: client?.company_name ?? monitorClientId,
+      client_email: label,
       email_type:   'page_view',
-      subject:      `Monitor — ${client?.company_name ?? monitorClientId}`,
+      subject:      label,
     });
     setCreatingMonitor(false);
     if (!error) {
       setShowCreateMonitor(false);
-      setMonitorClientId('');
+      setMonitorLabel('');
       load();
     }
   }
@@ -271,28 +269,28 @@ export function EmailAuditAdminView({ clients }: Props) {
         {showCreateMonitor && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-xl p-6 w-full max-w-sm shadow-xl">
-              <h3 className="font-semibold text-gray-900 mb-4">Nuevo enlace de monitor</h3>
-              <label className="block text-sm text-gray-600 mb-1">Cliente</label>
-              <select
-                value={monitorClientId}
-                onChange={e => setMonitorClientId(e.target.value)}
+              <h3 className="font-semibold text-gray-900 mb-1">Nuevo monitor link</h3>
+              <p className="text-xs text-gray-400 mb-4">Usá una etiqueta para identificar de dónde viene el tráfico.</p>
+              <label className="block text-sm text-gray-600 mb-1">Etiqueta</label>
+              <input
+                type="text"
+                placeholder="ej: Landing principal, LinkedIn, WhatsApp"
+                value={monitorLabel}
+                onChange={e => setMonitorLabel(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && createMonitorLink()}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">— Seleccioná un cliente —</option>
-                {clients.filter(c => c.status === 'Active').map(c => (
-                  <option key={c.id} value={c.id}>{c.company_name}</option>
-                ))}
-              </select>
+                autoFocus
+              />
               <div className="flex gap-2 justify-end">
                 <button
-                  onClick={() => { setShowCreateMonitor(false); setMonitorClientId(''); }}
+                  onClick={() => { setShowCreateMonitor(false); setMonitorLabel(''); }}
                   className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={createMonitorLink}
-                  disabled={!monitorClientId || creatingMonitor}
+                  disabled={creatingMonitor}
                   className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                 >
                   {creatingMonitor ? 'Creando…' : 'Crear enlace'}
@@ -307,7 +305,7 @@ export function EmailAuditAdminView({ clients }: Props) {
           ) : (
             <div className="divide-y divide-gray-100">
               {monitorLinks.map(m => {
-                const clientName = clients.find(c => c.id === m.client_id)?.company_name ?? m.client_email;
+                const clientName = m.subject || m.client_email;
                 const url = monitorUrl(m);
                 return (
                   <div key={m.id} className="flex items-center gap-3 px-4 py-2.5">
