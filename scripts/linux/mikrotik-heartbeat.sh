@@ -138,6 +138,7 @@ EOF
 
   # ---------- Enviar ----------
   HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+    --retry 3 --retry-delay 3 --retry-connrefused \
     -X POST "$HEARTBEAT_URL" \
     -H "Content-Type: application/json" \
     -H "apikey: $SUPABASE_ANON_KEY" \
