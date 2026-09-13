@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
 interface Account {
@@ -25,6 +25,7 @@ export function EmailAuditPage({ token }: { token: string }) {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState('Cenas IT');
   const fileRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [showGmailHelp, setShowGmailHelp] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -173,6 +174,16 @@ export function EmailAuditPage({ token }: { token: string }) {
             Completá tu nombre y las casillas de correo que usás. Si usás Gmail con POP3 para
             recibir correo del trabajo, adjuntá una captura de esa configuración.
           </p>
+
+          {/* Aviso de privacidad */}
+          <div style={styles.privacyBox}>
+            <span style={{ fontSize: 15, marginRight: 8 }}>🔒</span>
+            <span style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.5 }}>
+              <strong style={{ color: '#cbd5e1' }}>Tu información es privada.</strong>{' '}
+              Solo la utiliza {companyName} para el relevamiento de correos de tu organización.
+              No se comparte con terceros.
+            </span>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -236,9 +247,35 @@ export function EmailAuditPage({ token }: { token: string }) {
 
               {/* Screenshot */}
               <div style={{ marginTop: 8 }}>
-                <label style={styles.label}>
-                  Captura de configuración Gmail / POP3 (opcional)
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <span style={{ ...styles.label, marginBottom: 0 }}>
+                    Captura de configuración Gmail / POP3 (opcional)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowGmailHelp(v => !v)}
+                    style={styles.helpBtn}
+                    title="¿Cómo saco la captura?"
+                  >
+                    ?
+                  </button>
+                </div>
+                {showGmailHelp && (
+                  <div style={styles.helpBox}>
+                    <p style={{ margin: '0 0 8px', color: '#cbd5e1', fontWeight: 600 }}>¿Cómo saco la captura en Gmail?</p>
+                    <ol style={{ margin: 0, paddingLeft: 18, color: '#94a3b8', fontSize: 13, lineHeight: 1.7 }}>
+                      <li>Abrí <strong style={{ color: '#e2e8f0' }}>Gmail</strong> en tu computadora.</li>
+                      <li>Hacé clic en el ícono de ⚙️ <strong style={{ color: '#e2e8f0' }}>Configuración</strong> (arriba a la derecha) → <em>Ver toda la configuración</em>.</li>
+                      <li>Andá a la pestaña <strong style={{ color: '#e2e8f0' }}>Cuentas e importación</strong>.</li>
+                      <li>Buscá la sección <strong style={{ color: '#e2e8f0' }}"Consultar el correo de otras cuentas"</strong>.</li>
+                      <li>Sacá una captura de pantalla de esa sección y adjuntala acá.</li>
+                    </ol>
+                    <p style={{ margin: '10px 0 0', color: '#64748b', fontSize: 12 }}>
+                      En Windows: <kbd style={styles.kbd}>Windows + Shift + S</kbd> para capturar una región.{' '}
+                      En Mac: <kbd style={styles.kbd}>Cmd + Shift + 4</kbd>.
+                    </p>
+                  </div>
+                )}
                 {acc.screenshotPreview ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 6 }}>
                     <img
@@ -285,6 +322,9 @@ export function EmailAuditPage({ token }: { token: string }) {
           >
             + Agregar casilla
           </button>
+          <p style={{ color: '#475569', fontSize: 12, marginTop: 4, marginBottom: 0 }}>
+            ¿Tenés más de una casilla de correo? Hacé clic en <strong style={{ color: '#64748b' }}>Agregar casilla</strong> para incluirlas todas.
+          </p>
 
           {errorMsg && (
             <p style={{ color: '#f87171', fontSize: 13, marginTop: 12 }}>{errorMsg}</p>
@@ -384,4 +424,43 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     marginTop: 16,
   },
+  privacyBox: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    background: '#0f172a',
+    border: '1px solid #1e3a5f',
+    borderRadius: 8,
+    padding: '10px 14px',
+    marginTop: 12,
+  },
+  helpBtn: {
+    background: '#1e3a5f',
+    border: 'none',
+    color: '#06B6D4',
+    borderRadius: '50%',
+    width: 18,
+    height: 18,
+    fontSize: 11,
+    fontWeight: 700,
+    cursor: 'pointer',
+    lineHeight: '18px',
+    padding: 0,
+    flexShrink: 0,
+  },
+  helpBox: {
+    background: '#0f172a',
+    border: '1px solid #1e3a5f',
+    borderRadius: 8,
+    padding: '12px 14px',
+    marginBottom: 8,
+  },
+  kbd: {
+    background: '#1e293b',
+    border: '1px solid #334155',
+    borderRadius: 4,
+    padding: '1px 5px',
+    fontSize: 11,
+    color: '#cbd5e1',
+    fontFamily: 'monospace',
+  } as React.CSSProperties,
 };
