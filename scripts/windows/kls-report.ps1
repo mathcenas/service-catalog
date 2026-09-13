@@ -15,7 +15,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.0.1"
+$SCRIPT_VERSION = "1.0.2"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -71,9 +71,9 @@ if (-not $logFiles) {
     exit 0
 }
 
-$logFile = $logFiles[0]
-Write-Log "Procesando log: $($logFile.Name)"
-$content = Get-Content $logFile.FullName -Encoding UTF8 -ErrorAction Stop
+$klsLog = $logFiles[0]
+Write-Log "Procesando log: $($klsLog.Name)"
+$content = Get-Content -LiteralPath $klsLog.FullName -Encoding UTF8 -ErrorAction Stop
 
 # ---------- Parsear resultado ----------
 $jobFinished   = $content | Where-Object { $_ -match 'Job finished\.' }
@@ -124,7 +124,7 @@ $jobName = $logFile.BaseName
 $jobLine = $content | Where-Object { $_ -match 'Running backup job:' } | Select-Object -First 1
 if ($jobLine -match 'Running backup job:\s+(.+)') { $jobName = $Matches[1].Trim() }
 
-$details = "log=$($logFile.Name) duration=${duration}s size=${sizeBytes}bytes"
+$details = "log=$($klsLog.Name) duration=${duration}s size=${sizeBytes}bytes"
 Write-Log "KLS $status - $jobName - ${duration}s - $sizeBytes bytes"
 
 # ---------- Reportar a Supabase ----------
