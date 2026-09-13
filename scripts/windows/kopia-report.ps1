@@ -13,10 +13,32 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.0.0"
+$SCRIPT_VERSION = "1.1.0"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
+
+# Parse-KopiaDate: parsea fechas de Kopia independiente del locale del sistema.
+# Kopia devuelve MM/dd/yyyy HH:mm:ss o yyyy-MM-ddTHH:mm:ssZ según versión.
+function Parse-KopiaDate([string]$s) {
+    if (-not $s) { return $null }
+    $fmts = @(
+        "MM/dd/yyyy HH:mm:ss",
+        "yyyy-MM-ddTHH:mm:ssZ",
+        "yyyy-MM-ddTHH:mm:ss",
+        "yyyy-MM-dd HH:mm:ss"
+    )
+    $ic = [System.Globalization.CultureInfo]::InvariantCulture
+    foreach ($fmt in $fmts) {
+        $dt = $null
+        if ([datetime]::TryParseExact($s, $fmt, $ic, [System.Globalization.DateTimeStyles]::None, [ref]$dt)) {
+            return $dt
+        }
+    }
+    # Último recurso con InvariantCulture
+    try { return [datetime]::Parse($s, $ic) } catch {}
+    return $null
+}
 
 # ---------- Log local con retención mensual ----------
 $LogDir = "$PSScriptRoot\logs"
@@ -92,8 +114,8 @@ try {
 }
 
 $recent = $snapshots | Where-Object {
-    $end = [datetime]::Parse($_.endTime)
-    $end -gt $since
+    $end = Parse-KopiaDate $_.endTime
+    $end -ne $null -and $end -gt $since
 }
 
 if (-not $recent) {
@@ -117,8 +139,12 @@ foreach ($snap in $byPath) {
     $path    = $snap.source.path
     $jobName = "Kopia: $path"
 
-    $startDt  = [datetime]::Parse($snap.startTime)
-    $endDt    = [datetime]::Parse($snap.endTime)
+    $startDt  = Parse-KopiaDate $snap.startTime
+    $endDt    = Parse-KopiaDate $snap.endTime
+    if (-not $startDt -or -not $endDt) {
+        Write-Log "WARN: fecha inválida en snapshot $($snap.id) — omitido"
+        continue
+    }
     $duration = [int]($endDt - $startDt).TotalSeconds
 
     $sizeBytes = 0
