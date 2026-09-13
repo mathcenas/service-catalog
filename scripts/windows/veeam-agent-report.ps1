@@ -6,7 +6,7 @@
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"
-$SCRIPT_VERSION = "1.0.2"
+$SCRIPT_VERSION = "1.1.0"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
