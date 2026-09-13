@@ -267,7 +267,7 @@ export function EmailAuditPage({ token }: { token: string }) {
                       <li>Abrí <strong style={{ color: '#e2e8f0' }}>Gmail</strong> en tu computadora.</li>
                       <li>Hacé clic en el ícono de ⚙️ <strong style={{ color: '#e2e8f0' }}>Configuración</strong> (arriba a la derecha) → <em>Ver toda la configuración</em>.</li>
                       <li>Andá a la pestaña <strong style={{ color: '#e2e8f0' }}>Cuentas e importación</strong>.</li>
-                      <li>Buscá la sección <strong style={{ color: '#e2e8f0' }}"Consultar el correo de otras cuentas"</strong>.</li>
+                      <li>Buscá la sección <strong style={{ color: '#e2e8f0' }}>&ldquo;Consultar el correo de otras cuentas&rdquo;</strong>.</li>
                       <li>Sacá una captura de pantalla de esa sección y adjuntala acá.</li>
                     </ol>
                     <p style={{ margin: '10px 0 0', color: '#64748b', fontSize: 12 }}>
