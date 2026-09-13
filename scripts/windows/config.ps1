@@ -2,7 +2,7 @@
 # config.ps1 — Configuración por cliente/servidor
 # Copiar este archivo por cada cliente y ajustar los valores
 # =============================================================
-$SCRIPT_VERSION = "1.0.0"
+$SCRIPT_VERSION = "1.1.0"
 
 $INGEST_URL    = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-backup"
 $HEARTBEAT_URL = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-heartbeat"
@@ -31,6 +31,12 @@ $KUMA_PUSH_URL = ""
 # Pegar la URL base del monitor tipo Push. Si está vacío, no se pinga.
 # Ejemplo: https://kuma.midominio.com/api/push/AbCdEfGhIj
 $KUMA_PUSH_URL = ""
+
+# ---------- system-health.ps1 — secciones opcionales ----------
+# Poner $false en los checks que el cliente NO usa para que no
+# aparezcan como "failed" en telemetría.
+$CHECK_RDP     = $true   # $false si el cliente no usa Remote Desktop
+$CHECK_SPEEDTEST = $true  # $false si no hay herramienta speedtest instalada
 
 function Invoke-Kuma {
     param([string]$Status, [string]$Msg)
