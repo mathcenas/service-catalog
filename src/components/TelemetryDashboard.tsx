@@ -662,7 +662,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
             ))}
           </div>
         )
-      ) : (
+      ) : viewMode === 'backups' || viewMode === 'acl' ? null : (
         /* ── LOG VIEW ── */
         filteredLog.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
