@@ -1,21 +1,43 @@
 ﻿# =============================================================
 # device-report.ps1 — Reporte de equipo para Service Catalog
+# v1.0.0
 #
-# ACTUALIZAR (PowerShell):
-#   $dest = "\\NAS\IT\device-report.ps1"   # o donde lo tengas
-#   Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/windows/device-report.ps1" -OutFile $dest
+# ── Qué hace ─────────────────────────────────────────────────
+# Recopila datos del equipo y los acumula en un CSV compartido:
+#   Timestamp, Hostname, IP LAN, LocalUser, M365User, NASUser,
+#   OS, Office/M365 (versión detectada), Copilot (true/false)
+# Cada ejecución actualiza la fila del equipo (por Hostname),
+# no duplica. El CSV se importa desde la app (Infraestructura →
+# Importar → device_report).
 #
-# Recopila: hostname, IP LAN, usuario Windows, usuario M365,
-# usuario NAS, OS, Office/M365, Copilot.
+# ── NO usa config.ps1 ────────────────────────────────────────
+# Este script es autónomo — no llama a config.ps1 ni se conecta
+# a Supabase. Su destino es un CSV en carpeta de red (NAS o local).
+# Los demás scripts (system-health.ps1, veeam-agent-report.ps1,
+# kopia-report.ps1, etc.) sí usan config.ps1 para las credenciales
+# de Supabase ($ANON_KEY, $INGEST_SECRET, $SERVICE_ID).
 #
-# Opciones de despliegue:
-#   A) GPO Logon Script: corre al iniciar sesion cada usuario
-#   B) Task Scheduler: cada hora, al inicio del sistema, etc.
-#   C) Manual: el admin lo corre y luego importa el CSV
+# ── Despliegue recomendado ───────────────────────────────────
+#   A) GPO Logon Script → corre al iniciar sesión cada usuario
+#      (ideal: actualiza el CSV automáticamente para todos los equipos)
+#   B) Task Scheduler → cada hora o al inicio del sistema
+#   C) Manual → el admin lo corre y luego importa el CSV desde la app
 #
-# Uso:
-#   .\device-report.ps1            # usa el CSV_DESTINO configurado abajo
-#   .\device-report.ps1 -Console   # muestra resultado en pantalla tambien
+# ── Configuración por cliente ────────────────────────────────
+# Editar las variables de la sección "CONFIGURAR POR CLIENTE":
+#   $CSV_DESTINO        — ruta UNC o local donde guardar el CSV
+#   $NAS_HOSTNAME       — nombre NetBIOS del NAS (para credenciales)
+#   $OFFICE_TRUSTED_PATHS — carpetas a agregar como Trusted en Office
+#                           (dejar @() para no tocar Office)
+#
+# ── Uso ──────────────────────────────────────────────────────
+#   .\device-report.ps1            # escribe CSV silenciosamente
+#   .\device-report.ps1 -Console   # además muestra la fila en pantalla
+#
+# ── Actualizar el script ─────────────────────────────────────
+#   update-scripts.ps1 lo descarga automáticamente desde GitHub.
+#   O manualmente:
+#   Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/windows/device-report.ps1" -OutFile "\\NAS\IT\device-report.ps1"
 # =============================================================
 $SCRIPT_VERSION = "1.0.0"
 

@@ -538,39 +538,43 @@ export function TelemetryDashboard({ services, clients }: Props) {
       )}
 
       {/* Filters + view toggle */}
-      <div className="flex items-center gap-3 flex-wrap">
-        {(viewMode === 'cards' || viewMode === 'log') && (<>
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search service, client..."
-              className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+        {(viewMode === 'cards' || viewMode === 'log') && (
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search service, client..."
+                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+            </div>
+            <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+              <option value="all">All clients</option>
+              {clients.filter(c => c.status === 'Active').map(c => (
+                <option key={c.id} value={c.id}>{c.company_name}</option>
+              ))}
+            </select>
           </div>
-          <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-            <option value="all">All clients</option>
-            {clients.filter(c => c.status === 'Active').map(c => (
-              <option key={c.id} value={c.id}>{c.company_name}</option>
-            ))}
-          </select>
-        </>)}
-        <div className="ml-auto inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
-          <button onClick={() => setViewMode('cards')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'cards' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            <LayoutGrid className="w-3.5 h-3.5" /> Cards
-          </button>
-          <button onClick={() => setViewMode('log')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'log' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            <List className="w-3.5 h-3.5" /> Log
-          </button>
-          <button onClick={() => setViewMode('backups')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'backups' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            <HardDrive className="w-3.5 h-3.5" /> Backups
-          </button>
-          <button onClick={() => setViewMode('acl')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'acl' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            <Users className="w-3.5 h-3.5" /> ACL
-          </button>
+        )}
+        <div className="overflow-x-auto sm:ml-auto shrink-0">
+          <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 whitespace-nowrap">
+            <button onClick={() => setViewMode('cards')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'cards' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              <LayoutGrid className="w-3.5 h-3.5" /> Cards
+            </button>
+            <button onClick={() => setViewMode('log')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'log' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              <List className="w-3.5 h-3.5" /> Log
+            </button>
+            <button onClick={() => setViewMode('backups')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'backups' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              <HardDrive className="w-3.5 h-3.5" /> Backups
+            </button>
+            <button onClick={() => setViewMode('acl')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'acl' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              <Users className="w-3.5 h-3.5" /> ACL
+            </button>
+          </div>
         </div>
       </div>
 
