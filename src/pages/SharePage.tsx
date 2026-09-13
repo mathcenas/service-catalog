@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Server, Globe, Calendar, Clock, Shield, CheckCircle2,
   HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X,
-  Sparkles, Rocket, DollarSign, Send, Loader2,
+  Sparkles, Rocket, DollarSign, Send, Loader2, HelpCircle,
 } from 'lucide-react';
 import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapItemUpdate, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat, ClientApp } from '../lib/supabase';
 
@@ -442,12 +442,12 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard label="Active Services" value={services.length.toString()} />
-        <StatCard label="Upcoming Updates" value={upcoming.length.toString()} accent={upcoming.length > 0} />
-        <StatCard label="Completed Updates" value={roadmap.filter(r => r.status === 'Released').length.toString()} />
+        <StatCard label="Active Services" value={services.length.toString()} tooltip="Cantidad de servicios activos que Cenas IT gestiona para tu empresa (internet, servidores, backups, licencias, etc.)." />
+        <StatCard label="Upcoming Updates" value={upcoming.length.toString()} accent={upcoming.length > 0} tooltip="Mejoras, cambios o tareas planificadas que están en progreso o pendientes de implementar." />
+        <StatCard label="Completed Updates" value={roadmap.filter(r => r.status === 'Released').length.toString()} tooltip="Cantidad de actualizaciones y mejoras ya implementadas en tu infraestructura." />
         {completedHours > 0
-          ? <StatCard label="Hours worked" value={`${completedHours}h`} />
-          : totalAllocated > 0 && <StatCard label="Hours/month" value={`${totalAllocated}h`} />
+          ? <StatCard label="Hours worked" value={`${completedHours}h`} tooltip="Horas de trabajo técnico registradas en tareas y proyectos completados." />
+          : totalAllocated > 0 && <StatCard label="Hours/month" value={`${totalAllocated}h`} tooltip="Horas de soporte técnico incluidas en tu plan mensual." />
         }
       </div>
 
@@ -456,7 +456,10 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
 
       {upcoming.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Upcoming</h2>
+          <div className="flex items-center gap-2 mb-3">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Upcoming</h2>
+            <InfoTooltip text="Tareas, mejoras y cambios planificados en tu infraestructura. Incluye actualizaciones de software, migraciones, nuevas configuraciones y proyectos en curso." />
+          </div>
           <div className="space-y-2">
             {upcoming.slice(0, 5).map(item => {
               const meta = ROADMAP_META[item.status];
@@ -531,7 +534,10 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
 
       {healthEntries.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-white mb-3">System Health</h2>
+          <div className="flex items-center gap-2 mb-3">
+            <h2 className="text-sm font-semibold text-white">System Health</h2>
+            <InfoTooltip text="Monitoreo en tiempo real de tus servidores y equipos: CPU, RAM, disco, red y estado de backups. Los datos se actualizan automáticamente cada vez que el script de monitoreo corre." />
+          </div>
           <div className="space-y-2">
             {healthEntries.map(h => {
               const svc = services.find(s => s.id === h.service_id);
@@ -583,7 +589,10 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
 
       {incidents.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Resolved Incidents</h2>
+          <div className="flex items-center gap-2 mb-3">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Resolved Incidents</h2>
+            <InfoTooltip text="Incidentes técnicos recientes que ya fueron atendidos y resueltos por el equipo de Cenas IT." />
+          </div>
           <div className="space-y-2">
             {incidents.map(h => (
               <div key={h.id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3 flex items-start justify-between gap-3">
@@ -603,7 +612,10 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
 
       {clientApps.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Applications & Software</h2>
+          <div className="flex items-center gap-2 mb-3">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Applications & Software</h2>
+            <InfoTooltip text="Aplicaciones y herramientas instaladas en los equipos de tu empresa que Cenas IT tiene registradas y monitorea." />
+          </div>
           <div className="space-y-2">
             {clientApps.map(app => (
               <div key={app.id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between gap-3">
@@ -712,10 +724,38 @@ function CompletedUpdates({ items }: { items: RoadmapItem[] }) {
   );
 }
 
-function StatCard({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
+function InfoTooltip({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex items-center">
+      <button
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        className="text-slate-500 hover:text-slate-300 transition-colors focus:outline-none"
+        aria-label="Más información"
+        type="button"
+      >
+        <HelpCircle className="w-3.5 h-3.5" />
+      </button>
+      {open && (
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-56 bg-[#0B192C] border border-white/10 text-slate-300 text-xs rounded-lg px-3 py-2 shadow-xl leading-relaxed pointer-events-none">
+          {text}
+          <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-[#0B192C]" />
+        </span>
+      )}
+    </span>
+  );
+}
+
+function StatCard({ label, value, accent = false, tooltip }: { label: string; value: string; accent?: boolean; tooltip?: string }) {
   return (
     <div className="bg-[#1E293B] rounded-xl border border-white/5 px-4 py-3">
-      <div className="text-[10px] uppercase tracking-wider text-slate-400 mb-1">{label}</div>
+      <div className="flex items-center gap-1 mb-1">
+        <div className="text-[10px] uppercase tracking-wider text-slate-400">{label}</div>
+        {tooltip && <InfoTooltip text={tooltip} />}
+      </div>
       <div className={`text-2xl font-bold ${accent ? 'text-[#06B6D4]' : 'text-white'}`}>{value}</div>
     </div>
   );
@@ -730,6 +770,7 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
       <div className="flex items-center gap-2 mb-3">
         <HardDrive className="w-4 h-4 text-slate-400" />
         <h2 className="text-sm font-semibold text-white">Backup Status</h2>
+        <InfoTooltip text="Estado de los últimos backups de cada servicio. Verde = backup reciente y exitoso. Rojo = fallo o sin datos recientes." />
       </div>
       <div className="bg-[#1E293B] rounded-xl border border-white/5 divide-y divide-white/5">
         {withBackup.map(s => {
@@ -793,6 +834,7 @@ function UptimeStatus({ services, uptimeEvents }: { services: Service[]; uptimeE
       <div className="flex items-center gap-2 mb-3">
         <Wifi className="w-4 h-4 text-slate-400" />
         <h2 className="text-sm font-semibold text-white">Uptime — Last 30 Days</h2>
+        <InfoTooltip text="Disponibilidad de cada servicio en los últimos 30 días. Muestra cuántas horas estuvo caído y el porcentaje de tiempo operativo." />
       </div>
       <div className="bg-[#1E293B] rounded-xl border border-white/5 divide-y divide-white/5">
         {servicesWithEvents.map(s => {
