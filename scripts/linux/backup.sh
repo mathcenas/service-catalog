@@ -144,7 +144,53 @@ send_email() {
 
   local to_json html_body payload response http_code body_resp
   to_json="$(printf '%s' "$RESEND_TO" | tr ',' '\n' | sed '/^[[:space:]]*$/d' | jq -R . | jq -s .)"
-  html_body="$(printf '%s' "$body" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/$/<br>/')"
+
+  # Colores brand Cenas IT
+  local C_PRIMARY="#0B192C" C_ACCENT="#06B6D4" C_SURFACE="#1E293B"
+  local C_BG="#F8FAFC" C_BORDER="#E2E8F0" C_TEXT="#334155" C_SOFT="#94A3B8"
+
+  if [[ "$status" == "up" ]]; then
+    local badge_bg="#d1fae5" badge_color="#065f46" badge_border="#6ee7b7" icon="✅" badge_label="BACKUP OK"
+  else
+    local badge_bg="#fee2e2" badge_color="#991b1b" badge_border="#fca5a5" icon="❌" badge_label="BACKUP FALLÓ"
+  fi
+
+  # Filas de detalle a partir de "Clave: Valor\n..."
+  local rows_html=""
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    local key="${line%%:*}" val="${line#*: }"
+    rows_html+="<tr><td style='padding:8px 12px;color:${C_SOFT};font-size:12px;white-space:nowrap;'>${key}</td><td style='padding:8px 12px;color:${C_TEXT};font-size:13px;font-weight:500;'>${val}</td></tr>"
+  done <<< "$body"
+
+  html_body="
+<div style=\"font-family:'Plus Jakarta Sans','Inter',system-ui,sans-serif;max-width:600px;margin:0 auto;padding:32px 16px;background:${C_BG};\">
+  <div style=\"background:#fff;border-radius:12px;border:1px solid ${C_BORDER};overflow:hidden;\">
+
+    <!-- Header -->
+    <div style=\"background:${C_PRIMARY};padding:16px 20px;display:flex;align-items:center;gap:12px;\">
+      <div style=\"background:rgba(6,182,212,.15);border-radius:8px;padding:6px 12px;\">
+        <span style=\"color:${C_ACCENT};font-size:11px;font-weight:700;letter-spacing:.5px;\">CENAS IT</span>
+      </div>
+      <span style=\"display:inline-block;background:${badge_bg};color:${badge_color};border:1px solid ${badge_border};padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;\">${badge_label}</span>
+    </div>
+
+    <!-- Body -->
+    <div style=\"padding:24px 20px;\">
+      <p style=\"font-size:15px;font-weight:600;color:${C_PRIMARY};margin:0 0 16px;\">${icon} ${subject}</p>
+      <table style=\"width:100%;border-collapse:collapse;background:${C_BG};border-radius:8px;border:1px solid ${C_BORDER};\">
+        ${rows_html}
+      </table>
+    </div>
+
+    <!-- Footer CTA -->
+    <div style=\"background:${C_PRIMARY};padding:16px 20px;text-align:center;\">
+      <p style=\"color:${C_SOFT};font-size:10px;margin:0;text-transform:uppercase;letter-spacing:1px;\">Monitoreo de Backups</p>
+      <p style=\"color:#fff;font-size:12px;font-weight:600;margin:4px 0 0;\">Cenas IT Solutions</p>
+    </div>
+
+  </div>
+</div>"
 
   payload="$(jq -n \
     --arg from "$RESEND_FROM" \
