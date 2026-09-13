@@ -1,4 +1,4 @@
-# =============================================================
+﻿# =============================================================
 # veeam-report.ps1 — Reporta jobs de Veeam Backup & Replication
 # Requiere: config.ps1 en la misma carpeta
 # Configurar como Post-Job script en cada job de Veeam, o

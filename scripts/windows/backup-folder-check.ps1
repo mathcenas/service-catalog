@@ -1,4 +1,4 @@
-# =============================================================
+﻿# =============================================================
 # backup-folder-check.ps1 — Verifica carpetas de respaldo en disco
 # Reporta la carpeta más reciente y alerta si no hay una nueva
 # en las últimas 25 horas.

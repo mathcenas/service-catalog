@@ -1,4 +1,4 @@
-# =============================================================
+﻿# =============================================================
 # cristar-backup-report.ps1 — Reporta backup del software Cristar
 # Lee el log acumulado y filtra las entradas del día de hoy
 # Schedulear en Task Scheduler después de que termina el backup

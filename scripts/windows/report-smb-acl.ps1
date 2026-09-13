@@ -1,4 +1,4 @@
-# =============================================================
+﻿# =============================================================
 # report-smb-acl.ps1 — Snapshot de usuarios y permisos SMB en Windows
 # Envía al Service Catalog para visualización y exportación.
 # Requiere: config.ps1 en la misma carpeta

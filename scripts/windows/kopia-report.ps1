@@ -1,4 +1,4 @@
-# =============================================================
+﻿# =============================================================
 # kopia-report.ps1 — Reporta snapshots recientes de Kopia
 # al Service Catalog via ingest-backup
 #

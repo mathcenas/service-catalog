@@ -1,4 +1,4 @@
-# =============================================================
+﻿# =============================================================
 # update-scripts.ps1 - Auto-actualizacion de scripts Windows
 #
 # Descarga la ultima version de los scripts desde GitHub y los
