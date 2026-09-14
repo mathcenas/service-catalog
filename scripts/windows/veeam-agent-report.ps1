@@ -6,7 +6,7 @@
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"
-$SCRIPT_VERSION = "1.1.0"
+$SCRIPT_VERSION = "1.1.1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
@@ -76,8 +76,8 @@ $events = $events | Sort-Object TimeCreated
 
 if (-not $events -or $events.Count -eq 0) {
     Write-Log "Sin nuevos eventos de Veeam en las últimas $lookbackHours horas."
-    if (Get-Command "Invoke-Kuma" -ErrorAction SilentlyContinue) {
-        Invoke-Kuma -Status "warn" -Msg "Sin nuevos backups Veeam en $lookbackHours hs"
+    if (Get-Command "Invoke-KumaBackup" -ErrorAction SilentlyContinue) {
+        Invoke-KumaBackup -Status "warn" -Msg "Sin nuevos backups Veeam en $lookbackHours hs"
     }
     exit
 }
@@ -143,12 +143,12 @@ if ($latestEventTime) {
 }
 
 # Notificación a Uptime Kuma con el estado del último evento
-if ($events.Count -gt 0 -and (Get-Command "Invoke-Kuma" -ErrorAction SilentlyContinue)) {
+if ($events.Count -gt 0 -and (Get-Command "Invoke-KumaBackup" -ErrorAction SilentlyContinue)) {
     $lastMsg = $events[-1].Message
     $kumaStatus = if ($lastMsg -match 'finished with (Error|Fail)') { 'down' }
                   elseif ($lastMsg -match 'finished with Warning') { 'warn' }
                   else { 'up' }
-    Invoke-Kuma -Status $kumaStatus -Msg "Veeam: $reported evento(s) enviado(s) | últimas $lookbackHours hs"
+    Invoke-KumaBackup -Status $kumaStatus -Msg "Veeam: $reported evento(s) enviado(s) | últimas $lookbackHours hs"
 }
 
 Write-Log "Fin - $reported evento(s) enviado(s) a telemetria."

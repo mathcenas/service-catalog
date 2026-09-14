@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.4.2"
+$SCRIPT_VERSION = "1.4.3"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -280,4 +280,4 @@ if ($CHECK_RDP) {
     Write-Log "⏭️ rdp — omitido (CHECK_RDP = false en config.ps1)"
 }
 
-Invoke-Kuma -Status "up" -Msg "system-health OK"
+Invoke-KumaHealth -Status "up" -Msg "system-health OK"

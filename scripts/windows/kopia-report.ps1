@@ -13,7 +13,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.1.0"
+$SCRIPT_VERSION = "1.1.1"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -68,7 +68,7 @@ if ($TAILSCALE_IP) {
             "X-Ingest-Secret" = $INGEST_SECRET
         }
         try { Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body | Out-Null } catch {}
-        Invoke-Kuma -Status "down" -Msg "Tailscale $TAILSCALE_IP sin respuesta"
+        Invoke-KumaBackup -Status "down" -Msg "Tailscale $TAILSCALE_IP sin respuesta"
         exit 1
     }
     Write-Log "Tailscale OK — $TAILSCALE_IP responde"
