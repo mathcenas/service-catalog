@@ -380,14 +380,13 @@ export function TelemetryDashboard({ services, clients }: Props) {
   }, [heartbeats, latestPerServiceSource, latestPerService, services, clients]);
 
   const stats = useMemo(() => {
-    const withHeartbeat = Array.from(latestPerService.values());
-    const ok = withHeartbeat.filter(h => h.status === 'ok' && !isHbStale(h)).length;
-    const warnings = withHeartbeat.filter(h => h.status === 'warning' && !isHbStale(h)).length;
-    const errors = withHeartbeat.filter(h => h.status === 'error').length;
-    const stale = withHeartbeat.filter(h => isHbStale(h)).length;
-    const noData = services.length - withHeartbeat.length;
+    const ok       = serviceCards.filter(c => c.worstStatus === 'ok').length;
+    const warnings = serviceCards.filter(c => c.worstStatus === 'warning').length;
+    const errors   = serviceCards.filter(c => c.worstStatus === 'error').length;
+    const stale    = serviceCards.filter(c => c.worstStatus === 'stale').length;
+    const noData   = serviceCards.filter(c => c.worstStatus === 'no-data').length;
     return { ok, warnings, errors, stale, noData };
-  }, [latestPerService, services]);
+  }, [serviceCards]);
 
   const outdatedScripts = useMemo(() => {
     const results: { serviceId: string; serviceName: string; source: string; current: string; latest: string }[] = [];
@@ -507,11 +506,11 @@ export function TelemetryDashboard({ services, clients }: Props) {
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <StatBadge label="Healthy" value={stats.ok} color="emerald" onClick={() => setStatusFilter(statusFilter === 'ok' ? 'all' : 'ok')} active={statusFilter === 'ok'} />
-        <StatBadge label="Warnings" value={stats.warnings} color="amber" onClick={() => setStatusFilter(statusFilter === 'warning' ? 'all' : 'warning')} active={statusFilter === 'warning'} />
-        <StatBadge label="Errors" value={stats.errors} color="red" onClick={() => setStatusFilter(statusFilter === 'error' ? 'all' : 'error')} active={statusFilter === 'error'} />
-        <StatBadge label="Stale" value={stats.stale} color="gray" onClick={() => setStatusFilter(statusFilter === 'stale' ? 'all' : 'stale')} active={statusFilter === 'stale'} />
-        <StatBadge label="No Data" value={stats.noData} color="slate" onClick={() => setStatusFilter(statusFilter === 'no-data' ? 'all' : 'no-data')} active={statusFilter === 'no-data'} />
+        <StatBadge label="Healthy" value={stats.ok} color="emerald" onClick={() => { setStatusFilter(statusFilter === 'ok' ? 'all' : 'ok'); setViewMode('cards'); }} active={statusFilter === 'ok'} />
+        <StatBadge label="Warnings" value={stats.warnings} color="amber" onClick={() => { setStatusFilter(statusFilter === 'warning' ? 'all' : 'warning'); setViewMode('cards'); }} active={statusFilter === 'warning'} />
+        <StatBadge label="Errors" value={stats.errors} color="red" onClick={() => { setStatusFilter(statusFilter === 'error' ? 'all' : 'error'); setViewMode('cards'); }} active={statusFilter === 'error'} />
+        <StatBadge label="Stale" value={stats.stale} color="gray" onClick={() => { setStatusFilter(statusFilter === 'stale' ? 'all' : 'stale'); setViewMode('cards'); }} active={statusFilter === 'stale'} />
+        <StatBadge label="No Data" value={stats.noData} color="slate" onClick={() => { setStatusFilter(statusFilter === 'no-data' ? 'all' : 'no-data'); setViewMode('cards'); }} active={statusFilter === 'no-data'} />
       </div>
 
       {/* Outdated scripts banner */}
