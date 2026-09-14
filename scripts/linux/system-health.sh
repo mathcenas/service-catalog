@@ -11,7 +11,7 @@
 #   0 * * * * /srv/scripts/system-health.sh
 # =============================================================
 
-SCRIPT_VERSION="1.6.2"
+SCRIPT_VERSION="1.6.3"
 
 # ---------- Verificación de dependencias ----------
 if ! command -v jq >/dev/null 2>&1; then
@@ -507,7 +507,7 @@ PAYLOAD=$(jq -n \
 
 # ---------- Enviar ----------
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-  --retry 3 --retry-delay 3 --retry-connrefused \
+  --retry 3 --retry-delay 5 --retry-connrefused --retry-all-errors \
   -X POST "$HEARTBEAT_URL" \
   -H "Content-Type: application/json" \
   -H "apikey: $SUPABASE_ANON_KEY" \
