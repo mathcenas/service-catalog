@@ -11,7 +11,7 @@
 #   0 * * * * /srv/scripts/system-health.sh
 # =============================================================
 
-SCRIPT_VERSION="1.6.1"
+SCRIPT_VERSION="1.6.2"
 
 # ---------- Verificación de dependencias ----------
 if ! command -v jq >/dev/null 2>&1; then
@@ -57,7 +57,7 @@ fi
 
 # ---------- Internos ----------
 HEARTBEAT_URL="${SUPABASE_URL}/functions/v1/ingest-heartbeat"
-KUMA_PUSH_URL="${KUMA_PUSH_URL:-}"
+KUMA_PUSH_URL="${KUMA_PUSH_URL_HEALTH:-${KUMA_PUSH_URL:-}}"
 LOG_FILE="${LOG_FILE:-${SCRIPT_DIR}/system-health.log}"
 LOG_RETAIN_DAYS=90
 DOCKER_IGNORE="${DOCKER_IGNORE:-}"
