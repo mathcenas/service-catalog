@@ -2,7 +2,7 @@
 # config.ps1 — Configuración por cliente/servidor
 # Copiar este archivo por cada cliente y ajustar los valores
 # =============================================================
-$SCRIPT_VERSION = "1.1.0"
+$SCRIPT_VERSION = "1.2.0"
 
 $INGEST_URL    = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-backup"
 $HEARTBEAT_URL = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-heartbeat"
@@ -26,11 +26,12 @@ $VEEAM_LOOKBACK_HOURS = 25
 # Dejar vacío para omitir el chequeo
 $TAILSCALE_IP  = ""
 
-$KUMA_PUSH_URL = ""
-# Uptime Kuma — Push Monitor (opcional)
-# Pegar la URL base del monitor tipo Push. Si está vacío, no se pinga.
+# Uptime Kuma — Push Monitors (opcional)
+# Pegar la URL base de cada monitor tipo Push. Si está vacío, no se pinga.
 # Ejemplo: https://kuma.midominio.com/api/push/AbCdEfGhIj
-$KUMA_PUSH_URL = ""
+$KUMA_PUSH_URL        = ""   # fallback genérico (si los específicos están vacíos, se usa este)
+$KUMA_PUSH_URL_HEALTH = ""   # system-health.ps1
+$KUMA_PUSH_URL_BACKUP = ""   # kopia-report.ps1 / veeam-agent-report.ps1 / kls-report.ps1
 
 # ---------- system-health.ps1 — secciones opcionales ----------
 # Poner $false en los checks que el cliente NO usa para que no
@@ -39,9 +40,16 @@ $CHECK_RDP     = $true   # $false si el cliente no usa Remote Desktop
 $CHECK_SPEEDTEST = $true  # $false si no hay herramienta speedtest instalada
 
 function Invoke-Kuma {
-    param([string]$Status, [string]$Msg)
-    if (-not $KUMA_PUSH_URL) { return }
-    $base = $KUMA_PUSH_URL -replace '\?.*', ''
-    $url  = "${base}?status=${Status}&msg=$([uri]::EscapeDataString($Msg))&ping=0"
-    try { Invoke-RestMethod -Uri $url -Method Get -TimeoutSec 10 | Out-Null } catch {}
+    param([string]$Status, [string]$Msg, [string]$Url = "")
+    $target = if ($Url) { $Url } else { $KUMA_PUSH_URL }
+    if (-not $target) { return }
+    $base = $target -replace '\?.*', ''
+    $u    = "${base}?status=${Status}&msg=$([uri]::EscapeDataString($Msg))&ping=0"
+    try { Invoke-RestMethod -Uri $u -Method Get -TimeoutSec 10 | Out-Null } catch {}
+}
+function Invoke-KumaHealth { param([string]$Status, [string]$Msg)
+    Invoke-Kuma -Status $Status -Msg $Msg -Url (if ($KUMA_PUSH_URL_HEALTH) { $KUMA_PUSH_URL_HEALTH } else { $KUMA_PUSH_URL })
+}
+function Invoke-KumaBackup { param([string]$Status, [string]$Msg)
+    Invoke-Kuma -Status $Status -Msg $Msg -Url (if ($KUMA_PUSH_URL_BACKUP) { $KUMA_PUSH_URL_BACKUP } else { $KUMA_PUSH_URL })
 }

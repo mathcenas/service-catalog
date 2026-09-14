@@ -33,10 +33,10 @@ RETENTION_DAYS="${RETENTION_DAYS:-7}"
 DEST_TYPE="${DEST_TYPE:-local}"        # local | rsync | rclone
 RSYNC_DEST="${RSYNC_DEST:-}"
 RSYNC_SSH_KEY="${RSYNC_SSH_KEY:-}"
-SCRIPT_VERSION="1.1.0"
+SCRIPT_VERSION="1.1.2"
 RCLONE_REMOTE="${RCLONE_REMOTE:-}"
 PG_CONTAINERS="${PG_CONTAINERS:-}"
-KUMA_PUSH_URL="${KUMA_PUSH_URL:-}"
+KUMA_PUSH_URL="${KUMA_PUSH_URL_BACKUP:-${KUMA_PUSH_URL:-}}"
 LOCK_FILE="${LOCK_FILE:-/run/lock/vps-backup-kuma-${HOST_TAG}.lock}"
 
 RESEND_API_KEY="${RESEND_API_KEY:-}"
@@ -104,7 +104,7 @@ report_ingest() {
   local backed_up_at
   backed_up_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-  curl -fsS --max-time 15 -X POST "$INGEST_URL" \
+  curl -fsS --max-time 15 --retry 3 --retry-delay 5 --retry-all-errors -X POST "$INGEST_URL" \
     -H "Content-Type: application/json" \
     -H "apikey: ${SUPABASE_ANON_KEY}" \
     -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \

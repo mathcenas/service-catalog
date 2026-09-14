@@ -260,6 +260,7 @@ export type ShareToken = {
   created_at: string;
   open_count: number;
   first_opened_at: string | null;
+  service_ids: string[] | null;
 };
 
 export type SupportHour = {

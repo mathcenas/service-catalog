@@ -110,9 +110,14 @@ export function SharePage({ token }: Props) {
 
       if (tokenError || !tokenRow) { setNotFound(true); setLoading(false); return; }
 
+      const servicesQuery = supabase.from('services').select('*').eq('client_id', tokenRow.client_id).order('created_at');
+      if (tokenRow.service_ids && tokenRow.service_ids.length > 0) {
+        servicesQuery.in('id', tokenRow.service_ids);
+      }
+
       const [{ data: clientData }, { data: servicesData }, { data: projectsData }, { data: typesData }, { data: roadmapData }, { data: settingsData }] = await Promise.all([
         supabase.from('clients').select('*').eq('id', tokenRow.client_id).maybeSingle(),
-        supabase.from('services').select('*').eq('client_id', tokenRow.client_id).order('created_at'),
+        servicesQuery,
         supabase.from('projects').select('*').eq('client_id', tokenRow.client_id).order('created_at'),
         supabase.from('service_types').select('*'),
         supabase.from('roadmap_items').select('*').eq('user_id', tokenRow.user_id).eq('is_public', true).or(`client_id.eq.${tokenRow.client_id},client_id.is.null`).order('sort_order').order('created_at'),
@@ -189,7 +194,9 @@ export function SharePage({ token }: Props) {
       const { data: tokenRows } = await supabase.rpc('resolve_share_token', { p_token: token });
       const tokenRow = tokenRows?.[0];
       if (!tokenRow) return;
-      const { data: svcs } = await supabase.from('services').select('id').eq('client_id', tokenRow.client_id);
+      const svcQuery = supabase.from('services').select('id').eq('client_id', tokenRow.client_id);
+      if (tokenRow.service_ids && tokenRow.service_ids.length > 0) svcQuery.in('id', tokenRow.service_ids);
+      const { data: svcs } = await svcQuery;
       const serviceIds = (svcs || []).map((s: { id: string }) => s.id);
       if (serviceIds.length === 0) return;
       const [{ data: sysHbData }, { data: backupsData }] = await Promise.all([
