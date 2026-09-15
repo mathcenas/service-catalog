@@ -33,7 +33,7 @@ RETENTION_DAYS="${RETENTION_DAYS:-7}"
 DEST_TYPE="${DEST_TYPE:-local}"        # local | rsync | rclone
 RSYNC_DEST="${RSYNC_DEST:-}"
 RSYNC_SSH_KEY="${RSYNC_SSH_KEY:-}"
-SCRIPT_VERSION="1.1.2"
+SCRIPT_VERSION="1.2.0"
 RCLONE_REMOTE="${RCLONE_REMOTE:-}"
 PG_CONTAINERS="${PG_CONTAINERS:-}"
 KUMA_PUSH_URL="${KUMA_PUSH_URL_BACKUP:-${KUMA_PUSH_URL:-}}"
@@ -65,6 +65,7 @@ TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 STAGING_DIR="$BACKUP_ROOT/staging-$TIMESTAMP"
 ARCHIVE_NAME="${HOST_TAG}_${TIMESTAMP}.tar.gz"
 ARCHIVE_PATH="$BACKUP_ROOT/$ARCHIVE_NAME"
+ARCHIVE_TMP="${ARCHIVE_PATH}.tmp"
 START_TS=$(date +%s)
 
 # ---------- Lock para evitar corridas superpuestas ----------
@@ -202,35 +203,29 @@ Línea: ${line}
 Código de salida: ${exit_code}
 Fecha: $(date '+%Y-%m-%d %H:%M:%S')
 Revisar logs en el servidor para más detalle."
-  rm -rf "$STAGING_DIR"
+  rm -rf "$STAGING_DIR" "$ARCHIVE_TMP"
   exit "$exit_code"
 }
 trap 'on_error $LINENO' ERR
 
 # ---------- Preparación ----------
-mkdir -p "$BACKUP_ROOT" "$STAGING_DIR"
+mkdir -p "$BACKUP_ROOT"
 
 # ---------- Dump de Postgres (si hay contenedores configurados) ----------
+# Los dumps se escriben en un directorio temporal pequeño; se incluyen en el
+# archive final sin necesidad de comprimir dos veces /srv.
+PGDUMP_DIR=""
 if [[ -n "$PG_CONTAINERS" ]]; then
-  mkdir -p "$STAGING_DIR/pgdumps"
+  PGDUMP_DIR="$(mktemp -d)"
   for container in $PG_CONTAINERS; do
     echo "Dumpeando Postgres del contenedor: $container"
-    dump_file="$STAGING_DIR/pgdumps/${container}.sql.gz"
+    dump_file="$PGDUMP_DIR/${container}.sql.gz"
     pg_user="$(docker exec "$container" printenv POSTGRES_USER 2>/dev/null || echo postgres)"
     docker exec "$container" pg_dumpall -U "$pg_user" | gzip > "$dump_file"
   done
 fi
 
-# ---------- Armado del tar de los directorios fuente ----------
-TAR_EXCLUDES=()
-if [[ -n "$EXCLUDE_PATTERNS" ]]; then
-  for pattern in $EXCLUDE_PATTERNS; do
-    TAR_EXCLUDES+=(--exclude="$pattern")
-  done
-fi
-
-echo "Comprimiendo: $SRC_DIRS"
-
+# ---------- Validar que existan los directorios fuente ----------
 for dir in $SRC_DIRS; do
   if [[ ! -e "$dir" ]]; then
     echo "ERROR: el path '$dir' (definido en SRC_DIRS) no existe en este servidor." >&2
@@ -238,11 +233,27 @@ for dir in $SRC_DIRS; do
   fi
 done
 
-# shellcheck disable=SC2086
-tar czf "$STAGING_DIR/srv.tar.gz" "${TAR_EXCLUDES[@]}" $SRC_DIRS
+# ---------- Armado del archive en un solo paso ----------
+# Se escribe a un .tmp y se renombra al finalizar para evitar archives parciales.
+TAR_EXCLUDES=()
+if [[ -n "$EXCLUDE_PATTERNS" ]]; then
+  for pattern in $EXCLUDE_PATTERNS; do
+    TAR_EXCLUDES+=(--exclude="$pattern")
+  done
+fi
 
-tar czf "$ARCHIVE_PATH" -C "$STAGING_DIR" .
-rm -rf "$STAGING_DIR"
+TAR_SOURCES=()
+# shellcheck disable=SC2086
+for dir in $SRC_DIRS; do TAR_SOURCES+=("$dir"); done
+if [[ -n "$PGDUMP_DIR" ]]; then
+  TAR_SOURCES+=("$PGDUMP_DIR")
+fi
+
+echo "Comprimiendo: $SRC_DIRS${PGDUMP_DIR:+ + pgdumps}"
+# shellcheck disable=SC2086
+tar czf "$ARCHIVE_TMP" "${TAR_EXCLUDES[@]}" "${TAR_SOURCES[@]}"
+mv "$ARCHIVE_TMP" "$ARCHIVE_PATH"
+[[ -n "$PGDUMP_DIR" ]] && rm -rf "$PGDUMP_DIR"
 
 ARCHIVE_SIZE="$(du -h "$ARCHIVE_PATH" | cut -f1)"
 ARCHIVE_SIZE_BYTES="$(du -sb "$ARCHIVE_PATH" | cut -f1)"
