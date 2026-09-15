@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.2.0"
+$SCRIPT_VERSION = "1.2.1"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -163,11 +163,25 @@ try {
 
 # ---------- 3. RDP + AnyDesk (Sesiones / TCP / Desconexiones / Disk Latency) ----------
 
+# AnyDesk — leer ID
+$anydeskId = $null
+try {
+    $anydeskId = (Get-ItemProperty -Path "HKLM:\SOFTWARE\AnyDesk" -Name "ad_id" -ErrorAction Stop).ad_id
+} catch {
+    $confPath = "$env:ProgramData\AnyDesk\service.conf"
+    if (Test-Path $confPath) {
+        $adLine = Get-Content $confPath | Where-Object { $_ -match '^ad\.anynet\.id=' }
+        if ($adLine) { $anydeskId = ($adLine -replace '^ad\.anynet\.id=', '').Trim() }
+    }
+}
+
 # AnyDesk — reiniciar si esta caido
 $adService = Get-Service -Name "AnyDesk" -ErrorAction SilentlyContinue
+$adStatus  = if ($adService) { $adService.Status.ToString() } else { "NotFound" }
 if ($adService -and $adService.Status -ne 'Running') {
     try {
         Restart-Service -Name "AnyDesk" -Force -ErrorAction Stop
+        $adStatus = "Restarted"
         Write-Log "⚠️ AnyDesk: servicio reiniciado automaticamente"
     } catch {
         Write-Log "❌ AnyDesk: no se pudo reiniciar: $($_.Exception.Message)"
@@ -266,6 +280,8 @@ $rdpBody = @{
         service_status      = $rdpSvcStatus
         port_listening      = $rdpListening
         auto_restarted      = $rdpRestarted
+        anydesk_id          = $anydeskId
+        anydesk_status      = $adStatus
         rdp_sessions        = $sessions
         rdp_max_allowed     = $maxAllowed
         rdp_tcp_connections = $rdpConnections

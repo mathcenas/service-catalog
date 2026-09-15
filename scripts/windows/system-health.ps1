@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.4.3"
+$SCRIPT_VERSION = "1.4.4"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -218,11 +218,25 @@ try {
 $CHECK_RDP = if (Get-Variable 'CHECK_RDP' -ErrorAction SilentlyContinue) { $CHECK_RDP } else { $true }
 
 if ($CHECK_RDP) {
+    # AnyDesk — leer ID
+    $anydeskId = $null
+    try {
+        $anydeskId = (Get-ItemProperty -Path "HKLM:\SOFTWARE\AnyDesk" -Name "ad_id" -ErrorAction Stop).ad_id
+    } catch {
+        $confPath = "$env:ProgramData\AnyDesk\service.conf"
+        if (Test-Path $confPath) {
+            $adLine = Get-Content $confPath | Where-Object { $_ -match '^ad\.anynet\.id=' }
+            if ($adLine) { $anydeskId = ($adLine -replace '^ad\.anynet\.id=', '').Trim() }
+        }
+    }
+
     # AnyDesk — reiniciar si esta caido
     $adService = Get-Service -Name "AnyDesk" -ErrorAction SilentlyContinue
+    $adStatus  = if ($adService) { $adService.Status.ToString() } else { "NotFound" }
     if ($adService -and $adService.Status -ne 'Running') {
         try {
             Restart-Service -Name "AnyDesk" -Force -ErrorAction Stop
+            $adStatus = "Restarted"
             Write-Log "⚠️ AnyDesk: servicio reiniciado automaticamente"
         } catch {
             Write-Log "❌ AnyDesk: no se pudo reiniciar: $($_.Exception.Message)"
@@ -262,10 +276,12 @@ if ($CHECK_RDP) {
         status     = $rdpStatus
         message    = $rdpMsg
         payload    = @{
-            service_status = $rdpSvcStatus
-            port_listening = $rdpListening
-            auto_restarted = $rdpRestarted
-            script_version = $SCRIPT_VERSION
+            service_status   = $rdpSvcStatus
+            port_listening   = $rdpListening
+            auto_restarted   = $rdpRestarted
+            anydesk_id       = $anydeskId
+            anydesk_status   = $adStatus
+            script_version   = $SCRIPT_VERSION
         }
     } | ConvertTo-Json -Depth 3
 
