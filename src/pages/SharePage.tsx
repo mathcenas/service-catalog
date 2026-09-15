@@ -1023,28 +1023,50 @@ function ServiceCard({ service, typeName, projectName, expanded, onToggle, heart
               {desc && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{desc}</p>}
             </div>
           </div>
-          {showCosts && service.price > 0 && (
-            <div className="text-right shrink-0">
-              {service.confirmed_hours_monthly && service.confirmed_hours_monthly > 0 ? (
-                <>
-                  <div className="text-sm font-bold text-gray-900 dark:text-white">{service.currency} {(service.price * service.confirmed_hours_monthly).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                  <div className="text-[10px] text-gray-400">{service.confirmed_hours_monthly}h / month</div>
-                </>
-              ) : (
-                <>
-                  <div className="text-sm font-bold text-gray-900 dark:text-white">{service.currency} {service.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                  <div className="text-[10px] text-gray-400">
-                    {service.billing_cycle === 'Monthly' ? 'per month' :
-                     service.billing_cycle === 'Quarterly' ? 'per quarter' :
-                     service.billing_cycle === 'Semi-Annually' ? 'per 6 months' :
-                     service.billing_cycle === 'Annually' ? 'per year' :
-                     service.billing_cycle === 'Biennially' ? 'per 2 years' :
-                     service.billing_cycle === 'One-Time' ? 'one-time' : service.billing_cycle}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+          {showCosts && (() => {
+            const hasPrice = service.price > 0;
+            const hasInfra = (service.infrastructure_cost ?? 0) > 0;
+            const hasHours = (service.confirmed_hours_monthly ?? 0) > 0;
+            if (!hasPrice && !hasInfra) return null;
+            const cycleLabel = service.billing_cycle === 'Monthly' ? 'per month' :
+              service.billing_cycle === 'Quarterly' ? 'per quarter' :
+              service.billing_cycle === 'Semi-Annually' ? 'per 6 months' :
+              service.billing_cycle === 'Annually' ? 'per year' :
+              service.billing_cycle === 'Biennially' ? 'per 2 years' :
+              service.billing_cycle === 'One-Time' ? 'one-time' : service.billing_cycle;
+            return (
+              <div className="text-right shrink-0">
+                {hasPrice && hasHours ? (
+                  <>
+                    <div className="text-sm font-bold text-gray-900 dark:text-white">
+                      {service.currency} {(service.price * service.confirmed_hours_monthly!).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                    <div className="text-[10px] text-gray-400">{service.confirmed_hours_monthly}h / month</div>
+                    {hasInfra && (
+                      <div className="text-[10px] text-gray-400">+ {service.currency} {service.infrastructure_cost!.toFixed(2)} infra</div>
+                    )}
+                  </>
+                ) : hasPrice ? (
+                  <>
+                    <div className="text-sm font-bold text-gray-900 dark:text-white">
+                      {service.currency} {service.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                    <div className="text-[10px] text-gray-400">{cycleLabel}</div>
+                    {hasInfra && (
+                      <div className="text-[10px] text-gray-400">+ {service.currency} {service.infrastructure_cost!.toFixed(2)} infra</div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="text-sm font-bold text-gray-900 dark:text-white">
+                      {service.currency} {service.infrastructure_cost!.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                    <div className="text-[10px] text-gray-400">{cycleLabel}</div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {(service.includes?.length || service.cloud_backup_enabled) ? (
@@ -1138,15 +1160,22 @@ function TechnicalDetails({ service, heartbeats, backups, latestDbCheck, showCos
         </div>
       ) : null}
 
-      {showCosts && (service.infrastructure_cost || service.allocated_hours || service.extra_hour_rate) && (
-        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-          <div className="flex flex-wrap gap-4 text-xs text-gray-600 dark:text-gray-400">
-            {service.infrastructure_cost ? <span>Infra: {service.currency} {service.infrastructure_cost.toFixed(2)}</span> : null}
-            {service.allocated_hours ? <span>Allocated: {service.allocated_hours}h/mo</span> : null}
-            {service.extra_hour_rate ? <span>Extra hour: {service.currency} {service.extra_hour_rate.toFixed(2)}</span> : null}
+      {showCosts && (() => {
+        const infraShownInHeader = service.price <= 0 && (service.infrastructure_cost ?? 0) > 0;
+        const showInfra = (service.infrastructure_cost ?? 0) > 0 && !infraShownInHeader;
+        const showHours = (service.allocated_hours ?? 0) > 0;
+        const showRate = (service.extra_hour_rate ?? 0) > 0;
+        if (!showInfra && !showHours && !showRate) return null;
+        return (
+          <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex flex-wrap gap-4 text-xs text-gray-600 dark:text-gray-400">
+              {showInfra && <span>Infraestructura: {service.currency} {service.infrastructure_cost!.toFixed(2)}/mes</span>}
+              {showHours && <span>Horas incluidas: {service.allocated_hours}h/mes</span>}
+              {showRate && <span>Hora adicional: {service.currency} {service.extra_hour_rate!.toFixed(2)}</span>}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {latestDbCheck && <DbCheckStatus hb={latestDbCheck} />}
 
