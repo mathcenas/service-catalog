@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.2.1"
+$SCRIPT_VERSION = "1.2.2"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -56,6 +56,15 @@ try {
 }
 
 try {
+    $cpuObj     = Get-CimInstance Win32_Processor
+    $cpuName    = ($cpuObj | Select-Object -First 1).Name -replace '\s+', ' '
+    $cpuCores   = ($cpuObj | Measure-Object -Property NumberOfCores -Sum).Sum
+    $cpuThreads = ($cpuObj | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum
+} catch {
+    $cpuName = $null; $cpuCores = 0; $cpuThreads = 0
+}
+
+try {
     $ramAvailMB = (Get-Counter '\Memory\Available MBytes' -ErrorAction Stop).CounterSamples.CookedValue
     $os         = Get-CimInstance Win32_OperatingSystem
     $ramTotalMB = $os.TotalVisibleMemorySize / 1KB
@@ -91,6 +100,9 @@ $hwBody = @{
     message    = "CPU: $cpuUsage% | RAM: $ramUsePct% | Disk C: $diskUsePct%"
     payload    = @{
         cpu_pct        = $cpuUsage
+        cpu_name       = $cpuName
+        cpu_cores      = $cpuCores
+        cpu_threads    = $cpuThreads
         ram_pct        = $ramUsePct
         ram_total_gb   = $ramTotalGB
         disk_pct       = $diskUsePct

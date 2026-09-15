@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.4.4"
+$SCRIPT_VERSION = "1.4.5"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -37,7 +37,12 @@ $headers = @{
 
 # ---------- 1. HARDWARE (CPU / RAM / Disco C:) ----------
 try {
-    $cpuUsage  = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
+    $cpuObj    = Get-CimInstance Win32_Processor
+    $cpuUsage  = ($cpuObj | Measure-Object -Property LoadPercentage -Average).Average
+    $cpuName   = ($cpuObj | Select-Object -First 1).Name -replace '\s+', ' '
+    $cpuCores  = ($cpuObj | Measure-Object -Property NumberOfCores -Sum).Sum
+    $cpuThreads = ($cpuObj | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum
+
     $os        = Get-CimInstance Win32_OperatingSystem
     $ramUsePct = [math]::Round((($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100, 1)
     $ramTotalGB = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
@@ -46,7 +51,8 @@ try {
     $diskUsePct = [math]::Round((($diskC.Size - $diskC.FreeSpace) / $diskC.Size) * 100, 1)
     $diskFreeGB = [math]::Round($diskC.FreeSpace / 1GB, 1)
 } catch {
-    $cpuUsage = 0; $ramUsePct = 0; $ramTotalGB = 0; $diskUsePct = 0; $diskFreeGB = 0
+    $cpuUsage = 0; $cpuName = $null; $cpuCores = 0; $cpuThreads = 0
+    $ramUsePct = 0; $ramTotalGB = 0; $diskUsePct = 0; $diskFreeGB = 0
 }
 
 $hwStatus = if   ($diskUsePct -gt 90 -or $ramUsePct -gt 92 -or $cpuUsage -gt 95) { "failed" }
@@ -140,6 +146,9 @@ $hwBody = @{
     message    = "CPU: $cpuUsage% | RAM: $ramUsePct% | Disk C: $diskUsePct%"
     payload    = @{
         cpu_pct        = $cpuUsage
+        cpu_name       = $cpuName
+        cpu_cores      = $cpuCores
+        cpu_threads    = $cpuThreads
         ram_pct        = $ramUsePct
         ram_total_gb   = $ramTotalGB
         disk_pct       = $diskUsePct
