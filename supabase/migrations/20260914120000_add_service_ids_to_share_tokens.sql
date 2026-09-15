@@ -26,11 +26,11 @@ BEGIN
     RETURN;
   END IF;
 
-  UPDATE client_share_tokens
+  UPDATE client_share_tokens cst
   SET
-    open_count      = open_count + 1,
-    first_opened_at = COALESCE(first_opened_at, now())
-  WHERE id = rec.id;
+    open_count      = cst.open_count + 1,
+    first_opened_at = COALESCE(cst.first_opened_at, now())
+  WHERE cst.id = rec.id;
 
   RETURN QUERY
   SELECT rec.client_id, rec.user_id, rec.label,
