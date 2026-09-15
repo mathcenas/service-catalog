@@ -24,7 +24,11 @@ function Write-Log($msg) {
 }
 Get-ChildItem "$LogDir\veeam-restore-test-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) } | Remove-Item -Force
 
-Add-PSSnapin VeeamPSSnapIn -ErrorAction SilentlyContinue
+if (Get-Module -ListAvailable -Name Veeam.Backup.PowerShell -ErrorAction SilentlyContinue) {
+    Import-Module Veeam.Backup.PowerShell -ErrorAction Stop
+} else {
+    Add-PSSnapin VeeamPSSnapIn -ErrorAction SilentlyContinue
+}
 
 # Buscar la última sesión de restore completada (últimas 48h)
 $since = (Get-Date).AddHours(-48)
