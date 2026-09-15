@@ -2,16 +2,17 @@
 -- Allows a share token to expose only a subset of the client's services
 -- NULL = show all services (existing behavior)
 
-ALTER TABLE client_share_tokens
-  ADD COLUMN IF NOT EXISTS service_ids uuid[] DEFAULT NULL;
+ALTER TABLE client_share_tokens ADD COLUMN IF NOT EXISTS service_ids uuid[] DEFAULT NULL;
 
 -- Update resolve_share_token to return service_ids
+-- DROP required because the return type (OUT columns) changed
+DROP FUNCTION IF EXISTS public.resolve_share_token(text);
 CREATE OR REPLACE FUNCTION public.resolve_share_token(p_token text)
 RETURNS TABLE(client_id uuid, user_id uuid, label text, open_count integer, first_opened_at timestamptz, service_ids uuid[])
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $func$
 DECLARE
   rec client_share_tokens;
 BEGIN
@@ -37,7 +38,7 @@ BEGIN
          COALESCE(rec.first_opened_at, now()),
          rec.service_ids;
 END;
-$$;
+$func$;
 
 GRANT EXECUTE ON FUNCTION public.resolve_share_token(text) TO anon, authenticated;
 
