@@ -901,6 +901,94 @@ const SERVICE_GROUPS: { label: string; types: string[] }[] = [
   { label: 'Managed Services', types: ['Managed Service', 'Monitoring'] },
 ];
 
+function monthlyEquivalent(service: Service): number {
+  const months = billingCycleMonths(service.billing_cycle);
+  const safeMonths = months > 0 ? months : 1;
+  const hours = service.confirmed_hours_monthly ?? 0;
+  const infra = service.infrastructure_cost ?? 0;
+  if (service.price > 0 && hours > 0) return service.price * hours + infra / safeMonths;
+  if (service.price > 0) return service.price / safeMonths + infra / safeMonths;
+  return infra / safeMonths;
+}
+
+function CostSummary({ services }: { services: Service[] }) {
+  const billable = services.filter(s => s.price > 0 || (s.infrastructure_cost ?? 0) > 0);
+  if (billable.length === 0) return null;
+
+  const total = billable.reduce((sum, s) => sum + monthlyEquivalent(s), 0);
+
+  const cycleShort = (s: Service) => {
+    switch (s.billing_cycle) {
+      case 'Monthly': return 'mensual';
+      case 'Quarterly': return 'trimestral ÷ 3';
+      case 'Semi-Annually': return 'semestral ÷ 6';
+      case 'Annually': return 'anual ÷ 12';
+      case 'Biennially': return 'bienal ÷ 24';
+      case 'One-Time': return 'pago único';
+      default: return s.billing_cycle ?? '';
+    }
+  };
+
+  return (
+    <div className="bg-[#0B192C] rounded-xl border border-white/5 overflow-hidden">
+      {/* header */}
+      <div className="px-5 py-4 flex items-end justify-between gap-4 border-b border-white/5">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Resumen mensual estimado</p>
+          <p className="text-[28px] font-extrabold text-white leading-none tracking-tight" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            {billable[0]?.currency ?? 'USD'} {total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <span className="text-sm font-medium text-slate-400 ml-1">/mes</span>
+          </p>
+        </div>
+        <p className="text-[11px] text-slate-500 text-right leading-relaxed shrink-0">
+          Calculado sobre horas confirmadas<br />y costos de infraestructura
+        </p>
+      </div>
+
+      {/* breakdown */}
+      <div>
+        {billable.map((s, i) => {
+          const hasHours = (s.confirmed_hours_monthly ?? 0) > 0;
+          const monthly = monthlyEquivalent(s);
+          const meta = hasHours
+            ? `${s.confirmed_hours_monthly}h × ${s.currency} ${s.price.toFixed(2)}/h`
+            : cycleShort(s);
+          return (
+            <div
+              key={s.id}
+              className="grid items-center px-5 py-2.5 gap-x-5"
+              style={{ gridTemplateColumns: '1fr auto auto', borderTop: i === 0 ? undefined : '1px solid rgba(255,255,255,0.04)' }}
+            >
+              <div>
+                <p className="text-[13px] font-medium text-white/85">{s.business_name || s.name}</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">{meta}</p>
+              </div>
+              <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded ${
+                hasHours
+                  ? 'text-emerald-300 bg-emerald-400/10'
+                  : 'text-sky-300 bg-sky-400/10'
+              }`}>
+                {hasHours ? 'horas' : 'infra'}
+              </span>
+              <p className="text-[14px] font-bold text-white text-right" style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                {s.currency} {monthly.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <span className="text-[10px] font-medium text-slate-400 ml-1">/mes</span>
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* footer note */}
+      <div className="px-5 py-2.5 border-t border-white/5">
+        <p className="text-[11px] text-slate-500 leading-relaxed">
+          * No incluye costos de licencias de software. Consultá la tab <strong className="text-slate-400">Licenses</strong> para el detalle.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function ServiceCatalog({ services, projects, getTypeName, getProjectName, expandedService, setExpandedService, heartbeats, backups, systemHeartbeats }: {
   services: Service[]; projects: Project[]; getTypeName: (id: string) => string; getProjectName: (id?: string) => string | null;
   expandedService: string | null; setExpandedService: (id: string | null) => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; systemHeartbeats: ServiceHeartbeat[];
@@ -953,6 +1041,8 @@ function ServiceCatalog({ services, projects, getTypeName, getProjectName, expan
           {showCosts ? 'Hide Costs' : 'Show Costs'}
         </button>
       </div>
+
+      {showCosts && <CostSummary services={services} />}
 
       {grouped.map(g => (
         <div key={g.label}>
