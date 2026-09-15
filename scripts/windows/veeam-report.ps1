@@ -6,7 +6,7 @@
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"
-$SCRIPT_VERSION = "1.0.0"
+$SCRIPT_VERSION = "1.0.1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
@@ -23,7 +23,12 @@ function Write-Log($msg) {
 }
 Get-ChildItem "$LogDir\veeam-report-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) } | Remove-Item -Force
 
-Add-PSSnapin VeeamPSSnapIn -ErrorAction SilentlyContinue
+# Veeam 12+: módulo PowerShell reemplaza el PSSnapin legacy
+if (Get-Module -ListAvailable -Name Veeam.Backup.PowerShell -ErrorAction SilentlyContinue) {
+    Import-Module Veeam.Backup.PowerShell -ErrorAction Stop
+} else {
+    Add-PSSnapin VeeamPSSnapIn -ErrorAction SilentlyContinue
+}
 
 # Sesión más reciente por job, completadas en las últimas 25 horas
 $since    = (Get-Date).AddHours(-25)
