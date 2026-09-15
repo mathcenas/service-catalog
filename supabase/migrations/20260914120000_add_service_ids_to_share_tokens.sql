@@ -6,6 +6,8 @@ ALTER TABLE client_share_tokens
   ADD COLUMN IF NOT EXISTS service_ids uuid[] DEFAULT NULL;
 
 -- Update resolve_share_token to return service_ids
+-- DROP required because the return type (OUT columns) changed
+DROP FUNCTION IF EXISTS public.resolve_share_token(text);
 CREATE OR REPLACE FUNCTION public.resolve_share_token(p_token text)
 RETURNS TABLE(client_id uuid, user_id uuid, label text, open_count integer, first_opened_at timestamptz, service_ids uuid[])
 LANGUAGE plpgsql
