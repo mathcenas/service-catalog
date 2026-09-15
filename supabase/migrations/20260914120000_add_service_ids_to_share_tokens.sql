@@ -12,7 +12,7 @@ RETURNS TABLE(client_id uuid, user_id uuid, label text, open_count integer, firs
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $func$
 DECLARE
   rec client_share_tokens;
 BEGIN
@@ -38,7 +38,7 @@ BEGIN
          COALESCE(rec.first_opened_at, now()),
          rec.service_ids;
 END;
-$$;
+$func$;
 
 GRANT EXECUTE ON FUNCTION public.resolve_share_token(text) TO anon, authenticated;
 
