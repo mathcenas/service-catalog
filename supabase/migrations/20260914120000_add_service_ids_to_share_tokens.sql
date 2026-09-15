@@ -2,8 +2,7 @@
 -- Allows a share token to expose only a subset of the client's services
 -- NULL = show all services (existing behavior)
 
-ALTER TABLE client_share_tokens
-  ADD COLUMN IF NOT EXISTS service_ids uuid[] DEFAULT NULL;
+ALTER TABLE client_share_tokens ADD COLUMN IF NOT EXISTS service_ids uuid[] DEFAULT NULL;
 
 -- Update resolve_share_token to return service_ids
 -- DROP required because the return type (OUT columns) changed
