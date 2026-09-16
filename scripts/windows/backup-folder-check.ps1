@@ -46,15 +46,15 @@ $headers = @{
     "Content-Type"    = "application/json"
     "apikey"          = $ANON_KEY
     "Authorization"   = "Bearer $ANON_KEY"
-    "X-Ingest-Secret" = $INGEST_SECRET
+    "X-Ingest-Secret" = $SMB_INGEST_SECRET
 }
 
-# Reutiliza INGEST_URL (ingest-backup) igual que veeam-report.ps1
+# Usa INGEST_URL (ingest-backup) con el SERVICE_ID del servicio SMB/NAS
 $BACKUP_INGEST_URL = $INGEST_URL
 
 function Send-BackupReport($status, $jobName, $sizeBytes, $details, $backedUpAt) {
     $body = @{
-        service_id       = $SERVICE_ID
+        service_id       = $SMB_SERVICE_ID
         job_name         = $jobName
         status           = $status
         size_bytes       = $sizeBytes
@@ -69,6 +69,16 @@ function Send-BackupReport($status, $jobName, $sizeBytes, $details, $backedUpAt)
         Write-Log "❌ ERROR al reportar backup: $_"
     }
     Invoke-Kuma -Status $(if ($status -eq 'failed') { 'down' } elseif ($status -eq 'warning') { 'warn' } else { 'up' }) -Msg $jobName
+}
+
+# ---------- Validar config ----------
+if (-not $SMB_SERVICE_ID -or $SMB_SERVICE_ID -eq "") {
+    Write-Log "ERROR: \$SMB_SERVICE_ID no está configurado en config.ps1"
+    exit 1
+}
+if (-not $SMB_INGEST_SECRET -or $SMB_INGEST_SECRET -eq "") {
+    Write-Log "ERROR: \$SMB_INGEST_SECRET no está configurado en config.ps1"
+    exit 1
 }
 
 # ---------- Verificar carpeta raíz ----------
