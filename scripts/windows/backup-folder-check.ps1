@@ -1,10 +1,11 @@
 ﻿# =============================================================
 # backup-folder-check.ps1 — Verifica carpetas de respaldo en disco
-# Reporta la carpeta más reciente y alerta si no hay una nueva
-# en las últimas 25 horas.
+# Reporta la carpeta más reciente al Service Catalog (ingest-backup),
+# igual que veeam-report.ps1, para que aparezca en el historial
+# de backups del servicio.
 #
 # Schedulear en Task Scheduler (ej: diario a las 8am):
-#   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Scripts\backup-folder-check.ps1"
+#   pwsh.exe -NonInteractive -ExecutionPolicy Bypass -File "C:\Scripts\backup-folder-check.ps1"
 #
 # Requiere: config.ps1 en la misma carpeta con SERVICE_ID del
 # servicio de respaldo (puede ser distinto al de system-health)
@@ -13,7 +14,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.0.0"
+$SCRIPT_VERSION = "1.1.0"
 
 # Invoke-Kuma puede no estar definida en todos los config.ps1
 if (-not (Get-Command Invoke-Kuma -ErrorAction SilentlyContinue)) {
@@ -48,27 +49,32 @@ $headers = @{
     "X-Ingest-Secret" = $INGEST_SECRET
 }
 
-function Send-Heartbeat($status, $message, $payload) {
+# Reutiliza INGEST_URL (ingest-backup) igual que veeam-report.ps1
+$BACKUP_INGEST_URL = $INGEST_URL
+
+function Send-BackupReport($status, $jobName, $sizeBytes, $details, $backedUpAt) {
     $body = @{
-        service_id = $SERVICE_ID
-        source     = "backup-folder"
-        status     = $status
-        message    = $message
-        payload    = $payload
+        service_id       = $SERVICE_ID
+        job_name         = $jobName
+        status           = $status
+        size_bytes       = $sizeBytes
+        details          = $details
+        backed_up_at     = $backedUpAt
+        script_version   = $SCRIPT_VERSION
     } | ConvertTo-Json -Compress -Depth 5
     try {
-        Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $body -ErrorAction Stop | Out-Null
-        Write-Log "Heartbeat enviado: $status — $message"
+        Invoke-RestMethod -Uri $BACKUP_INGEST_URL -Method POST -Headers $headers -Body $body -ErrorAction Stop | Out-Null
+        Write-Log "✅ Backup reportado: $status — $jobName"
     } catch {
-        Write-Log "ERROR al enviar heartbeat: $_"
+        Write-Log "❌ ERROR al reportar backup: $_"
     }
-    Invoke-Kuma -Status $(if ($status -eq 'error') { 'down' } elseif ($status -eq 'warning') { 'warn' } else { 'up' }) -Msg $message
+    Invoke-Kuma -Status $(if ($status -eq 'failed') { 'down' } elseif ($status -eq 'warning') { 'warn' } else { 'up' }) -Msg $jobName
 }
 
 # ---------- Verificar carpeta raíz ----------
 if (-not (Test-Path $BACKUP_PATH)) {
     Write-Log "ERROR: no se encontró $BACKUP_PATH"
-    Send-Heartbeat "error" "Carpeta de respaldos no encontrada: $BACKUP_PATH" @{ path = $BACKUP_PATH }
+    Send-BackupReport "failed" "Backup Carpetas" 0 "Carpeta raíz no encontrada: $BACKUP_PATH" (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     exit 1
 }
 
@@ -78,7 +84,7 @@ $folders = Get-ChildItem -Path $BACKUP_PATH -Directory |
 
 if (-not $folders) {
     Write-Log "ERROR: no hay carpetas en $BACKUP_PATH"
-    Send-Heartbeat "error" "Sin carpetas de respaldo en $BACKUP_PATH" @{ path = $BACKUP_PATH }
+    Send-BackupReport "failed" "Backup Carpetas" 0 "Sin carpetas en $BACKUP_PATH" (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     exit 1
 }
 
@@ -88,43 +94,36 @@ $ageHours    = [math]::Round(((Get-Date) - $latestDate).TotalHours, 1)
 $latestName  = $latest.Name
 
 # ---------- Tamaño de la carpeta más reciente ----------
-$sizeMB = 0
+$sizeBytes = 0
 try {
-    $sizeMB = [math]::Round(
+    $sizeBytes = [long](
         (Get-ChildItem -Path $latest.FullName -Recurse -File -ErrorAction SilentlyContinue |
-         Measure-Object -Property Length -Sum).Sum / 1MB, 1)
+         Measure-Object -Property Length -Sum).Sum)
 } catch {}
+$sizeMB = [math]::Round($sizeBytes / 1MB, 1)
 
 Write-Log "Última carpeta: $latestName | Edad: ${ageHours}h | Tamaño: ${sizeMB} MB | Total carpetas: $($folders.Count)"
 
 # ---------- Evaluación ----------
-$status  = "ok"
+$status  = "success"
 $issues  = @()
 
 if ($ageHours -gt $MAX_AGE_HOURS) {
-    $status = "error"
+    $status = "failed"
     $issues += "Sin respaldo nuevo hace ${ageHours}h (máx ${MAX_AGE_HOURS}h)"
 }
 
 if ($sizeMB -lt $MIN_SIZE_MB -and $sizeMB -gt 0) {
-    if ($status -eq "ok") { $status = "warning" }
+    if ($status -eq "success") { $status = "warning" }
     $issues += "Carpeta muy pequeña: ${sizeMB} MB (mín ${MIN_SIZE_MB} MB)"
 }
 
-if ($issues.Count -gt 0) {
-    $message = ($issues -join " | ")
+$details = if ($issues.Count -gt 0) {
+    "$latestName — " + ($issues -join " | ")
 } else {
-    $message = "Respaldo OK - $latestName (${ageHours}h, ${sizeMB} MB)"
+    "$latestName (${ageHours}h, ${sizeMB} MB) — $($folders.Count) carpetas"
 }
 
-$payload = @{
-    latest_folder  = $latestName
-    latest_date    = $latestDate.ToString("yyyy-MM-ddTHH:mm:ss")
-    age_hours      = $ageHours
-    size_mb        = $sizeMB
-    total_folders  = $folders.Count
-    backup_path    = $BACKUP_PATH
-    script_version = $SCRIPT_VERSION
-}
+$backedUpAt = $latestDate.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
-Send-Heartbeat $status $message $payload
+Send-BackupReport $status "Backup Carpetas - $BACKUP_PATH" $sizeBytes $details $backedUpAt

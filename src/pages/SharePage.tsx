@@ -551,25 +551,6 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
               const payload = h.payload as Record<string, any>;
               const dot = h.status === 'ok' ? 'bg-emerald-500' : h.status === 'warning' ? 'bg-amber-500' : 'bg-red-500';
 
-              if (h.source === 'backup-folder') {
-                const folder = payload?.latest_folder != null ? String(payload.latest_folder) : null;
-                const age = payload?.age_hours != null ? Number(payload.age_hours) : null;
-                const size = payload?.size_mb != null ? Number(payload.size_mb) : null;
-                return (
-                  <div key={h.service_id + '-backup'} className="bg-[#1E293B] rounded-xl border border-white/5 px-4 py-3 flex items-center gap-3">
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white">{svc?.business_name || svc?.name || h.service_id}</p>
-                      {folder && <p className="text-xs text-slate-400">{folder}</p>}
-                    </div>
-                    <div className="flex gap-3 text-xs text-slate-500 shrink-0">
-                      {size != null && <span>{size} MB</span>}
-                      {age != null && <span className={age > 48 ? 'text-red-400 font-semibold' : age > 25 ? 'text-amber-400 font-semibold' : 'text-slate-500'}>{age}h ago</span>}
-                    </div>
-                  </div>
-                );
-              }
-
               const cpu = payload?.cpu_pct != null ? Number(payload.cpu_pct) : null;
               const disk = payload?.disk_pct != null ? Number(payload.disk_pct) : null;
               const ram = payload?.ram_pct != null ? Number(payload.ram_pct) : null;
@@ -1024,7 +1005,7 @@ function ServiceCatalog({ services, projects, getTypeName, getProjectName, expan
       expanded={expandedService === s.id} onToggle={() => setExpandedService(expandedService === s.id ? null : s.id)}
       heartbeats={heartbeats.filter(h => h.service_id === s.id)}
       backups={backups.filter(b => b.service_id === s.id)}
-      latestHealth={systemHeartbeats.find(h => h.service_id === s.id && h.source !== 'db-check') ?? null}
+      latestHealth={systemHeartbeats.find(h => h.service_id === s.id && h.source !== 'db-check' && h.source !== 'backup-folder') ?? null}
       latestDbCheck={latestDbCheck[s.id] ?? null}
       showCosts={showCosts} />
   ));
