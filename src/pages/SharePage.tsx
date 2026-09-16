@@ -750,10 +750,7 @@ function StatCard({ label, value, accent = false, tooltip }: { label: string; va
 }
 
 function backupIcon(jobName: string): string {
-  const n = jobName.toLowerCase();
-  if (n.includes('kopia') || n.includes('cloud') || n.includes('azure') || n.includes('b2') ||
-      n.includes('backblaze') || n.includes('s3') || n.includes('offsite') || n.includes('remote'))
-    return '☁️';
+  if (jobName.toLowerCase().includes('kopia')) return '☁️';
   return '💾';
 }
 
