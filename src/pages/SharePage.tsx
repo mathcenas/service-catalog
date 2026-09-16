@@ -749,6 +749,14 @@ function StatCard({ label, value, accent = false, tooltip }: { label: string; va
   );
 }
 
+function backupIcon(jobName: string): string {
+  const n = jobName.toLowerCase();
+  if (n.includes('kopia') || n.includes('cloud') || n.includes('azure') || n.includes('b2') ||
+      n.includes('backblaze') || n.includes('s3') || n.includes('offsite') || n.includes('remote'))
+    return '☁️';
+  return '💾';
+}
+
 function BackupStatus({ services, backups }: { services: Service[]; backups: ServiceBackup[] }) {
   const withBackup = services.filter(s => s.last_backup_at || backups.some(b => b.service_id === s.id));
   if (withBackup.length === 0) return null;
@@ -826,7 +834,9 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
                           <span className="text-sm font-medium text-white mr-2">{s.business_name || s.name}</span>
                         )}
                         {jobName && (
-                          <span className="text-xs text-slate-400">{jobName}</span>
+                          <span className="text-xs text-slate-400">
+                            <span className="mr-1">{backupIcon(jobName)}</span>{jobName}
+                          </span>
                         )}
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
