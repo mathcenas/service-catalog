@@ -172,7 +172,7 @@ export function SharePage({ token }: Props) {
         const [{ data: hbData }, { data: sysHbData }, { data: backupsData }, { data: uptimeData }] = await Promise.all([
           supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).eq('source', 'speedtest').gte('received_at', since48h).order('received_at', { ascending: true }),
           supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check']).gte('received_at', new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
-          supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(50),
+          supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(100),
           supabase.from('uptime_events').select('id,service_id,monitor_name,event_type,message,duration_seconds,occurred_at').in('service_id', serviceIds).gte('occurred_at', since30d).order('occurred_at', { ascending: false }),
         ]);
         setHeartbeats(hbData || []);
@@ -201,7 +201,7 @@ export function SharePage({ token }: Props) {
       if (serviceIds.length === 0) return;
       const [{ data: sysHbData }, { data: backupsData }] = await Promise.all([
         supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check']).gte('received_at', new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
-        supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(50),
+        supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(100),
       ]);
       if (sysHbData) setSystemHeartbeats(sysHbData);
       if (backupsData) setBackups(backupsData);
@@ -753,6 +753,19 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
   const withBackup = services.filter(s => s.last_backup_at || backups.some(b => b.service_id === s.id));
   if (withBackup.length === 0) return null;
 
+  function jobDotColor(status: string, hoursOld: number) {
+    if (status === 'failed') return 'bg-red-500';
+    if (status === 'warning') return 'bg-amber-500';
+    if (hoursOld > 48) return 'bg-red-500';
+    if (hoursOld > 24) return 'bg-amber-500';
+    return 'bg-emerald-500';
+  }
+  function jobTextColor(status: string, hoursOld: number) {
+    if (status === 'failed' || hoursOld > 48) return 'text-red-400';
+    if (status === 'warning' || hoursOld > 24) return 'text-amber-400';
+    return 'text-slate-400';
+  }
+
   return (
     <section>
       <div className="flex items-center gap-2 mb-3">
@@ -762,49 +775,83 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
       </div>
       <div className="bg-[#1E293B] rounded-xl border border-white/5 divide-y divide-white/5">
         {withBackup.map(s => {
-          // Prefer the most recent entry from history table; fall back to services.last_backup_at
-          const recent = backups.filter(b => b.service_id === s.id).slice(0, 7);
-          const lastBackup = recent[0];
-          const displayAt = lastBackup?.backed_up_at || s.last_backup_at!;
-          const age = Date.now() - new Date(displayAt).getTime();
-          const hoursOld = age / (1000 * 60 * 60);
-          const isStale = hoursOld > 48;
-          const isWarning = hoursOld > 24 && hoursOld <= 48;
+          const svcBackups = backups.filter(b => b.service_id === s.id);
 
-          const lastStatus = lastBackup?.status || 'success';
-          const dotColor = lastStatus === 'failed' ? 'bg-red-500' : lastStatus === 'warning' ? 'bg-amber-500'
-            : isStale ? 'bg-red-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500';
+          // Group by job_name, preserving order (most recent first per group)
+          const byJob = new Map<string, ServiceBackup[]>();
+          for (const b of svcBackups) {
+            const key = b.job_name || '';
+            if (!byJob.has(key)) byJob.set(key, []);
+            byJob.get(key)!.push(b);
+          }
+
+          // Fallback: no history entries, use service.last_backup_at
+          if (byJob.size === 0) {
+            const hoursOld = (Date.now() - new Date(s.last_backup_at!).getTime()) / 3600000;
+            return (
+              <div key={s.id} className="px-4 py-3 flex items-center gap-3">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${jobDotColor('success', hoursOld)}`} />
+                <span className="text-sm font-medium text-white flex-1">{s.business_name || s.name}</span>
+                {s.last_backup_size_bytes != null && (
+                  <span className="text-xs text-slate-400 bg-[#0B192C] px-2 py-0.5 rounded-full font-medium">
+                    {formatBytes(s.last_backup_size_bytes)}
+                  </span>
+                )}
+                <span className={`text-xs font-medium ${jobTextColor('success', hoursOld)}`}>
+                  {formatTimeAgo(s.last_backup_at!)}
+                </span>
+              </div>
+            );
+          }
+
+          const jobs = [...byJob.entries()];
+          const multiJob = jobs.length > 1;
 
           return (
-            <div key={s.id} className="px-4 py-3">
-              <div className="flex items-center gap-3">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
-                <div className="flex-1 min-w-0">
-                  <span className="text-sm font-medium text-white">{s.business_name || s.name}</span>
-                  {lastBackup?.job_name && (
-                    <span className="text-xs text-slate-400 ml-2">{lastBackup.job_name}</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  {s.last_backup_size_bytes != null && (
-                    <span className="text-xs text-slate-400 bg-[#0B192C] px-2 py-0.5 rounded-full font-medium">
-                      {formatBytes(s.last_backup_size_bytes)}
-                    </span>
-                  )}
-                  <span className={`text-xs font-medium ${isStale || lastStatus === 'failed' ? 'text-red-400' : isWarning || lastStatus === 'warning' ? 'text-amber-400' : 'text-slate-400'}`}>
-                    {formatTimeAgo(displayAt)}
-                  </span>
-                </div>
-              </div>
-              {recent.length > 1 && (
-                <div className="flex items-center gap-1 mt-2 ml-5">
-                  <span className="text-[10px] text-slate-500 mr-1">Last {recent.length}</span>
-                  {recent.map(b => (
-                    <span key={b.id} title={`${b.status} — ${formatTimeAgo(b.backed_up_at)}`}
-                      className={`w-3 h-3 rounded-sm ${b.status === 'failed' ? 'bg-red-500' : b.status === 'warning' ? 'bg-amber-400' : 'bg-emerald-500'}`} />
-                  ))}
-                </div>
+            <div key={s.id} className="px-4 py-3 space-y-2.5">
+              {multiJob && (
+                <p className="text-sm font-medium text-white">{s.business_name || s.name}</p>
               )}
+              {jobs.map(([jobName, entries]) => {
+                const last = entries[0];
+                const hoursOld = (Date.now() - new Date(last.backed_up_at).getTime()) / 3600000;
+                const history = entries.slice(0, 7);
+
+                return (
+                  <div key={jobName} className={multiJob ? 'ml-3' : ''}>
+                    <div className="flex items-center gap-3">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${jobDotColor(last.status, hoursOld)}`} />
+                      <div className="flex-1 min-w-0">
+                        {!multiJob && (
+                          <span className="text-sm font-medium text-white mr-2">{s.business_name || s.name}</span>
+                        )}
+                        {jobName && (
+                          <span className="text-xs text-slate-400">{jobName}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        {last.size_bytes != null && last.size_bytes > 0 && (
+                          <span className="text-xs text-slate-400 bg-[#0B192C] px-2 py-0.5 rounded-full font-medium">
+                            {formatBytes(last.size_bytes)}
+                          </span>
+                        )}
+                        <span className={`text-xs font-medium ${jobTextColor(last.status, hoursOld)}`}>
+                          {formatTimeAgo(last.backed_up_at)}
+                        </span>
+                      </div>
+                    </div>
+                    {history.length > 1 && (
+                      <div className="flex items-center gap-1 mt-1.5 ml-5">
+                        <span className="text-[10px] text-slate-500 mr-1">Last {history.length}</span>
+                        {history.map(b => (
+                          <span key={b.id} title={`${b.status} — ${formatTimeAgo(b.backed_up_at)}`}
+                            className={`w-3 h-3 rounded-sm ${b.status === 'failed' ? 'bg-red-500' : b.status === 'warning' ? 'bg-amber-400' : 'bg-emerald-500'}`} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           );
         })}
