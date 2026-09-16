@@ -14,7 +14,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.1.0"
+$SCRIPT_VERSION = "1.1.1"
 
 # Invoke-Kuma puede no estar definida en todos los config.ps1
 if (-not (Get-Command Invoke-Kuma -ErrorAction SilentlyContinue)) {
@@ -99,7 +99,7 @@ if (-not $folders) {
 }
 
 $latest      = $folders[0]
-$latestDate  = $latest.LastWriteTime
+$latestDate  = if ($latest.CreationTime -gt $latest.LastWriteTime) { $latest.CreationTime } else { $latest.LastWriteTime }
 $ageHours    = [math]::Round(((Get-Date) - $latestDate).TotalHours, 1)
 $latestName  = $latest.Name
 
