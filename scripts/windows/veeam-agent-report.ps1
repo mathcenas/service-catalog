@@ -6,7 +6,7 @@
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"
-$SCRIPT_VERSION = "1.1.1"
+$SCRIPT_VERSION = "1.1.2"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
@@ -50,11 +50,13 @@ if ($lastProcessedTime -and $lastProcessedTime -gt $since) {
 
 # ---------- Leer sesiones del Event Log ----------
 $events = @()
+# ID 190 = finished (Failed/Warning/Success), ID 191 = finished with Error and will be retried
+$eventIds = @(190, 191)
 try {
     # 1. Intentar en log dedicado 'Veeam Agent'
     $events = Get-WinEvent -FilterHashtable @{
         LogName   = 'Veeam Agent'
-        Id        = 190
+        Id        = $eventIds
         StartTime = $since
     } -ErrorAction Stop
 } catch {
@@ -63,7 +65,7 @@ try {
         $events = Get-WinEvent -FilterHashtable @{
             LogName      = 'Application'
             ProviderName = 'Veeam Agent'
-            Id           = 190
+            Id           = $eventIds
             StartTime    = $since
         } -ErrorAction Stop
     } catch {
