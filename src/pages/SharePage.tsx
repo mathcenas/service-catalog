@@ -7,7 +7,7 @@ import {
 import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapItemUpdate, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat, ClientApp } from '../lib/supabase';
 
 type Props = { token: string };
-type Section = 'overview' | 'services' | 'licenses' | 'changes' | 'hours' | 'support';
+type Section = 'overview' | 'services' | 'licenses' | 'changes' | 'hours' | 'support' | 'tickets';
 
 interface ServiceBackup {
   id: string;
@@ -517,11 +517,11 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
         </section>
       )}
 
-      {licenses.filter(l => { const d = l.expiration_date ? Math.ceil((new Date(l.expiration_date).getTime() - Date.now()) / 86400000) : null; return d !== null && d >= 0 && d <= 30; }).length > 0 && (
+      {(() => { const expiring = licenses.filter(l => { const d = l.expiration_date ? Math.ceil((new Date(l.expiration_date).getTime() - Date.now()) / 86400000) : null; return d !== null && d >= 0 && d <= 30; }); return expiring.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Licencias próximas a vencer</h2>
           <div className="space-y-2">
-            {licenses.filter(l => { const d = l.expiration_date ? Math.ceil((new Date(l.expiration_date).getTime() - Date.now()) / 86400000) : null; return d !== null && d >= 0 && d <= 30; }).map(lic => {
+            {expiring.map(lic => {
               const days = Math.ceil((new Date(lic.expiration_date!).getTime() - Date.now()) / 86400000);
               return (
                 <div key={lic.id} className="bg-amber-50 dark:bg-amber-950/40 rounded-lg border border-amber-200 dark:border-amber-800 px-4 py-3 flex items-center justify-between gap-3">
@@ -537,7 +537,7 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
             })}
           </div>
         </section>
-      )}
+      ); })()}
 
       {healthEntries.length > 0 && (
         <section>
@@ -551,31 +551,12 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
               const payload = h.payload as Record<string, any>;
               const dot = h.status === 'ok' ? 'bg-emerald-500' : h.status === 'warning' ? 'bg-amber-500' : 'bg-red-500';
 
-              if (h.source === 'backup-folder') {
-                const folder = payload?.latest_folder != null ? String(payload.latest_folder) : null;
-                const age = payload?.age_hours != null ? Number(payload.age_hours) : null;
-                const size = payload?.size_mb != null ? Number(payload.size_mb) : null;
-                return (
-                  <div key={h.service_id + '-backup'} className="bg-[#1E293B] rounded-xl border border-white/5 px-4 py-3 flex items-center gap-3">
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white">{svc?.business_name || svc?.name || h.service_id}</p>
-                      {folder && <p className="text-xs text-slate-400">{folder}</p>}
-                    </div>
-                    <div className="flex gap-3 text-xs text-slate-500 shrink-0">
-                      {size != null && <span>{size} MB</span>}
-                      {age != null && <span className={age > 48 ? 'text-red-400 font-semibold' : age > 25 ? 'text-amber-400 font-semibold' : 'text-slate-500'}>{age}h ago</span>}
-                    </div>
-                  </div>
-                );
-              }
-
               const cpu = payload?.cpu_pct != null ? Number(payload.cpu_pct) : null;
               const disk = payload?.disk_pct != null ? Number(payload.disk_pct) : null;
               const ram = payload?.ram_pct != null ? Number(payload.ram_pct) : null;
               const uptime = payload?.uptime_str != null ? String(payload.uptime_str) : null;
               return (
-                <div key={h.service_id} className="bg-[#1E293B] rounded-xl border border-white/5 px-4 py-3 flex items-center gap-3">
+                <div key={h.id} className="bg-[#1E293B] rounded-xl border border-white/5 px-4 py-3 flex items-center gap-3">
                   <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white">{svc?.business_name || svc?.name || h.service_id}</p>
@@ -1024,7 +1005,7 @@ function ServiceCatalog({ services, projects, getTypeName, getProjectName, expan
       expanded={expandedService === s.id} onToggle={() => setExpandedService(expandedService === s.id ? null : s.id)}
       heartbeats={heartbeats.filter(h => h.service_id === s.id)}
       backups={backups.filter(b => b.service_id === s.id)}
-      latestHealth={systemHeartbeats.find(h => h.service_id === s.id && h.source !== 'db-check') ?? null}
+      latestHealth={systemHeartbeats.find(h => h.service_id === s.id && h.source !== 'db-check' && h.source !== 'backup-folder') ?? null}
       latestDbCheck={latestDbCheck[s.id] ?? null}
       showCosts={showCosts} />
   ));

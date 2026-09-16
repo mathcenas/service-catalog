@@ -54,6 +54,7 @@ $Scripts = [ordered]@{
   "smb-check.ps1"                 = "scripts/windows/smb-check.ps1"
   "server-snapshot.ps1"           = "scripts/windows/server-snapshot.ps1"
   "device-report.ps1"             = "scripts/windows/device-report.ps1"
+  "setup-scheduled-tasks.ps1"     = "scripts/windows/setup-scheduled-tasks.ps1"
   "update-scripts.ps1"            = "scripts/windows/update-scripts.ps1"
 }
 # Nota: config.ps1 se actualiza pero NO sobreescribe - se guarda como config.ps1.new

@@ -42,6 +42,7 @@ Deno.serve(async (req: Request) => {
       .from("client_share_tokens")
       .select("client_id, user_id")
       .eq("token", token)
+      .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
       .maybeSingle();
 
     if (!tokenRow) {
@@ -88,7 +89,8 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const replyTo = client.email;
+    const replyTo = client.email || undefined;
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const toEmail = Deno.env.get("RESEND_REPLY_TO") || "mathias@cenas.uy";
 
     const priorityColors: Record<string, string> = {
@@ -121,21 +123,21 @@ Deno.serve(async (req: Request) => {
           <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
             <tr>
               <td style="padding:8px 12px;background:${B.bg};border:1px solid ${B.border};font-size:12px;color:${B.textMid};width:120px;">Cliente</td>
-              <td style="padding:8px 12px;border:1px solid ${B.border};font-size:14px;color:${B.primary};font-weight:500;">${client.company_name}</td>
+              <td style="padding:8px 12px;border:1px solid ${B.border};font-size:14px;color:${B.primary};font-weight:500;">${esc(client.company_name)}</td>
             </tr>
             <tr>
               <td style="padding:8px 12px;background:${B.bg};border:1px solid ${B.border};font-size:12px;color:${B.textMid};">Contacto</td>
-              <td style="padding:8px 12px;border:1px solid ${B.border};font-size:14px;color:${B.textMain};">${client.contact_name || client.email}</td>
+              <td style="padding:8px 12px;border:1px solid ${B.border};font-size:14px;color:${B.textMain};">${esc(client.contact_name || client.email || "")}</td>
             </tr>
             <tr>
               <td style="padding:8px 12px;background:${B.bg};border:1px solid ${B.border};font-size:12px;color:${B.textMid};">Servicio</td>
-              <td style="padding:8px 12px;border:1px solid ${B.border};font-size:14px;color:${B.textMain};">${serviceName}</td>
+              <td style="padding:8px 12px;border:1px solid ${B.border};font-size:14px;color:${B.textMain};">${esc(serviceName)}</td>
             </tr>
           </table>
 
           <div style="background:${B.bg};border:1px solid ${B.border};border-radius:8px;padding:16px;margin-bottom:20px;">
-            <p style="color:${B.primary};margin:0 0 8px;font-size:15px;font-weight:600;">${subject}</p>
-            <p style="color:#475569;margin:0;font-size:14px;line-height:1.6;white-space:pre-wrap;">${message}</p>
+            <p style="color:${B.primary};margin:0 0 8px;font-size:15px;font-weight:600;">${esc(subject)}</p>
+            <p style="color:#475569;margin:0;font-size:14px;line-height:1.6;white-space:pre-wrap;">${esc(message)}</p>
           </div>
 
           <p style="color:${B.textSoft};font-size:11px;margin:0;text-align:center;">
@@ -156,7 +158,7 @@ Deno.serve(async (req: Request) => {
         from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support <notificaciones@updates.cenas.uy>",
         reply_to: replyTo,
         to: [toEmail],
-        subject: `[Support - ${priority}] ${subject} (${client.company_name})`,
+        subject: `[Support - ${priority}] ${esc(subject)} (${esc(client.company_name)})`,
         html: htmlBody,
       }),
     });
