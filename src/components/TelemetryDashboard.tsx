@@ -66,19 +66,40 @@ interface DiskSmartEntry {
   reallocated_sectors: number | null;
 }
 
-// Extract readable metrics from payload based on source
-// Latest known script versions — bump here when a script is updated
-const LATEST_SCRIPT_VERSIONS: Record<string, string> = {
-  'system-health':   '1.4.0',
-  'mikrotik':        '1.0.0',
-  'backup-folder':   '1.0.0',
-  'server-snapshot': '1.0.0',
-  'speedtest':       '1.0.0',
-  'network':         '1.0.0',
-  'rdp':             '1.0.0',
+// Maps heartbeat source → path in the repo to fetch the latest version from
+const SCRIPT_SOURCE_FILES: Record<string, string> = {
+  'system-health':   'scripts/windows/system-health.ps1',
+  'rdp':             'scripts/windows/system-health.ps1',
+  'network':         'scripts/windows/system-health.ps1',
+  'server-snapshot': 'scripts/windows/server-snapshot.ps1',
+  'speedtest':       'scripts/windows/system-health.ps1',
+  'mikrotik':        'scripts/windows/system-health.ps1',
 };
 
-function MetricChips({ hb }: { hb: ServiceHeartbeat }) {
+async function fetchLatestVersions(): Promise<Record<string, string>> {
+  const base = 'https://raw.githubusercontent.com/mathcenas/service-catalog/main/';
+  // Dedupe: multiple sources can share the same file
+  const filePaths = [...new Set(Object.values(SCRIPT_SOURCE_FILES))];
+  const fileVersions: Record<string, string> = {};
+
+  await Promise.all(filePaths.map(async path => {
+    try {
+      const res = await fetch(base + path, { cache: 'no-store' });
+      if (!res.ok) return;
+      const text = await res.text();
+      const match = text.match(/^\$SCRIPT_VERSION\s*=\s*"([^"]+)"/m);
+      if (match) fileVersions[path] = match[1];
+    } catch { /* network failure — skip */ }
+  }));
+
+  const result: Record<string, string> = {};
+  for (const [source, path] of Object.entries(SCRIPT_SOURCE_FILES)) {
+    if (fileVersions[path]) result[source] = fileVersions[path];
+  }
+  return result;
+}
+
+function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersions: Record<string, string> }) {
   const p = hb.payload as Record<string, unknown>;
   if (!p) return null;
 
@@ -144,7 +165,7 @@ function MetricChips({ hb }: { hb: ServiceHeartbeat }) {
 
   // Script version chip
   const scriptVer = p.script_version != null ? String(p.script_version) : null;
-  const latestVer = LATEST_SCRIPT_VERSIONS[hb.source];
+  const latestVer = latestVersions[hb.source];
   const versionOutdated = !!latestVer && scriptVer !== null && scriptVer !== latestVer;
   const versionUnknown  = !!latestVer && scriptVer === null;
   if (scriptVer) {
@@ -208,6 +229,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
   const [companyName, setCompanyName] = useState<string>('Cenas-Support');
   const [sendingReview, setSendingReview] = useState<string | null>(null);
   const [reviewLinks, setReviewLinks] = useState<Record<string, string>>({});
+  const [latestVersions, setLatestVersions] = useState<Record<string, string>>({});
 
   const load = async () => {
     setLoading(true);
@@ -227,7 +249,10 @@ export function TelemetryDashboard({ services, clients }: Props) {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    fetchLatestVersions().then(setLatestVersions);
+  }, []);
 
   const getServiceName = (id: string) => {
     const s = services.find(sv => sv.id === id);
@@ -389,9 +414,10 @@ export function TelemetryDashboard({ services, clients }: Props) {
   }, [serviceCards]);
 
   const outdatedScripts = useMemo(() => {
+    if (Object.keys(latestVersions).length === 0) return [];
     const results: { serviceId: string; serviceName: string; source: string; current: string; latest: string }[] = [];
     for (const [key, hb] of latestPerServiceSource.entries()) {
-      const latest = LATEST_SCRIPT_VERSIONS[hb.source];
+      const latest = latestVersions[hb.source];
       if (!latest) continue;
       const current = hb.payload && (hb.payload as Record<string, unknown>).script_version != null
         ? String((hb.payload as Record<string, unknown>).script_version)
@@ -408,7 +434,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
       }
     }
     return results;
-  }, [latestPerServiceSource, services]);
+  }, [latestPerServiceSource, latestVersions, services]);
 
   const filteredCards = useMemo(() => {
     let list = serviceCards;
@@ -640,7 +666,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
                             }`}>{stale ? 'stale' : hb.status}</span>
                           </div>
                         </div>
-                        <MetricChips hb={hb} />
+                        <MetricChips hb={hb} latestVersions={latestVersions} />
                         {hb.source === 'system-health' && Array.isArray((hb.payload as Record<string,unknown>)?.smb_sessions) && ((hb.payload as Record<string,unknown>).smb_sessions as {user:string;machine:string}[]).length > 0 && (
                           <div className="mt-1.5 flex flex-wrap gap-1">
                             {((hb.payload as Record<string,unknown>).smb_sessions as {user:string;machine:string}[]).map((s, i) => (
@@ -722,7 +748,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
                             <td colSpan={6} className="px-6 py-4">
                               <div className="mb-3">
                                 <div className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Metrics</div>
-                                <MetricChips hb={hb} />
+                                <MetricChips hb={hb} latestVersions={latestVersions} />
                               </div>
                               <div className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Raw Payload</div>
                               <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 text-xs overflow-x-auto max-h-48 font-mono">
