@@ -156,12 +156,14 @@ export function ShareTokenModal({ client, onClose }: Props) {
 
   const saveEdit = async (tokenId: string) => {
     setSaving(true);
-    await supabase
+    const { error } = await supabase
       .from('client_share_tokens')
       .update({ service_ids: serviceIdsForInsert(editSelected) })
       .eq('id', tokenId);
-    await fetchAll();
-    setEditingToken(null);
+    if (!error) {
+      await fetchAll();
+      setEditingToken(null);
+    }
     setSaving(false);
   };
 

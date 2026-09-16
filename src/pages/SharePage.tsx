@@ -7,7 +7,7 @@ import {
 import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapItemUpdate, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat, ClientApp } from '../lib/supabase';
 
 type Props = { token: string };
-type Section = 'overview' | 'services' | 'licenses' | 'changes' | 'hours' | 'support';
+type Section = 'overview' | 'services' | 'licenses' | 'changes' | 'hours' | 'support' | 'tickets';
 
 interface ServiceBackup {
   id: string;
@@ -517,11 +517,11 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
         </section>
       )}
 
-      {licenses.filter(l => { const d = l.expiration_date ? Math.ceil((new Date(l.expiration_date).getTime() - Date.now()) / 86400000) : null; return d !== null && d >= 0 && d <= 30; }).length > 0 && (
+      {(() => { const expiring = licenses.filter(l => { const d = l.expiration_date ? Math.ceil((new Date(l.expiration_date).getTime() - Date.now()) / 86400000) : null; return d !== null && d >= 0 && d <= 30; }); return expiring.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Licencias próximas a vencer</h2>
           <div className="space-y-2">
-            {licenses.filter(l => { const d = l.expiration_date ? Math.ceil((new Date(l.expiration_date).getTime() - Date.now()) / 86400000) : null; return d !== null && d >= 0 && d <= 30; }).map(lic => {
+            {expiring.map(lic => {
               const days = Math.ceil((new Date(lic.expiration_date!).getTime() - Date.now()) / 86400000);
               return (
                 <div key={lic.id} className="bg-amber-50 dark:bg-amber-950/40 rounded-lg border border-amber-200 dark:border-amber-800 px-4 py-3 flex items-center justify-between gap-3">
@@ -537,7 +537,7 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
             })}
           </div>
         </section>
-      )}
+      ); })()}
 
       {healthEntries.length > 0 && (
         <section>
@@ -575,7 +575,7 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
               const ram = payload?.ram_pct != null ? Number(payload.ram_pct) : null;
               const uptime = payload?.uptime_str != null ? String(payload.uptime_str) : null;
               return (
-                <div key={h.service_id} className="bg-[#1E293B] rounded-xl border border-white/5 px-4 py-3 flex items-center gap-3">
+                <div key={h.id} className="bg-[#1E293B] rounded-xl border border-white/5 px-4 py-3 flex items-center gap-3">
                   <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white">{svc?.business_name || svc?.name || h.service_id}</p>
