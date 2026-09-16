@@ -2,7 +2,7 @@
 # config.ps1 — Configuración por cliente/servidor
 # Copiar este archivo por cada cliente y ajustar los valores
 # =============================================================
-$SCRIPT_VERSION = "1.2.0"
+$SCRIPT_VERSION = "1.2.1"
 
 $INGEST_URL    = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-backup"
 $HEARTBEAT_URL = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-heartbeat"
@@ -48,8 +48,10 @@ function Invoke-Kuma {
     try { Invoke-RestMethod -Uri $u -Method Get -TimeoutSec 10 | Out-Null } catch {}
 }
 function Invoke-KumaHealth { param([string]$Status, [string]$Msg)
-    Invoke-Kuma -Status $Status -Msg $Msg -Url (if ($KUMA_PUSH_URL_HEALTH) { $KUMA_PUSH_URL_HEALTH } else { $KUMA_PUSH_URL })
+    $url = if ($KUMA_PUSH_URL_HEALTH) { $KUMA_PUSH_URL_HEALTH } else { $KUMA_PUSH_URL }
+    Invoke-Kuma -Status $Status -Msg $Msg -Url $url
 }
 function Invoke-KumaBackup { param([string]$Status, [string]$Msg)
-    Invoke-Kuma -Status $Status -Msg $Msg -Url (if ($KUMA_PUSH_URL_BACKUP) { $KUMA_PUSH_URL_BACKUP } else { $KUMA_PUSH_URL })
+    $url = if ($KUMA_PUSH_URL_BACKUP) { $KUMA_PUSH_URL_BACKUP } else { $KUMA_PUSH_URL }
+    Invoke-Kuma -Status $Status -Msg $Msg -Url $url
 }
