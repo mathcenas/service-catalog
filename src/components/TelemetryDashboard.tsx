@@ -51,6 +51,17 @@ type Props = {
   clients: Client[];
 };
 
+interface DiskRaidEntry {
+  pool: string;
+  name: string;
+  resiliency: string;
+  health: string;
+  operational: string;
+  status: 'ok' | 'warning' | 'error';
+  size_gb: number | null;
+  allocated_gb: number | null;
+}
+
 interface DiskSmartEntry {
   dev: string;
   type: 'SSD' | 'NVMe' | 'HDD' | string;
@@ -714,6 +725,9 @@ export function TelemetryDashboard({ services, clients }: Props) {
                         <MetricChips hb={hb} latestVersions={latestVersions} />
                         {hb.source === 'system-health' && Array.isArray((hb.payload as Record<string,unknown>)?.disk_smart) && ((hb.payload as Record<string,unknown>).disk_smart as DiskSmartEntry[]).length > 0 && (
                           <DiskSmartPanel disks={(hb.payload as Record<string,unknown>).disk_smart as DiskSmartEntry[]} />
+                        )}
+                        {hb.source === 'system-health' && Array.isArray((hb.payload as Record<string,unknown>)?.disk_raid) && ((hb.payload as Record<string,unknown>).disk_raid as DiskRaidEntry[]).length > 0 && (
+                          <DiskRaidPanel volumes={(hb.payload as Record<string,unknown>).disk_raid as DiskRaidEntry[]} />
                         )}
                       </div>
                     );
@@ -1458,6 +1472,34 @@ function StatBadge({ label, value, color, onClick, active }: { label: string; va
       <div className="text-xl font-bold">{value}</div>
       <div className="text-xs font-medium opacity-80">{label}</div>
     </button>
+  );
+}
+
+function DiskRaidPanel({ volumes }: { volumes: DiskRaidEntry[] }) {
+  return (
+    <div className="mt-2 space-y-1.5">
+      {volumes.map((v, i) => {
+        const dotColor = v.status === 'ok' ? 'bg-emerald-500' : v.status === 'warning' ? 'bg-amber-400' : 'bg-red-500';
+        const labelColor = v.status === 'ok' ? 'text-emerald-700' : v.status === 'warning' ? 'text-amber-700' : 'text-red-700';
+        return (
+          <div key={i} className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-[11px]">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />
+              <span className="font-mono font-semibold text-gray-700">{v.name}</span>
+              {v.resiliency && (
+                <span className="bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-medium">{v.resiliency}</span>
+              )}
+              {v.pool && <span className="text-gray-400 text-[10px]">pool: {v.pool}</span>}
+              {v.size_gb != null && <span className="text-gray-400">{v.size_gb} GB</span>}
+              <span className={`ml-auto font-semibold ${labelColor}`}>{v.health}</span>
+            </div>
+            {v.operational && v.operational !== 'OK' && (
+              <div className="mt-0.5 text-amber-600 text-[10px]">Estado operacional: {v.operational}</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
