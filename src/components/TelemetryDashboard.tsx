@@ -219,6 +219,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [clientFilter, setClientFilter] = useState<string>('all');
+  const [outdatedExpanded, setOutdatedExpanded] = useState(false);
   const [backupSearch, setBackupSearch] = useState('');
   const [backupClientFilter, setBackupClientFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'ok' | 'warning' | 'error' | 'stale' | 'no-data'>('all');
@@ -415,8 +416,19 @@ export function TelemetryDashboard({ services, clients }: Props) {
 
   const outdatedScripts = useMemo(() => {
     if (Object.keys(latestVersions).length === 0) return [];
-    const results: { serviceId: string; serviceName: string; source: string; current: string; latest: string }[] = [];
-    for (const [key, hb] of latestPerServiceSource.entries()) {
+    const results: { serviceId: string; serviceName: string; source: string; current: string; latest: string; critical: boolean }[] = [];
+
+    function semverSteps(current: string, latest: string): number {
+      const parse = (v: string) => v.replace(/^v/, '').split('.').map(Number);
+      const [cMaj, cMin, cPatch] = parse(current);
+      const [lMaj, lMin, lPatch] = parse(latest);
+      if (isNaN(cMaj) || isNaN(lMaj)) return 1;
+      if (lMaj !== cMaj) return (lMaj - cMaj) * 100;
+      if (lMin !== cMin) return (lMin - cMin) * 10;
+      return lPatch - cPatch;
+    }
+
+    for (const [, hb] of latestPerServiceSource.entries()) {
       const latest = latestVersions[hb.source];
       if (!latest) continue;
       const current = hb.payload && (hb.payload as Record<string, unknown>).script_version != null
@@ -424,16 +436,18 @@ export function TelemetryDashboard({ services, clients }: Props) {
         : null;
       if (current === null || current !== latest) {
         const svc = services.find(s => s.id === hb.service_id);
+        const steps = current ? semverSteps(current, latest) : 99;
         results.push({
           serviceId: hb.service_id,
           serviceName: svc?.business_name || svc?.name || hb.service_id.slice(0, 8),
           source: hb.source,
           current: current ?? 'unknown',
           latest,
+          critical: steps >= 2,
         });
       }
     }
-    return results;
+    return results.sort((a, b) => (b.critical ? 1 : 0) - (a.critical ? 1 : 0));
   }, [latestPerServiceSource, latestVersions, services]);
 
   const filteredCards = useMemo(() => {
@@ -540,27 +554,58 @@ export function TelemetryDashboard({ services, clients }: Props) {
       </div>
 
       {/* Outdated scripts banner */}
-      {outdatedScripts.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-            <span className="text-sm font-semibold text-amber-800">{outdatedScripts.length} script{outdatedScripts.length !== 1 ? 's' : ''} outdated</span>
+      {outdatedScripts.length > 0 && (() => {
+        const critical = outdatedScripts.filter(s => s.critical);
+        const minor    = outdatedScripts.filter(s => !s.critical);
+        const visibleMinor = outdatedExpanded ? minor : [];
+        const chip = ({ serviceId, serviceName, source, current, latest, critical: isCrit }: typeof outdatedScripts[0]) => (
+          <div key={`${serviceId}-${source}`} className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs border ${isCrit ? 'bg-red-50 border-red-200' : 'bg-white border-amber-200'}`}>
+            <span className="font-medium text-gray-800 truncate max-w-[120px]">{serviceName}</span>
+            <span className="text-gray-400">·</span>
+            <span className={`font-mono ${isCrit ? 'text-red-700' : 'text-amber-700'}`}>{source}</span>
+            <span className="text-gray-400">·</span>
+            <span className="text-gray-400 line-through">{current}</span>
+            <span className="text-gray-400">→</span>
+            <span className="text-emerald-700 font-semibold">{latest}</span>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {outdatedScripts.map(({ serviceId, serviceName, source, current, latest }) => (
-              <div key={`${serviceId}-${source}`} className="flex items-center gap-1.5 bg-white border border-amber-200 rounded-lg px-2.5 py-1.5 text-xs">
-                <span className="font-medium text-gray-800 truncate max-w-[120px]">{serviceName}</span>
-                <span className="text-gray-400">·</span>
-                <span className="font-mono text-amber-700">{source}</span>
-                <span className="text-gray-400">·</span>
-                <span className="text-gray-400 line-through">{current}</span>
-                <span className="text-gray-400">→</span>
-                <span className="text-emerald-700 font-semibold">{latest}</span>
+        );
+        return (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span className="text-sm font-semibold text-amber-800">
+                {outdatedScripts.length} script{outdatedScripts.length !== 1 ? 's' : ''} outdated
+              </span>
+              {critical.length > 0 && (
+                <span className="text-xs bg-red-100 text-red-700 font-medium px-2 py-0.5 rounded-full">
+                  {critical.length} crítico{critical.length !== 1 ? 's' : ''} (2+ versiones)
+                </span>
+              )}
+            </div>
+            {critical.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {critical.map(chip)}
               </div>
-            ))}
+            )}
+            {minor.length > 0 && (
+              <div>
+                <button
+                  onClick={() => setOutdatedExpanded(v => !v)}
+                  className="flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 font-medium"
+                >
+                  {outdatedExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                  {outdatedExpanded ? 'Ocultar' : `Ver ${minor.length} más (un step atrás)`}
+                </button>
+                {outdatedExpanded && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {visibleMinor.map(chip)}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Filters + view toggle */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
