@@ -26,7 +26,7 @@ param(
   [switch]$Force
 )
 
-$SCRIPT_VERSION = "1.2.0"
+$SCRIPT_VERSION = "1.2.2"
 
 $ErrorActionPreference = "SilentlyContinue"
 
@@ -52,7 +52,6 @@ $Scripts = [ordered]@{
   "kopia-report.ps1"              = "scripts/windows/kopia-report.ps1"
   "report-smb-acl.ps1"            = "scripts/windows/report-smb-acl.ps1"
   "smb-check.ps1"                 = "scripts/windows/smb-check.ps1"
-  "server-snapshot.ps1"           = "scripts/windows/server-snapshot.ps1"
   "device-report.ps1"             = "scripts/windows/device-report.ps1"
   "setup-scheduled-tasks.ps1"     = "scripts/windows/setup-scheduled-tasks.ps1"
   "update-scripts.ps1"            = "scripts/windows/update-scripts.ps1"
@@ -138,6 +137,14 @@ try {
 
 # ── main ─────────────────────────────────────────────────────
 Log "update-scripts.ps1 v$SCRIPT_VERSION - repo: $GithubRepo@$GithubBranch"
+
+# Asegurar carpeta logs con permisos correctos (necesario en servidores de dominio)
+$LogsDir = Join-Path $InstallDir "logs"
+if (-not (Test-Path $LogsDir)) {
+    New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
+    icacls $LogsDir /grant "SYSTEM:(OI)(CI)F" /grant "Administrators:(OI)(CI)F" | Out-Null
+    Log "Carpeta logs creada con permisos"
+}
 
 $updated = 0; $skipped = 0; $errors = 0
 $selfUpdatePending = $null
