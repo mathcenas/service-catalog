@@ -26,7 +26,7 @@ param(
   [switch]$Force
 )
 
-$SCRIPT_VERSION = "1.2.0"
+$SCRIPT_VERSION = "1.2.1"
 
 $ErrorActionPreference = "SilentlyContinue"
 
@@ -138,6 +138,14 @@ try {
 
 # ── main ─────────────────────────────────────────────────────
 Log "update-scripts.ps1 v$SCRIPT_VERSION - repo: $GithubRepo@$GithubBranch"
+
+# Asegurar carpeta logs con permisos correctos (necesario en servidores de dominio)
+$LogsDir = Join-Path $InstallDir "logs"
+if (-not (Test-Path $LogsDir)) {
+    New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
+    icacls $LogsDir /grant "SYSTEM:(OI)(CI)F" /grant "Administrators:(OI)(CI)F" | Out-Null
+    Log "Carpeta logs creada con permisos"
+}
 
 $updated = 0; $skipped = 0; $errors = 0
 $selfUpdatePending = $null
