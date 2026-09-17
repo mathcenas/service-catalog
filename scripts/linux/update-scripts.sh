@@ -17,7 +17,7 @@
 #   GITHUB_BRANCH rama                 (default: main)
 # =============================================================
 
-SCRIPT_VERSION="1.2.0"
+SCRIPT_VERSION="1.2.1"
 GITHUB_REPO="${GITHUB_REPO:-mathcenas/service-catalog}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/srv/scripts}"
@@ -115,7 +115,10 @@ fi
 updated=0
 skipped=0
 errors=0
-self_update_tmp=""
+
+# Scripts seguros de ejecutar inmediatamente después de actualizarse
+SAFE_TO_RUN=("system-health.sh" "mikrotik-heartbeat.sh")
+AUTO_RUN_LIST=$(mktemp)
 
 for script_name in "${!SCRIPTS[@]}"; do
   (
@@ -176,6 +179,14 @@ for script_name in "${!SCRIPTS[@]}"; do
     chmod +x "$dest"
     rm -f "$tmp"
     ok "${script_name}: ${local_ver} → ${remote_ver} | sha256: ${sha:0:16}…"
+
+    # Marcar para auto-ejecución si es seguro
+    for safe in "${SAFE_TO_RUN[@]}"; do
+      if [[ "$script_name" == "$safe" ]]; then
+        echo "$dest" >> "$AUTO_RUN_LIST"
+        break
+      fi
+    done
     exit 0
   )
   rc=$?
@@ -186,14 +197,24 @@ for script_name in "${!SCRIPTS[@]}"; do
   esac
 done
 
-# Aplicar actualización pendiente de este mismo script
-if [[ -f "${INSTALL_DIR}/update-scripts.sh.new" ]]; then
-  mv "${INSTALL_DIR}/update-scripts.sh.new" "${INSTALL_DIR}/update-scripts.sh"
-  chmod +x "${INSTALL_DIR}/update-scripts.sh"
-  log "update-scripts.sh reemplazado — activo en la próxima ejecución"
-fi
-
 if [[ "$CHECK_ONLY" == "false" ]]; then
   write_versions_file
   log "Listo — actualizados: ${updated} · sin cambios: ${skipped} · errores: ${errors}"
+fi
+
+# Ejecutar scripts recién actualizados (B)
+if [[ -s "$AUTO_RUN_LIST" ]]; then
+  while IFS= read -r script; do
+    log "▶ Ejecutando $(basename "$script") (recién actualizado)..."
+    bash "$script" &
+  done < "$AUTO_RUN_LIST"
+fi
+rm -f "$AUTO_RUN_LIST"
+
+# Aplicar actualización de este mismo script y relanzar (A)
+if [[ -f "${INSTALL_DIR}/update-scripts.sh.new" ]]; then
+  mv "${INSTALL_DIR}/update-scripts.sh.new" "${INSTALL_DIR}/update-scripts.sh"
+  chmod +x "${INSTALL_DIR}/update-scripts.sh"
+  log "↩ update-scripts.sh actualizado — relanzando nueva versión..."
+  exec "${INSTALL_DIR}/update-scripts.sh" "$@"
 fi

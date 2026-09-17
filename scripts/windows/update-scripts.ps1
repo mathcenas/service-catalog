@@ -26,7 +26,7 @@ param(
   [switch]$Force
 )
 
-$SCRIPT_VERSION = "1.2.2"
+$SCRIPT_VERSION = "1.2.3"
 
 $ErrorActionPreference = "SilentlyContinue"
 
@@ -148,6 +148,14 @@ if (-not (Test-Path $LogsDir)) {
 
 $updated = 0; $skipped = 0; $errors = 0
 $selfUpdatePending = $null
+$scriptsToRun = [System.Collections.Generic.List[string]]::new()
+
+# Scripts seguros de ejecutar inmediatamente después de actualizarse
+$SafeToRun = @(
+  'system-health.ps1', 'system-health-server.ps1',
+  'veeam-agent-report.ps1', 'veeam-report.ps1',
+  'smb-check.ps1', 'report-smb-acl.ps1'
+)
 
 foreach ($scriptName in $Scripts.Keys) {
   try {
@@ -203,6 +211,10 @@ foreach ($scriptName in $Scripts.Keys) {
     Ok "${scriptName}: $localVer -> $remoteVer | sha256: $($sha.Substring(0,16))..."
     $updated++
 
+    if ($SafeToRun -contains $scriptName) {
+      $scriptsToRun.Add($dest)
+    }
+
   } catch {
     Err "${scriptName}: error inesperado - $($_.Exception.Message)"
     $errors++
@@ -227,4 +239,22 @@ if (-not $Check) {
   Log "Listo - actualizados: $updated - sin cambios: $skipped - errores: $errors"
   Write-VersionsFile
   Log "Versiones guardadas en installed-versions.json"
+}
+
+# Ejecutar scripts recién actualizados
+foreach ($s in $scriptsToRun) {
+  $sName = [System.IO.Path]::GetFileName($s)
+  Log "▶ Ejecutando $sName (recién actualizado)..."
+  try {
+    & $s
+  } catch {
+    Err "$sName: error al ejecutar - $($_.Exception.Message)"
+  }
+}
+
+# Relanzar este script si se auto-actualizó (A)
+if ($selfUpdatePending -and (Test-Path $selfUpdatePending.dest)) {
+  $ps = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell' }
+  Log "↩ Relanzando update-scripts.ps1 con la nueva versión..."
+  & $ps -NonInteractive -File $selfUpdatePending.dest @PSBoundParameters
 }
