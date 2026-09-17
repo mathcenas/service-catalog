@@ -51,6 +51,17 @@ type Props = {
   clients: Client[];
 };
 
+interface DiskRaidEntry {
+  pool: string;
+  name: string;
+  resiliency: string;
+  health: string;
+  operational: string;
+  status: 'ok' | 'warning' | 'error';
+  size_gb: number | null;
+  allocated_gb: number | null;
+}
+
 interface DiskSmartEntry {
   dev: string;
   type: 'SSD' | 'NVMe' | 'HDD' | string;
@@ -112,7 +123,6 @@ function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersi
     if (p.disk_pct != null) chips.push({ label: 'Disk', value: `${p.disk_pct}%`, warn: Number(p.disk_pct) > 75, error: Number(p.disk_pct) > 90 });
     if (p.disk_free_gb != null) chips.push({ label: 'Free', value: `${p.disk_free_gb} GB` });
     if (p.uptime_str != null) chips.push({ label: 'Up', value: String(p.uptime_str) });
-    if (p.smb_session_count != null) chips.push({ label: 'SMB', value: `${p.smb_session_count} session${Number(p.smb_session_count) !== 1 ? 's' : ''}` });
     if (Array.isArray(p.disk_smart) && (p.disk_smart as DiskSmartEntry[]).length > 0) {
       const disks = p.disk_smart as DiskSmartEntry[];
       const worst = disks.some(d => d.status === 'error') ? 'error' : disks.some(d => d.status === 'warning') ? 'warning' : false;
@@ -124,7 +134,6 @@ function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersi
     if (p.ping_ms != null) chips.push({ label: 'Ping', value: `${p.ping_ms}ms`, warn: Number(p.ping_ms) > 100, error: Number(p.ping_ms) > 200 });
     if (p.packet_loss_pct != null) chips.push({ label: 'Loss', value: `${p.packet_loss_pct}%`, warn: Number(p.packet_loss_pct) > 2, error: Number(p.packet_loss_pct) > 10 });
   } else if (hb.source === 'rdp') {
-    if (p.rdp_sessions != null) chips.push({ label: 'Sessions', value: p.rdp_max_allowed ? `${p.rdp_sessions}/${p.rdp_max_allowed}` : `${p.rdp_sessions}`, warn: Number(p.rdp_sessions) > 0 && p.rdp_max_allowed && Number(p.rdp_sessions) >= Math.floor(Number(p.rdp_max_allowed) * 0.85) });
     if (p.rdp_disconnects != null) chips.push({ label: 'Disconnects', value: `${p.rdp_disconnects}`, warn: Number(p.rdp_disconnects) > 0, error: Number(p.rdp_disconnects) > 3 });
     if (p.rdp_tcp_connections != null) chips.push({ label: 'TCP 3389', value: `${p.rdp_tcp_connections}` });
     if (p.disk_latency_sec != null && Number(p.disk_latency_sec) > 0) chips.push({ label: 'DiskIO', value: `${p.disk_latency_sec}s`, warn: Number(p.disk_latency_sec) > 0.03, error: Number(p.disk_latency_sec) > 0.05 });
@@ -148,8 +157,6 @@ function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersi
     if (p.cpu_percent != null) chips.push({ label: 'CPU', value: `${p.cpu_percent}%`, warn: Number(p.cpu_percent) > 80, error: Number(p.cpu_percent) > 95 });
     if (p.disk_latency_ms != null) chips.push({ label: 'DiskIO', value: `${p.disk_latency_ms}ms`, warn: Number(p.disk_latency_ms) > 50, error: Number(p.disk_latency_ms) > 150 });
     if (p.disk_queue != null) chips.push({ label: 'Queue', value: `${p.disk_queue}`, warn: Number(p.disk_queue) > 10, error: Number(p.disk_queue) > 30 });
-    if (p.rdp_sessions != null) chips.push({ label: 'RDP', value: `${p.rdp_sessions}`, warn: Number(p.rdp_sessions) > 15 });
-    if (p.smb_sessions != null && Number(p.smb_sessions) > 0) chips.push({ label: 'SMB', value: `${p.smb_sessions} / ${p.smb_open_files ?? 0}f` });
     if (p.gateway_ping != null) chips.push({ label: 'GW', value: p.gateway_ping ? 'ok' : '✗', error: !p.gateway_ping });
     if (p.internet_ping != null) chips.push({ label: 'Net', value: p.internet_ping ? 'ok' : '✗', error: !p.internet_ping });
     if (p.rdp_disconnect_events != null && Number(p.rdp_disconnect_events) > 0) chips.push({ label: 'Disc', value: `${p.rdp_disconnect_events}`, warn: true });
@@ -716,17 +723,11 @@ export function TelemetryDashboard({ services, clients }: Props) {
                           </div>
                         </div>
                         <MetricChips hb={hb} latestVersions={latestVersions} />
-                        {hb.source === 'system-health' && Array.isArray((hb.payload as Record<string,unknown>)?.smb_sessions) && ((hb.payload as Record<string,unknown>).smb_sessions as {user:string;machine:string}[]).length > 0 && (
-                          <div className="mt-1.5 flex flex-wrap gap-1">
-                            {((hb.payload as Record<string,unknown>).smb_sessions as {user:string;machine:string}[]).map((s, i) => (
-                              <span key={i} className="text-[10px] bg-blue-50 border border-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-mono">
-                                {s.user}@{s.machine}
-                              </span>
-                            ))}
-                          </div>
-                        )}
                         {hb.source === 'system-health' && Array.isArray((hb.payload as Record<string,unknown>)?.disk_smart) && ((hb.payload as Record<string,unknown>).disk_smart as DiskSmartEntry[]).length > 0 && (
                           <DiskSmartPanel disks={(hb.payload as Record<string,unknown>).disk_smart as DiskSmartEntry[]} />
+                        )}
+                        {hb.source === 'system-health' && Array.isArray((hb.payload as Record<string,unknown>)?.disk_raid) && ((hb.payload as Record<string,unknown>).disk_raid as DiskRaidEntry[]).length > 0 && (
+                          <DiskRaidPanel volumes={(hb.payload as Record<string,unknown>).disk_raid as DiskRaidEntry[]} />
                         )}
                       </div>
                     );
@@ -1471,6 +1472,34 @@ function StatBadge({ label, value, color, onClick, active }: { label: string; va
       <div className="text-xl font-bold">{value}</div>
       <div className="text-xs font-medium opacity-80">{label}</div>
     </button>
+  );
+}
+
+function DiskRaidPanel({ volumes }: { volumes: DiskRaidEntry[] }) {
+  return (
+    <div className="mt-2 space-y-1.5">
+      {volumes.map((v, i) => {
+        const dotColor = v.status === 'ok' ? 'bg-emerald-500' : v.status === 'warning' ? 'bg-amber-400' : 'bg-red-500';
+        const labelColor = v.status === 'ok' ? 'text-emerald-700' : v.status === 'warning' ? 'text-amber-700' : 'text-red-700';
+        return (
+          <div key={i} className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-[11px]">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />
+              <span className="font-mono font-semibold text-gray-700">{v.name}</span>
+              {v.resiliency && (
+                <span className="bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-medium">{v.resiliency}</span>
+              )}
+              {v.pool && <span className="text-gray-400 text-[10px]">pool: {v.pool}</span>}
+              {v.size_gb != null && <span className="text-gray-400">{v.size_gb} GB</span>}
+              <span className={`ml-auto font-semibold ${labelColor}`}>{v.health}</span>
+            </div>
+            {v.operational && v.operational !== 'OK' && (
+              <div className="mt-0.5 text-amber-600 text-[10px]">Estado operacional: {v.operational}</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

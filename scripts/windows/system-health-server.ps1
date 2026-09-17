@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.2.2"
+$SCRIPT_VERSION = "1.2.3"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -93,6 +93,37 @@ $hwStatus = if   ($diskUsePct -gt 90 -or $ramUsePct -gt 92 -or $cpuUsage -gt 95)
             elseif ($diskUsePct -gt 75 -or $ramUsePct -gt 80 -or $cpuUsage -gt 80) { "warning" }
             else { "ok" }
 
+# ---------- RAID / Storage Spaces ----------
+$raidList = @()
+try {
+    $pools = Get-StoragePool -ErrorAction Stop | Where-Object { $_.IsPrimordial -eq $false }
+    foreach ($pool in $pools) {
+        $vdisks = Get-VirtualDisk -StoragePool $pool -ErrorAction SilentlyContinue
+        foreach ($vd in $vdisks) {
+            $rStatus = switch ($vd.HealthStatus) {
+                'Healthy'   { 'ok' }
+                'Warning'   { 'warning' }
+                'Unhealthy' { 'error' }
+                default     { 'warning' }
+            }
+            if ($rStatus -ne 'ok' -and $hwStatus -eq 'ok') { $hwStatus = 'warning' }
+            if ($rStatus -eq 'error') { $hwStatus = 'warning' }
+            $sizeGB  = if ($vd.Size -gt 0) { [math]::Round($vd.Size / 1GB, 1) } else { $null }
+            $allocGB = if ($vd.FootprintOnPool -gt 0) { [math]::Round($vd.FootprintOnPool / 1GB, 1) } else { $null }
+            $raidList += @{
+                pool         = $pool.FriendlyName
+                name         = $vd.FriendlyName
+                resiliency   = $vd.ResiliencySettingName
+                health       = $vd.HealthStatus
+                operational  = $vd.OperationalStatus
+                status       = $rStatus
+                size_gb      = $sizeGB
+                allocated_gb = $allocGB
+            }
+        }
+    }
+} catch {}
+
 $hwBody = @{
     service_id = $SERVICE_ID
     source     = "system-health"
@@ -107,9 +138,10 @@ $hwBody = @{
         ram_total_gb   = $ramTotalGB
         disk_pct       = $diskUsePct
         disk_free_gb   = $diskFreeGB
+        disk_raid      = $raidList
         script_version = $SCRIPT_VERSION
     }
-} | ConvertTo-Json -Depth 3
+} | ConvertTo-Json -Depth 5
 
 try {
     Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $hwBody | Out-Null
