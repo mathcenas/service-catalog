@@ -26,7 +26,7 @@ param(
   [switch]$Force
 )
 
-$SCRIPT_VERSION = "1.2.1"
+$SCRIPT_VERSION = "1.2.2"
 
 $ErrorActionPreference = "SilentlyContinue"
 
@@ -52,7 +52,6 @@ $Scripts = [ordered]@{
   "kopia-report.ps1"              = "scripts/windows/kopia-report.ps1"
   "report-smb-acl.ps1"            = "scripts/windows/report-smb-acl.ps1"
   "smb-check.ps1"                 = "scripts/windows/smb-check.ps1"
-  "server-snapshot.ps1"           = "scripts/windows/server-snapshot.ps1"
   "device-report.ps1"             = "scripts/windows/device-report.ps1"
   "setup-scheduled-tasks.ps1"     = "scripts/windows/setup-scheduled-tasks.ps1"
   "update-scripts.ps1"            = "scripts/windows/update-scripts.ps1"
