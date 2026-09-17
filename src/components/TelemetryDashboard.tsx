@@ -225,7 +225,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
   const [statusFilter, setStatusFilter] = useState<'all' | 'ok' | 'warning' | 'error' | 'stale' | 'no-data'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAllBackups, setShowAllBackups] = useState(false);
-  const [viewMode, setViewMode] = useState<'cards' | 'log' | 'backups' | 'acl'>('cards');
+  const [viewMode, setViewMode] = useState<'cards' | 'log' | 'backups' | 'acl' | 'sessions'>('cards');
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState<string>('Cenas-Support');
   const [sendingReview, setSendingReview] = useState<string | null>(null);
@@ -644,6 +644,10 @@ export function TelemetryDashboard({ services, clients }: Props) {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'acl' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
               <Users className="w-3.5 h-3.5" /> ACL
             </button>
+            <button onClick={() => setViewMode('sessions')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'sessions' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              <Monitor className="w-3.5 h-3.5" /> Sesiones
+            </button>
           </div>
         </div>
       </div>
@@ -732,7 +736,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
             ))}
           </div>
         )
-      ) : viewMode === 'backups' || viewMode === 'acl' ? null : (
+      ) : viewMode === 'backups' || viewMode === 'acl' || viewMode === 'sessions' ? null : (
         /* ── LOG VIEW ── */
         filteredLog.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
@@ -1006,6 +1010,89 @@ export function TelemetryDashboard({ services, clients }: Props) {
           </div>
         </div>
       )}
+
+      {/* Sesiones activas SMB / RDP */}
+      {viewMode === 'sessions' && (() => {
+        type SessionRow = { serviceId: string; serviceName: string; clientName: string; source: string; receivedAt: string; smbSessions: { user: string; machine: string }[]; rdpSessions: number };
+        const rows: SessionRow[] = [];
+        for (const [, hb] of latestPerServiceSource.entries()) {
+          if (hb.source !== 'system-health' && hb.source !== 'rdp') continue;
+          const p = (hb.payload ?? {}) as Record<string, unknown>;
+          const smbSessions = Array.isArray(p.smb_sessions) ? (p.smb_sessions as { user: string; machine: string }[]) : [];
+          const rdpSessions = hb.source === 'rdp' && typeof p.sessions === 'number' ? p.sessions : 0;
+          if (smbSessions.length === 0 && rdpSessions === 0) continue;
+          const svc = services.find(s => s.id === hb.service_id);
+          const client = clients.find(c => c.id === svc?.client_id);
+          rows.push({
+            serviceId: hb.service_id,
+            serviceName: svc?.business_name || svc?.name || hb.service_id.slice(0, 8),
+            clientName: client?.company_name || '—',
+            source: hb.source,
+            receivedAt: hb.received_at,
+            smbSessions,
+            rdpSessions,
+          });
+        }
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Monitor className="w-5 h-5 text-gray-500" />
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Sesiones activas</h2>
+                <p className="text-sm text-gray-600 mt-0.5">Usuarios conectados según el último heartbeat de cada servicio.</p>
+              </div>
+            </div>
+            {rows.length === 0 ? (
+              <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+                <Monitor className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-500 font-medium">Sin sesiones activas reportadas</p>
+                <p className="text-gray-400 text-sm mt-1">Los scripts reportan sesiones SMB y RDP en el payload del heartbeat.</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">Cliente</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">Servicio</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">Tipo</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">Sesiones</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">Actualizado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {rows.map(r => (
+                      <tr key={`${r.serviceId}-${r.source}`} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{r.clientName}</td>
+                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{r.serviceName}</td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-mono">{r.source === 'rdp' ? 'RDP' : 'SMB'}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {r.smbSessions.length > 0 ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {r.smbSessions.map((s, i) => (
+                                <span key={i} className="text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full">
+                                  {s.user}{s.machine ? ` · ${s.machine}` : ''}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-500">{r.rdpSessions} sesión{r.rdpSessions !== 1 ? 'es' : ''} RDP</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                          {new Date(r.receivedAt).toLocaleString('es-UY', { dateStyle: 'short', timeStyle: 'short' })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
