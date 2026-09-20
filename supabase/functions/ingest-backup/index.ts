@@ -190,6 +190,7 @@ Deno.serve(async (req: Request) => {
           headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Alerts <notificaciones@updates.cenas.uy>",
+            reply_to: Deno.env.get("RESEND_REPLY_TO_ADDRESS") || "info@cenas.uy",
             to: [alertTo],
             subject: `[Backup ${statusLabel}] ${serviceName}${job_name ? ` — ${job_name}` : ""}`,
             html: htmlBody,
