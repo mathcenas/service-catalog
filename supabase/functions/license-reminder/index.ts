@@ -78,19 +78,33 @@ Deno.serve(async (req: Request) => {
         : emailLogo(companyName);
 
       const htmlBody = `
-        <div style="font-family:${EMAIL_FONT};max-width:600px;margin:0 auto;padding:32px 24px;background:#f8fafc;">
-          <div style="background:#ffffff;border-radius:12px;padding:28px;border:1px solid ${B.border};">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;font-family:${EMAIL_FONT};">
+          <tr><td align="center" style="padding:32px 24px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;border:1px solid ${B.border};">
+          <tr><td style="padding:28px;">
 
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid ${B.border};">
-              <div style="background:${B.primary};padding:7px 13px;border-radius:7px;flex-shrink:0;">
-                <span style="color:${B.accent};font-size:11px;font-weight:700;letter-spacing:.5px;">${companyName.toUpperCase()}</span>
-              </div>
-              ${logoHtmlInner ? `<div style="flex-shrink:0;">${logoHtmlInner}</div>` : ""}
-              <div>
-                <span style="display:inline-block;background:#d9770618;color:#d97706;border:1px solid #d9770640;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;">Renovación</span>
-                <div style="font-size:15px;font-weight:700;color:${B.primary};margin-top:3px;">Recordatorio de Licencia</div>
-              </div>
-            </div>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid ${B.border};">
+              <tr>
+                <td valign="middle">
+                  <table role="presentation" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td valign="middle" style="padding-right:10px;">
+                        <div style="background:${B.primary};padding:7px 13px;border-radius:7px;display:inline-block;">
+                          <span style="color:${B.accent};font-size:11px;font-weight:700;letter-spacing:.5px;">${companyName.toUpperCase()}</span>
+                        </div>
+                      </td>
+                      ${logoHtmlInner ? `<td valign="middle">${logoHtmlInner}</td>` : ""}
+                    </tr>
+                  </table>
+                  <div style="font-size:15px;font-weight:700;color:${B.primary};margin-top:8px;">Recordatorio de Licencia</div>
+                </td>
+                <td valign="middle" align="right">
+                  <table role="presentation" cellpadding="0" cellspacing="0" style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;">
+                    <tr><td style="padding:4px 12px;"><span style="color:#B45309;font-size:11px;font-weight:700;letter-spacing:.5px;">Renovación</span></td></tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
 
             <p style="color:${B.textMain};font-size:15px;line-height:1.6;margin:0 0 16px;">
               Hola ${client.contact_name || client.company_name},
@@ -113,8 +127,10 @@ Deno.serve(async (req: Request) => {
               ${companyName} — Gestión de Licencias
             </p>
             ${emailMeta(companyName)}
-          </div>
-        </div>
+          </td></tr>
+          </table>
+          </td></tr>
+        </table>
       `;
 
       const recipients = [client.email];

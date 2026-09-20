@@ -177,14 +177,25 @@ Deno.serve(async (req: Request) => {
 
     const weekLabel = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
-    const html = `<div style="font-family:${EMAIL_FONT};max-width:600px;margin:0 auto;padding:32px 24px;background:${B.bg};">
-      <div style="background:#ffffff;border-radius:12px;padding:28px;border:1px solid ${B.border};">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid ${B.border};">
-          <div style="background:${B.primary};padding:7px 13px;border-radius:7px;flex-shrink:0;">
-            <span style="color:${B.accent};font-size:11px;font-weight:700;letter-spacing:.5px;">${senderName.toUpperCase()}</span>
-          </div>
-          <span style="display:inline-block;background:${B.accent}18;color:${B.accent};border:1px solid ${B.accent}40;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;">Weekly Summary</span>
-        </div>
+    const html = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${B.bg};font-family:${EMAIL_FONT};">
+      <tr><td align="center" style="padding:32px 24px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;border:1px solid ${B.border};">
+      <tr><td style="padding:28px;">
+
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid ${B.border};">
+          <tr>
+            <td valign="middle">
+              <div style="background:${B.primary};padding:7px 13px;border-radius:7px;display:inline-block;">
+                <span style="color:${B.accent};font-size:11px;font-weight:700;letter-spacing:.5px;">${senderName.toUpperCase()}</span>
+              </div>
+            </td>
+            <td valign="middle" align="right">
+              <table role="presentation" cellpadding="0" cellspacing="0" style="background:#ECFEFF;border:1px solid #A5F3FC;border-radius:8px;">
+                <tr><td style="padding:4px 12px;"><span style="color:#0E7490;font-size:11px;font-weight:700;letter-spacing:.5px;">Weekly Summary</span></td></tr>
+              </table>
+            </td>
+          </tr>
+        </table>
         <h1 style="font-size:20px;font-weight:700;color:${B.primary};margin:0 0 24px;">${weekLabel}</h1>
 
         ${diskSmartRows ? section('Disk Health (SMART)', tableWrap(diskSmartRows, ['Servidor', 'Disco', 'Modelo', 'Estado', 'Detalles'])) : ''}
@@ -200,8 +211,11 @@ Deno.serve(async (req: Request) => {
         <div style="margin-top:24px;padding-top:16px;border-top:1px solid ${B.border};">
           ${emailMeta(senderName)}
         </div>
-      </div>
-    </div>`;
+
+      </td></tr>
+      </table>
+      </td></tr>
+    </table>`;
 
     if (previewMode) {
       return new Response(JSON.stringify({ html }), {

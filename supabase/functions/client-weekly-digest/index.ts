@@ -104,8 +104,15 @@ Deno.serve(async (req: Request) => {
       return s?.business_name || s?.name || id;
     };
 
-    const pill = (text: string, color: string) =>
-      `<span style="display:inline-block;background:${color}18;color:${color};border:1px solid ${color}40;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;">${text}</span>`;
+    const PILL_PAIRS: Record<string, { text: string; bg: string; border: string }> = {
+      '#22c55e': { text: '#059669', bg: '#ECFDF5', border: '#A7F3D0' },
+      '#f59e0b': { text: '#B45309', bg: '#FFFBEB', border: '#FDE68A' },
+      '#ef4444': { text: '#DC2626', bg: '#FEF2F2', border: '#FECACA' },
+    };
+    const pill = (text: string, color: string) => {
+      const p = PILL_PAIRS[color.toLowerCase()] || { text: '#334155', bg: '#F1F5F9', border: '#CBD5E1' };
+      return `<span style="display:inline-block;background:${p.bg};color:${p.text};border:1px solid ${p.border};padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;">${text}</span>`;
+    };
 
     const statusPill = (s: string) =>
       s === 'ok' || s === 'success'  ? pill('OK', '#22c55e') :
@@ -120,8 +127,8 @@ Deno.serve(async (req: Request) => {
 
     const section = (title: string, icon: string, content: string) =>
       `<div style="margin-bottom:24px;">
-        <h3 style="font-size:12px;font-weight:700;color:${B.primary};margin:0 0 8px;padding-bottom:5px;border-bottom:2px solid ${B.accent};display:flex;align-items:center;gap:6px;">
-          <span>${icon}</span> ${title}
+        <h3 style="font-size:12px;font-weight:700;color:${B.primary};margin:0 0 8px;padding-bottom:5px;border-bottom:2px solid ${B.accent};">
+          ${icon} ${title}
         </h3>
         ${content}
       </div>`;
@@ -243,11 +250,15 @@ Deno.serve(async (req: Request) => {
       ${emailMeta(senderName)}
     `;
 
-    const html = `<div style="font-family:${EMAIL_FONT};max-width:600px;margin:0 auto;padding:32px 24px;background:${B.bg};">
-      <div style="background:#ffffff;border-radius:12px;padding:28px;border:1px solid ${B.border};">
+    const html = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${B.bg};font-family:${EMAIL_FONT};">
+      <tr><td align="center" style="padding:32px 24px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;border:1px solid ${B.border};">
+      <tr><td style="padding:28px;">
         ${bodyContent}
-      </div>
-    </div>`;
+      </td></tr>
+      </table>
+      </td></tr>
+    </table>`;
 
     if (previewMode) {
       return new Response(JSON.stringify({ html, client_name: client.company_name }), {
