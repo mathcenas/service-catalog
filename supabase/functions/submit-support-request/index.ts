@@ -93,32 +93,48 @@ Deno.serve(async (req: Request) => {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const toEmail = Deno.env.get("RESEND_REPLY_TO") || "mathias@cenas.uy";
 
-    const priorityColors: Record<string, string> = {
-      Low: "#22c55e",
-      Medium: "#eab308",
-      High: "#f97316",
-      Critical: "#ef4444",
+    const priorityPairs: Record<string, { text: string; bg: string; border: string }> = {
+      Low:      { text: "#059669", bg: "#ECFDF5", border: "#A7F3D0" },
+      Medium:   { text: "#B45309", bg: "#FFFBEB", border: "#FDE68A" },
+      High:     { text: "#C2410C", bg: "#FFF7ED", border: "#FDBA74" },
+      Critical: { text: "#DC2626", bg: "#FEF2F2", border: "#FECACA" },
     };
 
     const companyName = settings?.company_name || "Cenas IT";
     const logoHtmlInner = settings?.logo_url
-      ? `<img src="${settings.logo_url}" alt="Logo" style="max-height:32px;max-width:140px;" />`
+      ? `<img src="${settings.logo_url}" alt="Logo" style="max-height:32px;max-width:140px;display:block;border:0;" />`
       : emailLogo(companyName);
 
-    const htmlBody = `
-      <div style="font-family:${EMAIL_FONT};max-width:600px;margin:0 auto;padding:32px 24px;background:#f8fafc;">
-        <div style="background:#ffffff;border-radius:12px;padding:28px;border:1px solid ${B.border};">
+    const pPair = priorityPairs[priority] || priorityPairs.Medium;
 
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid ${B.border};">
-            <div style="background:${B.primary};padding:7px 13px;border-radius:7px;flex-shrink:0;">
-              <span style="color:${B.accent};font-size:11px;font-weight:700;letter-spacing:.5px;">${companyName.toUpperCase()}</span>
-            </div>
-            ${logoHtmlInner ? `<div style="flex-shrink:0;">${logoHtmlInner}</div>` : ""}
-            <div>
-              <span style="display:inline-block;background:${priorityColors[priority]}18;color:${priorityColors[priority]};border:1px solid ${priorityColors[priority]}40;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;">${priority}</span>
-              <div style="font-size:16px;font-weight:700;color:${B.primary};margin-top:4px;">Solicitud de Soporte</div>
-            </div>
-          </div>
+    const htmlBody = `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;font-family:${EMAIL_FONT};">
+        <tr><td align="center" style="padding:32px 24px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;border:1px solid ${B.border};">
+        <tr><td style="padding:28px;">
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid ${B.border};">
+            <tr>
+              <td valign="middle">
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td valign="middle" style="padding-right:10px;">
+                      <div style="background:${B.primary};padding:7px 13px;border-radius:7px;display:inline-block;">
+                        <span style="color:${B.accent};font-size:11px;font-weight:700;letter-spacing:.5px;">${companyName.toUpperCase()}</span>
+                      </div>
+                    </td>
+                    ${logoHtmlInner ? `<td valign="middle">${logoHtmlInner}</td>` : ""}
+                  </tr>
+                </table>
+                <div style="font-size:16px;font-weight:700;color:${B.primary};margin-top:8px;">Solicitud de Soporte</div>
+              </td>
+              <td valign="middle" align="right">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="background:${pPair.bg};border:1px solid ${pPair.border};border-radius:8px;">
+                  <tr><td style="padding:4px 12px;"><span style="color:${pPair.text};font-size:11px;font-weight:700;letter-spacing:.5px;">${priority}</span></td></tr>
+                </table>
+              </td>
+            </tr>
+          </table>
 
           <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
             <tr>
@@ -144,8 +160,11 @@ Deno.serve(async (req: Request) => {
             Enviado desde el Portal de Clientes &bull; ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
           </p>
           ${emailMeta(companyName)}
-        </div>
-      </div>
+
+        </td></tr>
+        </table>
+        </td></tr>
+      </table>
     `;
 
     const resendRes = await fetch("https://api.resend.com/emails", {
