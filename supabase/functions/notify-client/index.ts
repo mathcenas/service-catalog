@@ -154,8 +154,10 @@ Deno.serve(async (req: Request) => {
       : emailLogo(sender_name || "Cenas IT");
 
     const htmlBody = `
-      <div style="font-family:${EMAIL_FONT};max-width:600px;margin:0 auto;padding:32px 24px;background:#f8fafc;">
-        <div style="background:#ffffff;border-radius:12px;padding:28px;border:1px solid ${B.border};">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;font-family:${EMAIL_FONT};">
+        <tr><td align="center" style="padding:32px 24px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;border:1px solid ${B.border};">
+        <tr><td style="padding:28px;">
 
           ${emailHeader({
             logoHtml: logoHtmlInner,
@@ -178,7 +180,7 @@ Deno.serve(async (req: Request) => {
             const badge = new_status ? STATUS_BADGE[new_status] : null;
             return badge ? `
               <div style="margin:0 0 12px;">
-                <span style="display:inline-flex;align-items:center;gap:6px;background:${badge.bg};border:1px solid ${badge.border};color:${badge.color};border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;letter-spacing:.3px;">
+                <span style="display:inline-block;background:${badge.bg};border:1px solid ${badge.border};color:${badge.color};border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;letter-spacing:.3px;">
                   Estado actualizado: ${badge.label}
                 </span>
               </div>` : '';
@@ -218,8 +220,10 @@ Deno.serve(async (req: Request) => {
           </div>
 
           ${emailMeta(sender_name || "Cenas IT")}
-        </div>
-      </div>
+        </td></tr>
+        </table>
+        </td></tr>
+      </table>
     `;
 
     // Create tracking record for read receipt
