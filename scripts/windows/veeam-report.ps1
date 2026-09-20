@@ -6,7 +6,7 @@
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"
-$SCRIPT_VERSION = "1.0.1"
+$SCRIPT_VERSION = "1.0.2"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
@@ -53,15 +53,17 @@ $headers = @{
 foreach ($session in $sessions) {
     $status = switch ($session.Result) {
         "Success" { "success" }
-        "Warning" { "warning" }
+        "Warning" { "success" }
         "Failed"  { "failed" }
         default   { "warning" }
     }
 
+    $skippedFiles = ($session.GetTaskSessions() | ForEach-Object { $_.Progress.SkippedItemsCount } | Measure-Object -Sum).Sum
+
     $sizeBytes    = if ($session.BackupStats.BackupSize -gt 0) { [long]($session.BackupStats.BackupSize) } else { [long]($session.Progress.ProcessedSize) }
     $durationSecs = [int]($session.EndTime - $session.CreationTime).TotalSeconds
     $jobName      = "Veeam - $($session.JobName)"
-    $details      = "result=$($session.Result) transferredGB=$([math]::Round($session.BackupStats.TransferedSize/1GB,2)) dedupRatio=$($session.BackupStats.DedupRatio)"
+    $details      = "result=$($session.Result) skipped_files=$skippedFiles transferredGB=$([math]::Round($session.BackupStats.TransferedSize/1GB,2)) dedupRatio=$($session.BackupStats.DedupRatio)"
     $backedUpAt   = $session.EndTime.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
     $body = @{
