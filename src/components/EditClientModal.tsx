@@ -21,6 +21,7 @@ export function EditClientModal({ client, onClose, onSuccess }: Props) {
     notes: client.notes || '',
     uptime_status_url: client.uptime_status_url || '',
     digest_enabled: client.digest_enabled ?? false,
+    spof_free: client.spof_free ?? null as boolean | null,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -197,6 +198,31 @@ export function EditClientModal({ client, onClose, onSuccess }: Props) {
             >
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${formData.digest_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
+          </div>
+
+          <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
+            <div>
+              <p className="text-sm font-medium text-gray-700">Evaluación SPOF</p>
+              <p className="text-xs text-gray-500 mt-0.5">Single Point of Failure — componente cuya falla detiene toda la operación</p>
+            </div>
+            <div className="flex gap-2">
+              {([null, true, false] as (boolean | null)[]).map(val => {
+                const label = val === null ? 'Sin evaluar' : val ? 'Sin SPOF crítico' : 'SPOF identificado';
+                const active = formData.spof_free === val;
+                const color = active
+                  ? val === null ? 'bg-gray-200 text-gray-700 border-gray-400'
+                    : val ? 'bg-emerald-100 text-emerald-700 border-emerald-400'
+                    : 'bg-amber-100 text-amber-700 border-amber-400'
+                  : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300';
+                return (
+                  <button key={String(val)} type="button"
+                    onClick={() => setFormData(f => ({ ...f, spof_free: val }))}
+                    className={`flex-1 text-xs px-2 py-1.5 rounded border font-medium transition-colors ${color}`}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div>

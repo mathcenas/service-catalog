@@ -283,11 +283,24 @@ export function SharePage({ token }: Props) {
                   <p className="text-xs text-white/50">{userSettings?.company_name || 'Managed Services Portal'}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap justify-end">
                 <div className="flex items-center gap-2 bg-[#1E293B] border border-slate-700/80 px-3 py-1 rounded-full text-xs">
                   <span className="h-2 w-2 rounded-full bg-[#06B6D4] animate-pulse" />
                   <span className="text-slate-300">Gestión bajo norma <strong className="text-white">ISO/IEC 20000</strong></span>
                 </div>
+                {client!.spof_free != null && (
+                  <div className={`group relative flex items-center gap-2 border px-3 py-1 rounded-full text-xs ${client!.spof_free ? 'bg-emerald-950/60 border-emerald-700/60' : 'bg-amber-950/60 border-amber-700/60'}`}>
+                    <span className={`h-2 w-2 rounded-full ${client!.spof_free ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                    <span className={client!.spof_free ? 'text-emerald-300' : 'text-amber-300'}>
+                      {client!.spof_free ? 'Sin SPOF crítico' : 'SPOF identificado'}
+                    </span>
+                    <span className="text-white/30 cursor-help">?</span>
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2.5 text-xs text-slate-300 leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl">
+                      <strong className="text-white block mb-1">Single Point of Failure (SPOF)</strong>
+                      Un SPOF es cualquier componente cuya falla detiene toda la operación. Evaluamos redundancia en servidores, conectividad, energía y backups para minimizar este riesgo.
+                    </div>
+                  </div>
+                )}
                 {statusPageUrl ? (
                   <a href={statusPageUrl} target="_blank" rel="noopener noreferrer">{badge}</a>
                 ) : badge}
