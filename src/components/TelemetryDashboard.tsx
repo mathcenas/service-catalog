@@ -261,6 +261,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
   const [sendingReview, setSendingReview] = useState<string | null>(null);
   const [reviewLinks, setReviewLinks] = useState<Record<string, string>>({});
   const [latestVersions, setLatestVersions] = useState<Record<string, { windows?: string; linux?: string }>>({});
+  const [yesterdayOutdated, setYesterdayOutdated] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -284,6 +285,28 @@ export function TelemetryDashboard({ services, clients }: Props) {
     load();
     fetchLatestVersions().then(setLatestVersions);
   }, []);
+
+  // Write today's snapshot once outdated count is known; read yesterday's for delta
+  useEffect(() => {
+    if (Object.keys(latestVersions).length === 0 || outdatedScripts.length === 0) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+    (async () => {
+      // Read yesterday's snapshot for the delta badge
+      const { data: yd } = await supabase
+        .from('script_version_snapshots')
+        .select('outdated_count')
+        .eq('snapshot_date', yesterday)
+        .maybeSingle();
+      if (yd) setYesterdayOutdated(yd.outdated_count);
+
+      // Upsert today's snapshot (only if no row exists yet for today)
+      await supabase
+        .from('script_version_snapshots')
+        .upsert({ snapshot_date: today, outdated_count: outdatedScripts.length }, { onConflict: 'user_id,snapshot_date' });
+    })();
+  }, [latestVersions, outdatedScripts.length]);
 
   const getServiceName = (id: string) => {
     const s = services.find(sv => sv.id === id);
@@ -603,7 +626,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
         );
         return (
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
               <span className="text-sm font-semibold text-amber-800">
                 {outdatedScripts.length} script{outdatedScripts.length !== 1 ? 's' : ''} outdated
@@ -613,6 +636,15 @@ export function TelemetryDashboard({ services, clients }: Props) {
                   {critical.length} crítico{critical.length !== 1 ? 's' : ''} (2+ versiones)
                 </span>
               )}
+              {yesterdayOutdated !== null && (() => {
+                const delta = yesterdayOutdated - outdatedScripts.length;
+                if (delta === 0) return null;
+                return (
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${delta > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                    {delta > 0 ? `↓ ${delta} less than yesterday` : `↑ ${Math.abs(delta)} more than yesterday`}
+                  </span>
+                );
+              })()}
             </div>
             {critical.length > 0 && (
               <div className="flex flex-wrap gap-2">
