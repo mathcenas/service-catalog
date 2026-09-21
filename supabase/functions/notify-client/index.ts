@@ -283,6 +283,14 @@ Deno.serve(async (req: Request) => {
 
     const resendData = await resendRes.json();
 
+    // Store Resend email_id for webhook correlation (clicks, bounces, delivered)
+    if (resendData.id && trackRecord?.tracking_id) {
+      await supabaseAdmin
+        .from("email_opens")
+        .update({ resend_email_id: resendData.id })
+        .eq("tracking_id", trackRecord.tracking_id);
+    }
+
     return new Response(
       JSON.stringify({ success: true, email_id: resendData.id }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
