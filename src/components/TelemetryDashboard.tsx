@@ -286,27 +286,6 @@ export function TelemetryDashboard({ services, clients }: Props) {
     fetchLatestVersions().then(setLatestVersions);
   }, []);
 
-  // Write today's snapshot once outdated count is known; read yesterday's for delta
-  useEffect(() => {
-    if (Object.keys(latestVersions).length === 0 || outdatedScripts.length === 0) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-
-    (async () => {
-      // Read yesterday's snapshot for the delta badge
-      const { data: yd } = await supabase
-        .from('script_version_snapshots')
-        .select('outdated_count')
-        .eq('snapshot_date', yesterday)
-        .maybeSingle();
-      if (yd) setYesterdayOutdated(yd.outdated_count);
-
-      // Upsert today's snapshot (only if no row exists yet for today)
-      await supabase
-        .from('script_version_snapshots')
-        .upsert({ snapshot_date: today, outdated_count: outdatedScripts.length }, { onConflict: 'user_id,snapshot_date' });
-    })();
-  }, [latestVersions, outdatedScripts.length]);
 
   const getServiceName = (id: string) => {
     const s = services.find(sv => sv.id === id);
@@ -504,6 +483,26 @@ export function TelemetryDashboard({ services, clients }: Props) {
     }
     return results.sort((a, b) => (b.critical ? 1 : 0) - (a.critical ? 1 : 0));
   }, [latestPerServiceSource, latestVersions, services]);
+
+  // Write today's snapshot once outdated count is known; read yesterday's for delta
+  useEffect(() => {
+    if (Object.keys(latestVersions).length === 0 || outdatedScripts.length === 0) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+    (async () => {
+      const { data: yd } = await supabase
+        .from('script_version_snapshots')
+        .select('outdated_count')
+        .eq('snapshot_date', yesterday)
+        .maybeSingle();
+      if (yd) setYesterdayOutdated(yd.outdated_count);
+
+      await supabase
+        .from('script_version_snapshots')
+        .upsert({ snapshot_date: today, outdated_count: outdatedScripts.length }, { onConflict: 'user_id,snapshot_date' });
+    })();
+  }, [latestVersions, outdatedScripts.length]);
 
   const filteredCards = useMemo(() => {
     let list = serviceCards;
