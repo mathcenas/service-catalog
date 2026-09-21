@@ -30,7 +30,8 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { service_id, telemetry, vpn_peers } = body;
+    // Accepts either a single event object or an array of events
+    const { service_id, events: eventsArr, ...singleEvent } = body;
 
     if (!service_id) {
       return new Response(
@@ -65,63 +66,45 @@ Deno.serve(async (req: Request) => {
     }
 
     const userId = service.user_id;
-    const results: Record<string, unknown> = {};
 
-    if (telemetry) {
-      const { error: telErr } = await supabaseAdmin
-        .from("device_telemetry")
-        .insert({
-          user_id: userId,
-          service_id,
-          hostname: telemetry.hostname || "unknown",
-          cpu_pct: telemetry.cpu_pct ?? null,
-          ram_used_mb: telemetry.ram_used_mb ?? null,
-          ram_total_mb: telemetry.ram_total_mb ?? null,
-          bandwidth_in_bps: telemetry.bandwidth_in_bps ?? null,
-          bandwidth_out_bps: telemetry.bandwidth_out_bps ?? null,
-          uptime_seconds: telemetry.uptime_seconds ?? null,
-          firmware_version: telemetry.firmware_version ?? null,
-          priority_ports: telemetry.priority_ports ?? null,
-          recorded_at: telemetry.recorded_at || new Date().toISOString(),
-        });
+    // Normalize to array
+    const toInsert = eventsArr && Array.isArray(eventsArr)
+      ? eventsArr
+      : [singleEvent];
 
-      if (telErr) {
-        results.telemetry_error = telErr.message;
-      } else {
-        results.telemetry = "inserted";
-      }
-    }
-
-    if (vpn_peers && Array.isArray(vpn_peers) && vpn_peers.length > 0) {
-      const rows = vpn_peers.map((p: Record<string, unknown>) => ({
-        user_id: userId,
+    const rows = toInsert
+      .filter((e: Record<string, unknown>) => e.event_type)
+      .map((e: Record<string, unknown>) => ({
+        user_id:    userId,
         service_id,
-        peer_name: p.peer_name || "unknown",
-        tunnel_type: p.tunnel_type || "ipsec",
-        remote_address: p.remote_address ?? null,
-        local_address: p.local_address ?? null,
-        status: p.status || "unknown",
-        last_handshake_at: p.last_handshake_at ?? null,
-        rx_bytes: p.rx_bytes ?? 0,
-        tx_bytes: p.tx_bytes ?? 0,
-        uptime_seconds: p.uptime_seconds ?? null,
-        comment: p.comment ?? null,
-        recorded_at: p.recorded_at || new Date().toISOString(),
+        device_id:  (e.device_id ?? e.service_id ?? null) as string | null,
+        event_type: e.event_type as string,
+        status:     (e.status ?? null) as string | null,
+        source_ip:  (e.source_ip ?? null) as string | null,
+        message:    (e.message ?? null) as string | null,
+        timestamp:  (e.timestamp ?? new Date().toISOString()) as string,
       }));
 
-      const { error: vpnErr } = await supabaseAdmin
-        .from("vpn_peers")
-        .insert(rows);
+    if (rows.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "No valid events in payload" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-      if (vpnErr) {
-        results.vpn_peers_error = vpnErr.message;
-      } else {
-        results.vpn_peers = `${rows.length} inserted`;
-      }
+    const { error: insertErr } = await supabaseAdmin
+      .from("device_events")
+      .insert(rows);
+
+    if (insertErr) {
+      return new Response(
+        JSON.stringify({ error: insertErr.message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     return new Response(
-      JSON.stringify({ success: true, results, received_at: new Date().toISOString() }),
+      JSON.stringify({ success: true, inserted: rows.length, received_at: new Date().toISOString() }),
       { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
