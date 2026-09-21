@@ -265,7 +265,7 @@ Deno.serve(async (req: Request) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Notifications <notificaciones@updates.cenas.uy>",
+        from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Alerts <alerts@updates.cenas.uy>",
         reply_to: replyTo,
         to: recipients,
         subject,
@@ -282,6 +282,14 @@ Deno.serve(async (req: Request) => {
     }
 
     const resendData = await resendRes.json();
+
+    // Store Resend email_id for webhook correlation (clicks, bounces, delivered)
+    if (resendData.id && trackRecord?.tracking_id) {
+      await supabaseAdmin
+        .from("email_opens")
+        .update({ resend_email_id: resendData.id })
+        .eq("tracking_id", trackRecord.tracking_id);
+    }
 
     return new Response(
       JSON.stringify({ success: true, email_id: resendData.id }),

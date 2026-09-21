@@ -4,6 +4,7 @@
 # =============================================================
 
 SUPABASE_URL="https://aguxbtvwljaonagannuz.supabase.co"
+ANON_KEY="REEMPLAZAR_CON_SUPABASE_ANON_KEY"
 
 # Carpeta donde network-monitor escribe los JSON de telemetría y eventos
 HISTORIAL_DIR="/srv/network-monitor/network-monitor/historial"

@@ -18,7 +18,7 @@ Deno.serve(async (req: Request) => {
   );
 
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-  const FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support <alerts@cenas-support.com>";
+  const FROM_EMAIL = Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Alerts <alerts@updates.cenas.uy>";
 
   let body: Record<string, any> = {};
   try { body = await req.json(); } catch {}
