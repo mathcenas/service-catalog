@@ -191,7 +191,7 @@ Deno.serve(async (req: Request) => {
           method: "POST",
           headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
           body: JSON.stringify({
-            from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Alerts <notificaciones@updates.cenas.uy>",
+            from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Backups <backups@updates.cenas.uy>",
             reply_to: Deno.env.get("RESEND_REPLY_TO_ADDRESS") || "info@cenas.uy",
             to: [alertTo],
             subject: `[Backup ${statusLabel}] ${clientName ? `${clientName} — ` : ""}${serviceName}${job_name ? ` — ${job_name}` : ""}`,

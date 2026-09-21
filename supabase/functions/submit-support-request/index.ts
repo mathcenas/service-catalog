@@ -174,7 +174,7 @@ Deno.serve(async (req: Request) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support <notificaciones@updates.cenas.uy>",
+        from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Alerts <alerts@updates.cenas.uy>",
         reply_to: replyTo,
         to: [toEmail],
         subject: `[Support - ${priority}] ${esc(subject)} (${esc(client.company_name)})`,
