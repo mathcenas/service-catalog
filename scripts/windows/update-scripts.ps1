@@ -248,7 +248,7 @@ foreach ($s in $scriptsToRun) {
   try {
     & $s
   } catch {
-    Err "$sName: error al ejecutar - $($_.Exception.Message)"
+    Err "${sName}: error al ejecutar - $($_.Exception.Message)"
   }
 }
 
