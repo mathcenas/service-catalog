@@ -90,16 +90,11 @@ const SCRIPT_SOURCE_FILES: Record<string, { windows: string; linux?: string }> =
   'veeam':           { windows: 'scripts/windows/veeam-report.ps1' },
 };
 
-// Detect OS from heartbeat payload: Linux sends real load_avg; Windows always 0
+// Detect OS from heartbeat payload.
+// Linux system-health.sh always includes disk_mounts and docker_containers keys.
+// Windows system-health.ps1 never sends those keys.
 function detectOS(payload: Record<string, unknown>): 'linux' | 'windows' {
-  const load = Number(payload?.load_avg ?? 0);
-  // Linux also typically sends uptime_str with 'd' or plain seconds without Windows-style uptime
-  // Primary signal: load_avg > 0 is Linux; Windows system-health always reports 0
-  if (load > 0) return 'linux';
-  // Secondary: presence of docker_containers or disk_mounts arrays (Linux system-health.sh)
-  if (Array.isArray(payload?.docker_containers) || Array.isArray(payload?.disk_mounts)) {
-    // Both platforms can send these, but check if disk_pct alone (no cpu_pct raw) → Linux
-  }
+  if ('disk_mounts' in payload || 'docker_containers' in payload) return 'linux';
   return 'windows';
 }
 
