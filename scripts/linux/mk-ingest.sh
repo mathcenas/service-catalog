@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================
 # mk-ingest.sh — Envía telemetría y eventos MikroTik a Supabase
-# Cron sugerido: */5 * * * * /srv/network-monitor/mk-ingest.sh
-# Requiere: mk-ingest.conf en la misma carpeta (ver ejemplo abajo)
+# Cron sugerido (crontab -e):
+#   */5 * * * * /srv/network-monitor/mk-ingest.sh >> /srv/network-monitor/logs/mk-ingest.log 2>&1
+# Requiere: mk-ingest.conf en la misma carpeta (ver mk-ingest.conf.example)
 # =============================================================
 set -euo pipefail
 
@@ -17,11 +18,11 @@ fi
 # shellcheck source=/dev/null
 source "$CONF_FILE"
 
-# Required vars from conf: SUPABASE_URL, HISTORIAL_DIR
-# Per-device mapping: MK_DEVICES is an associative array
-# MK_DEVICES[<service_id>]="<ingest_secret>"
-: "${SUPABASE_URL:?MK_INGEST: SUPABASE_URL not set in $CONF_FILE}"
-: "${HISTORIAL_DIR:?MK_INGEST: HISTORIAL_DIR not set in $CONF_FILE}"
+# Required vars: SUPABASE_URL, HISTORIAL_DIR
+# MK_DEVICES[<site_name>]="<service_uuid>:<ingest_secret>"
+# donde site_name es el identificador en el nombre del archivo JSON
+: "${SUPABASE_URL:?mk-ingest: SUPABASE_URL not set}"
+: "${HISTORIAL_DIR:?mk-ingest: HISTORIAL_DIR not set}"
 
 TELEMETRY_URL="${SUPABASE_URL}/functions/v1/ingest-telemetry"
 EVENTS_URL="${SUPABASE_URL}/functions/v1/ingest-events"
@@ -32,86 +33,88 @@ LOG_FILE="${LOG_DIR}/mk-ingest-$(date +%Y-%m).log"
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOG_FILE"; }
 
-# Remove log files older than 90 days
 find "$LOG_DIR" -name "mk-ingest-*.log" -mtime +90 -delete 2>/dev/null || true
 
 post_json() {
   local url="$1" secret="$2" payload="$3" file_label="$4"
-  local http_code
+  local http_code resp
   http_code=$(curl -s -o /tmp/mk_ingest_resp.txt -w "%{http_code}" \
     -X POST "$url" \
     -H "Content-Type: application/json" \
     -H "X-Ingest-Secret: $secret" \
     --data-raw "$payload" \
     --max-time 15)
-
-  local resp
   resp=$(cat /tmp/mk_ingest_resp.txt 2>/dev/null || echo "")
-
   if [[ "$http_code" == "201" ]]; then
-    log "✅ $file_label → $url ($http_code)"
+    log "✅ $file_label → $http_code"
     return 0
   else
-    log "❌ $file_label → $url ($http_code) $resp"
+    log "❌ $file_label → $http_code $resp"
     return 1
   fi
 }
 
-# ---------- Process telemetry files ----------
+# Extrae service_id y secret del mapa por nombre de sitio
+# MK_DEVICES["RegionalSur"]="uuid:secret"
+lookup_device() {
+  local site_name="$1"
+  if [[ -z "${MK_DEVICES[$site_name]+_}" ]]; then
+    return 1
+  fi
+  local entry="${MK_DEVICES[$site_name]}"
+  DEVICE_SERVICE_ID="${entry%%:*}"
+  DEVICE_SECRET="${entry#*:}"
+}
+
 shopt -s nullglob
+
+# ---------- Telemetría ----------
 for f in "${HISTORIAL_DIR}"/telemetry_*.json; do
   filename=$(basename "$f")
-  # Extract service_id from filename: telemetry_<service_id>.json
-  service_id="${filename#telemetry_}"
-  service_id="${service_id%.json}"
+  site_name="${filename#telemetry_}"
+  site_name="${site_name%.json}"
 
-  if [[ -z "${MK_DEVICES[$service_id]+_}" ]]; then
-    log "⚠️  $filename — service_id not in MK_DEVICES, skipping"
+  if ! lookup_device "$site_name"; then
+    log "⚠️  $filename — '$site_name' no está en MK_DEVICES, omitiendo"
     continue
   fi
-  secret="${MK_DEVICES[$service_id]}"
 
-  # Wrap file content under telemetry key if not already wrapped
   raw=$(cat "$f")
-  # If file is already { service_id, telemetry: {...} } keep as-is, else wrap
   if echo "$raw" | grep -q '"telemetry"'; then
     payload="$raw"
   else
-    payload="{\"service_id\":\"${service_id}\",\"telemetry\":${raw}}"
+    payload="{\"service_id\":\"${DEVICE_SERVICE_ID}\",\"telemetry\":${raw}}"
   fi
 
-  if post_json "$TELEMETRY_URL" "$secret" "$payload" "$filename"; then
-    # Archive processed file
+  if post_json "$TELEMETRY_URL" "$DEVICE_SECRET" "$payload" "$filename"; then
     mv "$f" "${f%.json}.sent"
   fi
 done
 
-# ---------- Process events files ----------
+# ---------- Eventos ----------
 for f in "${HISTORIAL_DIR}"/events_*.json; do
   filename=$(basename "$f")
-  service_id="${filename#events_}"
-  service_id="${service_id%.json}"
+  site_name="${filename#events_}"
+  site_name="${site_name%.json}"
 
-  if [[ -z "${MK_DEVICES[$service_id]+_}" ]]; then
-    log "⚠️  $filename — service_id not in MK_DEVICES, skipping"
+  if ! lookup_device "$site_name"; then
+    log "⚠️  $filename — '$site_name' no está en MK_DEVICES, omitiendo"
     continue
   fi
-  secret="${MK_DEVICES[$service_id]}"
 
   raw=$(cat "$f")
-  # Accept array or single object; wrap in { service_id, events: [...] }
-  if echo "$raw" | grep -qE '^\['; then
-    payload="{\"service_id\":\"${service_id}\",\"events\":${raw}}"
+  if echo "$raw" | grep -qE '^\s*\['; then
+    payload="{\"service_id\":\"${DEVICE_SERVICE_ID}\",\"events\":${raw}}"
   elif echo "$raw" | grep -q '"events"'; then
     payload="$raw"
   else
-    payload="{\"service_id\":\"${service_id}\",\"events\":[${raw}]}"
+    payload="{\"service_id\":\"${DEVICE_SERVICE_ID}\",\"events\":[${raw}]}"
   fi
 
-  if post_json "$EVENTS_URL" "$secret" "$payload" "$filename"; then
+  if post_json "$EVENTS_URL" "$DEVICE_SECRET" "$payload" "$filename"; then
     mv "$f" "${f%.json}.sent"
   fi
 done
 
-# ---------- Cleanup sent files older than 7 days ----------
+# Limpia archivos enviados con más de 7 días
 find "${HISTORIAL_DIR}" -name "*.sent" -mtime +7 -delete 2>/dev/null || true

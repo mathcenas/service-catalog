@@ -1,17 +1,19 @@
 # =============================================================
 # mk-ingest.conf — Configuración por VPS
-# Copiar como mk-ingest.conf y completar los valores
+# Copiar como mk-ingest.conf y completar valores reales
 # =============================================================
 
 SUPABASE_URL="https://aguxbtvwljaonagannuz.supabase.co"
 
-# Carpeta donde network-monitor guarda los JSON
+# Carpeta donde network-monitor escribe los JSON de telemetría y eventos
 HISTORIAL_DIR="/srv/network-monitor/network-monitor/historial"
 
-# Mapeo service_id → ingest_secret
-# El service_id es el UUID del servicio en la app (Settings → Ingest Secret)
+# Mapeo nombre-de-sitio → uuid-servicio:ingest-secret
+# La clave es el identificador en el nombre del archivo JSON:
+#   telemetry_RegionalSur.json  →  "RegionalSur"
+#   events_RegionalSur.json     →  "RegionalSur"
+#
+# El UUID y el secret se obtienen en la app → Servicios → [servicio MikroTik] → Settings
 declare -A MK_DEVICES
-# MK_DEVICES["<uuid-del-servicio>"]="<ingest-secret-del-servicio>"
-# Ejemplo:
-# MK_DEVICES["550e8400-e29b-41d4-a716-446655440000"]="sk_live_abc123..."
-# MK_DEVICES["6ba7b810-9dad-11d1-80b4-00c04fd430c8"]="sk_live_xyz789..."
+MK_DEVICES["RegionalSur"]="550e8400-e29b-41d4-a716-446655440000:sk_ingest_abc123"
+# MK_DEVICES["OtraSucursal"]="otro-uuid:otro-secret"
