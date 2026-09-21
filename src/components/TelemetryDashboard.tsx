@@ -77,40 +77,61 @@ interface DiskSmartEntry {
   reallocated_sectors: number | null;
 }
 
-// Maps heartbeat source → path in the repo to fetch the latest version from
-const SCRIPT_SOURCE_FILES: Record<string, string> = {
-  'system-health':   'scripts/windows/system-health.ps1',
-  'rdp':             'scripts/windows/system-health.ps1',
-  'network':         'scripts/windows/system-health.ps1',
-  'server-snapshot': 'scripts/windows/server-snapshot.ps1',
-  'speedtest':       'scripts/windows/system-health.ps1',
-  'mikrotik':        'scripts/windows/system-health.ps1',
+// Maps heartbeat source → { windows, linux } script paths
+const SCRIPT_SOURCE_FILES: Record<string, { windows: string; linux?: string }> = {
+  'system-health':   { windows: 'scripts/windows/system-health.ps1',   linux: 'scripts/linux/system-health.sh' },
+  'rdp':             { windows: 'scripts/windows/system-health.ps1' },
+  'network':         { windows: 'scripts/windows/system-health.ps1' },
+  'server-snapshot': { windows: 'scripts/windows/server-snapshot.ps1' },
+  'speedtest':       { windows: 'scripts/windows/system-health.ps1' },
+  'mikrotik':        { windows: 'scripts/windows/system-health.ps1',   linux: 'scripts/linux/mikrotik-heartbeat.sh' },
+  'smb-check':       { windows: 'scripts/windows/smb-check.ps1' },
+  'kopia':           { windows: 'scripts/windows/kopia-report.ps1' },
+  'veeam':           { windows: 'scripts/windows/veeam-report.ps1' },
 };
 
-async function fetchLatestVersions(): Promise<Record<string, string>> {
-  const base = 'https://raw.githubusercontent.com/mathcenas/service-catalog/main/';
-  // Dedupe: multiple sources can share the same file
-  const filePaths = [...new Set(Object.values(SCRIPT_SOURCE_FILES))];
-  const fileVersions: Record<string, string> = {};
+// Detect OS from heartbeat payload.
+// Linux system-health.sh always includes disk_mounts and docker_containers keys.
+// Windows system-health.ps1 never sends those keys.
+function detectOS(payload: Record<string, unknown>): 'linux' | 'windows' {
+  if ('disk_mounts' in payload || 'docker_containers' in payload) return 'linux';
+  return 'windows';
+}
 
-  await Promise.all(filePaths.map(async path => {
+async function fetchLatestVersions(): Promise<Record<string, { windows?: string; linux?: string }>> {
+  const base = 'https://raw.githubusercontent.com/mathcenas/service-catalog/main/';
+
+  // Collect all unique file paths across both OS variants
+  const allPaths = new Set<string>();
+  for (const entry of Object.values(SCRIPT_SOURCE_FILES)) {
+    allPaths.add(entry.windows);
+    if (entry.linux) allPaths.add(entry.linux);
+  }
+
+  const fileVersions: Record<string, string> = {};
+  await Promise.all([...allPaths].map(async path => {
     try {
       const res = await fetch(base + path, { cache: 'no-store' });
       if (!res.ok) return;
       const text = await res.text();
-      const match = text.match(/^\$SCRIPT_VERSION\s*=\s*"([^"]+)"/m);
+      // PowerShell: $SCRIPT_VERSION = "x.y.z"
+      // Bash:       SCRIPT_VERSION="x.y.z"
+      const match = text.match(/^\$?SCRIPT_VERSION\s*=\s*["']?([0-9]+\.[0-9]+\.[0-9]+)["']?/m);
       if (match) fileVersions[path] = match[1];
     } catch { /* network failure — skip */ }
   }));
 
-  const result: Record<string, string> = {};
-  for (const [source, path] of Object.entries(SCRIPT_SOURCE_FILES)) {
-    if (fileVersions[path]) result[source] = fileVersions[path];
+  const result: Record<string, { windows?: string; linux?: string }> = {};
+  for (const [source, entry] of Object.entries(SCRIPT_SOURCE_FILES)) {
+    result[source] = {
+      windows: fileVersions[entry.windows],
+      linux:   entry.linux ? fileVersions[entry.linux] : undefined,
+    };
   }
   return result;
 }
 
-function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersions: Record<string, string> }) {
+function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersions: Record<string, { windows?: string; linux?: string }> }) {
   const p = hb.payload as Record<string, unknown>;
   if (!p) return null;
 
@@ -170,9 +191,11 @@ function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersi
     }
   }
 
-  // Script version chip
+  // Script version chip — pick latest based on detected OS
   const scriptVer = p.script_version != null ? String(p.script_version) : null;
-  const latestVer = latestVersions[hb.source];
+  const osType    = detectOS(p);
+  const versions  = latestVersions[hb.source];
+  const latestVer = versions ? (osType === 'linux' ? (versions.linux ?? versions.windows) : versions.windows) : undefined;
   const versionOutdated = !!latestVer && scriptVer !== null && scriptVer !== latestVer;
   const versionUnknown  = !!latestVer && scriptVer === null;
   if (scriptVer) {
@@ -237,7 +260,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
   const [companyName, setCompanyName] = useState<string>('Cenas-Support');
   const [sendingReview, setSendingReview] = useState<string | null>(null);
   const [reviewLinks, setReviewLinks] = useState<Record<string, string>>({});
-  const [latestVersions, setLatestVersions] = useState<Record<string, string>>({});
+  const [latestVersions, setLatestVersions] = useState<Record<string, { windows?: string; linux?: string }>>({});
 
   const load = async () => {
     setLoading(true);
@@ -436,11 +459,13 @@ export function TelemetryDashboard({ services, clients }: Props) {
     }
 
     for (const [, hb] of latestPerServiceSource.entries()) {
-      const latest = latestVersions[hb.source];
+      const versions = latestVersions[hb.source];
+      if (!versions) continue;
+      const payload = (hb.payload ?? {}) as Record<string, unknown>;
+      const os      = detectOS(payload);
+      const latest  = os === 'linux' ? (versions.linux ?? versions.windows) : versions.windows;
       if (!latest) continue;
-      const current = hb.payload && (hb.payload as Record<string, unknown>).script_version != null
-        ? String((hb.payload as Record<string, unknown>).script_version)
-        : null;
+      const current = payload.script_version != null ? String(payload.script_version) : null;
       if (current === null || current !== latest) {
         const svc = services.find(s => s.id === hb.service_id);
         const steps = current ? semverSteps(current, latest) : 99;
