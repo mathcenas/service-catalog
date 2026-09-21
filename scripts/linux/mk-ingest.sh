@@ -23,6 +23,7 @@ source "$CONF_FILE"
 # donde site_name es el identificador en el nombre del archivo JSON
 : "${SUPABASE_URL:?mk-ingest: SUPABASE_URL not set}"
 : "${HISTORIAL_DIR:?mk-ingest: HISTORIAL_DIR not set}"
+: "${ANON_KEY:?mk-ingest: ANON_KEY not set}"
 
 TELEMETRY_URL="${SUPABASE_URL}/functions/v1/ingest-telemetry"
 EVENTS_URL="${SUPABASE_URL}/functions/v1/ingest-events"
@@ -41,6 +42,8 @@ post_json() {
   http_code=$(curl -s -o /tmp/mk_ingest_resp.txt -w "%{http_code}" \
     -X POST "$url" \
     -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${ANON_KEY}" \
+    -H "apikey: ${ANON_KEY}" \
     -H "X-Ingest-Secret: $secret" \
     --data-raw "$payload" \
     --max-time 15)
