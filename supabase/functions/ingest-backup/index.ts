@@ -112,10 +112,11 @@ Deno.serve(async (req: Request) => {
       if (RESEND_API_KEY) {
         const { data: svcRow } = await supabaseAdmin
           .from("services")
-          .select("name, business_name")
+          .select("name, business_name, clients(company_name)")
           .eq("id", service_id)
           .maybeSingle();
 
+        const clientName = (svcRow as any)?.clients?.company_name || null;
         const serviceName = svcRow?.business_name || svcRow?.name || service_id;
         const isFailure = normalizedStatus === "failed";
         const statusLabel = isFailure ? "FAILED" : "WARNING";
@@ -153,6 +154,7 @@ Deno.serve(async (req: Request) => {
   </tr>
   <tr>
     <td style="padding:20px 24px 0;">
+      ${clientName ? `<div style="font-size:11px;font-weight:600;color:${B.textMid};text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;">${clientName}</div>` : ""}
       <div style="font-size:16px;font-weight:700;color:${B.primary};">${serviceName}</div>
       ${job_name ? `<div style="font-size:12px;color:${B.textMid};margin-top:2px;">${job_name}</div>` : ""}
     </td>
@@ -192,7 +194,7 @@ Deno.serve(async (req: Request) => {
             from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Alerts <notificaciones@updates.cenas.uy>",
             reply_to: Deno.env.get("RESEND_REPLY_TO_ADDRESS") || "info@cenas.uy",
             to: [alertTo],
-            subject: `[Backup ${statusLabel}] ${serviceName}${job_name ? ` — ${job_name}` : ""}`,
+            subject: `[Backup ${statusLabel}] ${clientName ? `${clientName} — ` : ""}${serviceName}${job_name ? ` — ${job_name}` : ""}`,
             html: htmlBody,
           }),
         });
