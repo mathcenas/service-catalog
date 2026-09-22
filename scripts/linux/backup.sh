@@ -33,7 +33,7 @@ RETENTION_DAYS="${RETENTION_DAYS:-7}"
 DEST_TYPE="${DEST_TYPE:-local}"        # local | rsync | rclone
 RSYNC_DEST="${RSYNC_DEST:-}"
 RSYNC_SSH_KEY="${RSYNC_SSH_KEY:-}"
-SCRIPT_VERSION="1.2.0"
+SCRIPT_VERSION="1.2.1"
 RCLONE_REMOTE="${RCLONE_REMOTE:-}"
 PG_CONTAINERS="${PG_CONTAINERS:-}"
 KUMA_PUSH_URL="${KUMA_PUSH_URL_BACKUP:-${KUMA_PUSH_URL:-}}"
@@ -57,7 +57,11 @@ if [[ -z "$INGEST_URL" && -n "$SUPABASE_URL" ]]; then
 fi
 
 # ---------- Logging ----------
-LOG_FILE="${LOG_FILE:-$SCRIPT_DIR/backup.log}"
+LOG_DIR="${LOG_DIR:-$SCRIPT_DIR/logs}"
+mkdir -p "$LOG_DIR"
+LOG_FILE="${LOG_FILE:-$LOG_DIR/backup-$(date '+%Y-%m').log}"
+# Borrar logs de más de 90 días
+find "$LOG_DIR" -name "backup-*.log" -mtime +90 -delete 2>/dev/null || true
 exec > >(while IFS= read -r line; do printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$line"; done | tee -a "$LOG_FILE") 2>&1
 echo "===== Iniciando backup de ${HOST_TAG:-$(hostname -s)} ====="
 

@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.4.8"
+$SCRIPT_VERSION = "1.4.9"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -262,6 +262,12 @@ if ($CHECK_SPEEDTEST) {
         Write-Log "❌ speedtest Error: $($_.Exception.Message)"
     }
 } else {
+    $disabledBody = @{
+        service_id = $SERVICE_ID; source = "speedtest"; status = "success"
+        message = "Deshabilitado (CHECK_SPEEDTEST = false)"
+        payload = @{ disabled = $true; script_version = $SCRIPT_VERSION }
+    } | ConvertTo-Json -Depth 3
+    try { Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $disabledBody | Out-Null } catch {}
     Write-Log "⏭️ speedtest — omitido (CHECK_SPEEDTEST = false en config.ps1)"
 }
 
@@ -345,6 +351,12 @@ if ($CHECK_RDP) {
         Write-Log "❌ rdp Error: $($_.Exception.Message)"
     }
 } else {
+    $disabledBody = @{
+        service_id = $SERVICE_ID; source = "rdp"; status = "success"
+        message = "Deshabilitado (CHECK_RDP = false)"
+        payload = @{ disabled = $true; script_version = $SCRIPT_VERSION }
+    } | ConvertTo-Json -Depth 3
+    try { Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $disabledBody | Out-Null } catch {}
     Write-Log "⏭️ rdp — omitido (CHECK_RDP = false en config.ps1)"
 }
 
