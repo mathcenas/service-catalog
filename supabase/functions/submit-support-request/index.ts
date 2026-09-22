@@ -143,7 +143,10 @@ Deno.serve(async (req: Request) => {
             </tr>
             <tr>
               <td style="padding:8px 12px;background:${B.bg};border:1px solid ${B.border};font-size:12px;color:${B.textMid};">Contacto</td>
-              <td style="padding:8px 12px;border:1px solid ${B.border};font-size:14px;color:${B.textMain};">${esc(client.contact_name || client.email || "")}</td>
+              <td style="padding:8px 12px;border:1px solid ${B.border};font-size:14px;color:${B.textMain};">
+                ${esc(client.contact_name || "")}
+                ${client.email ? `<span style="display:block;font-size:12px;color:${B.accent};margin-top:2px;"><a href="mailto:${esc(client.email)}" style="color:${B.accent};text-decoration:none;">${esc(client.email)}</a></span>` : ""}
+              </td>
             </tr>
             <tr>
               <td style="padding:8px 12px;background:${B.bg};border:1px solid ${B.border};font-size:12px;color:${B.textMid};">Servicio</td>
@@ -177,7 +180,7 @@ Deno.serve(async (req: Request) => {
         from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Alerts <alerts@updates.cenas.uy>",
         reply_to: replyTo,
         to: [toEmail],
-        subject: `[Support - ${priority}] ${esc(subject)} (${esc(client.company_name)})`,
+        subject: `[Support - ${priority}] ${esc(subject)} — ${esc(client.company_name)}${client.email ? ` <${client.email}>` : ""}`,
         html: htmlBody,
       }),
     });
