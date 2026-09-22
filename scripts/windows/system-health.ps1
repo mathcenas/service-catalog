@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.4.6"
+$SCRIPT_VERSION = "1.4.7"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -211,9 +211,11 @@ if ($pingResult) {
 }
 
 # Speedtest (opcional — requiere speedtest.exe en C:\Scripts\)
+$CHECK_SPEEDTEST = if (Get-Variable 'CHECK_SPEEDTEST' -ErrorAction SilentlyContinue) { $CHECK_SPEEDTEST } else { $true }
+
 $downloadMbps = 0; $uploadMbps = 0
 $speedtestPath = "$PSScriptRoot\speedtest.exe"
-if (Test-Path $speedtestPath) {
+if ($CHECK_SPEEDTEST -and (Test-Path $speedtestPath)) {
     try {
         $speedData    = & $speedtestPath --format=json --accept-license --accept-gdpr 2>$null | ConvertFrom-Json
         $downloadMbps = [math]::Round($speedData.download.bandwidth / 125000, 1)
@@ -221,37 +223,41 @@ if (Test-Path $speedtestPath) {
     } catch {}
 }
 
-# Ping 100% loss con speedtest OK = ICMP bloqueado por firewall, no es falla real
-$netStatus = if ($packetLoss -eq 100 -and $downloadMbps -eq 0) { "failed" }
-             elseif ($packetLoss -eq 100) { "warning" }
-             elseif ($packetLoss -gt 15 -or $avgPing -gt 150) { "warning" }
-             else { "success" }
+if ($CHECK_SPEEDTEST) {
+    # Ping 100% loss con speedtest OK = ICMP bloqueado por firewall, no es falla real
+    $netStatus = if ($packetLoss -eq 100 -and $downloadMbps -eq 0) { "failed" }
+                 elseif ($packetLoss -eq 100) { "warning" }
+                 elseif ($packetLoss -gt 15 -or $avgPing -gt 150) { "warning" }
+                 else { "success" }
 
-$netPayload = @{
-    ping_ms         = $avgPing
-    packet_loss_pct = $packetLoss
-}
-if ($downloadMbps -gt 0) {
-    $netPayload.download_mbps = $downloadMbps
-    $netPayload.upload_mbps   = $uploadMbps
-}
+    $netPayload = @{
+        ping_ms         = $avgPing
+        packet_loss_pct = $packetLoss
+    }
+    if ($downloadMbps -gt 0) {
+        $netPayload.download_mbps = $downloadMbps
+        $netPayload.upload_mbps   = $uploadMbps
+    }
 
-$netMsg = "Ping: ${avgPing}ms | Loss: ${packetLoss}%"
-if ($downloadMbps -gt 0) { $netMsg += " | Down: ${downloadMbps} Mbps | Up: ${uploadMbps} Mbps" }
+    $netMsg = "Ping: ${avgPing}ms | Loss: ${packetLoss}%"
+    if ($downloadMbps -gt 0) { $netMsg += " | Down: ${downloadMbps} Mbps | Up: ${uploadMbps} Mbps" }
 
-$netBody = @{
-    service_id = $SERVICE_ID
-    source     = "speedtest"
-    status     = $netStatus
-    message    = $netMsg
-    payload    = $netPayload
-} | ConvertTo-Json -Depth 3
+    $netBody = @{
+        service_id = $SERVICE_ID
+        source     = "speedtest"
+        status     = $netStatus
+        message    = $netMsg
+        payload    = $netPayload
+    } | ConvertTo-Json -Depth 3
 
-try {
-    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $netBody | Out-Null
-    Write-Log "✅ speedtest → $netStatus | $netMsg"
-} catch {
-    Write-Log "❌ speedtest Error: $($_.Exception.Message)"
+    try {
+        Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $netBody | Out-Null
+        Write-Log "✅ speedtest → $netStatus | $netMsg"
+    } catch {
+        Write-Log "❌ speedtest Error: $($_.Exception.Message)"
+    }
+} else {
+    Write-Log "⏭️ speedtest — omitido (CHECK_SPEEDTEST = false en config.ps1)"
 }
 
 # ---------- 3. Servicios de acceso remoto (RDP + AnyDesk) ----------
