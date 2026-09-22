@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.4.7"
+$SCRIPT_VERSION = "1.4.8"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -60,7 +60,11 @@ $hwStatus = if   ($diskUsePct -gt 90 -or $ramUsePct -gt 92 -or $cpuUsage -gt 95)
             else { "success" }
 
 # ---------- SMART (salud de discos físicos) ----------
+$CHECK_SMART = if (Get-Variable 'CHECK_SMART' -ErrorAction SilentlyContinue) { $CHECK_SMART } else { $true }
 $diskSmartList = @()
+if (-not $CHECK_SMART) {
+    Write-Log "⏭️ SMART — omitido (CHECK_SMART = false en config.ps1)"
+} else {
 try {
     $physDisks = Get-PhysicalDisk -ErrorAction Stop
     foreach ($pd in $physDisks) {
@@ -138,6 +142,7 @@ try {
 } catch {
     Write-Log "⚠️ SMART: $($_.Exception.Message)"
 }
+} # end CHECK_SMART
 
 # ---------- RAID / Storage Spaces ----------
 $raidList = @()

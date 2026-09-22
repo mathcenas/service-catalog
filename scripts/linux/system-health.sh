@@ -11,7 +11,7 @@
 #   0 * * * * /srv/scripts/system-health.sh
 # =============================================================
 
-SCRIPT_VERSION="1.6.4"
+SCRIPT_VERSION="1.6.5"
 
 # ---------- Verificación de dependencias ----------
 if ! command -v jq >/dev/null 2>&1; then
@@ -269,7 +269,10 @@ fi
 
 # ---------- Disk SMART health ----------
 DISK_SMART_JSON="[]"
-if command -v smartctl >/dev/null 2>&1; then
+CHECK_SMART="${CHECK_SMART:-true}"
+if [[ "$CHECK_SMART" == "false" ]]; then
+  log "⏭ SMART — omitido (CHECK_SMART=false en .env)"
+elif command -v smartctl >/dev/null 2>&1; then
   SMART_DISKS=()
   for d in /dev/sd{a..z} /dev/nvme{0..9}; do
     [[ -b "$d" ]] && SMART_DISKS+=("$d")
