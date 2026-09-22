@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Mail, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Plus, Trash2, Send, Monitor } from 'lucide-react';
+import { Mail, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Plus, Trash2, Send, Monitor, FileText } from 'lucide-react';
 import { supabase, Client } from '../lib/supabase';
+import { BRAND, pdfHeader, pdfSection, openPrintWindow } from '../lib/pdfBrand';
 
 type Token = {
   id: string;
@@ -50,6 +51,8 @@ export function EmailAuditAdminView({ clients }: Props) {
   const [loading, setLoading] = useState(true);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState('Cenas IT Solutions');
 
   // Create token modal state
   const [showCreate, setShowCreate] = useState(false);
@@ -70,7 +73,7 @@ export function EmailAuditAdminView({ clients }: Props) {
 
   async function load() {
     setLoading(true);
-    const [{ data: toks }, { data: subs }, { data: sends }, { data: monitors }] = await Promise.all([
+    const [{ data: toks }, { data: subs }, { data: sends }, { data: monitors }, { data: settings }] = await Promise.all([
       supabase
         .from('email_audit_tokens')
         .select('*')
@@ -90,11 +93,14 @@ export function EmailAuditAdminView({ clients }: Props) {
         .select('*')
         .eq('email_type', 'page_view')
         .order('created_at', { ascending: false }),
+      supabase.from('user_settings').select('logo_url,company_name').maybeSingle(),
     ]);
     setTokens(toks ?? []);
     setSubmissions(subs ?? []);
     setEmailSends(sends ?? []);
     setMonitorLinks(monitors ?? []);
+    if (settings?.logo_url) setLogoUrl(settings.logo_url);
+    if (settings?.company_name) setCompanyName(settings.company_name);
     setLoading(false);
   }
 
@@ -168,6 +174,87 @@ export function EmailAuditAdminView({ clients }: Props) {
     load();
   }
 
+  function generateReport() {
+    const date = new Date().toLocaleDateString('es-UY', { day: '2-digit', month: 'long', year: 'numeric' });
+    const tokensWithSubs = tokens.filter(t => subsForToken(t.id).length > 0);
+
+    const clientSections = tokensWithSubs.map(tok => {
+      const subs = subsForToken(tok.id);
+      const expired = new Date(tok.expires_at) < new Date();
+      const statusBadge = expired
+        ? `<span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">EXPIRADO</span>`
+        : `<span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">ACTIVO</span>`;
+
+      const submissionsHtml = subs.map(sub => {
+        const accountRows = (sub.accounts as Account[]).map((acc, i) => `
+          <tr>
+            <td style="padding:7px 12px;font-size:12px;border-top:1px solid ${BRAND.bg};">${i + 1}</td>
+            <td style="padding:7px 12px;font-size:12px;font-family:monospace;color:#1d4ed8;border-top:1px solid ${BRAND.bg};">${acc.email}</td>
+            <td style="padding:7px 12px;font-size:12px;color:${BRAND.textMid};border-top:1px solid ${BRAND.bg};">${acc.description || '—'}</td>
+          </tr>`).join('');
+
+        return `
+          <div style="margin-bottom:12px;padding:14px 16px;background:${BRAND.bg};border-radius:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+              <span style="font-size:13px;font-weight:600;color:${BRAND.primary};">${sub.contact_name}</span>
+              <span style="font-size:11px;color:${BRAND.textSoft};">${new Date(sub.submitted_at).toLocaleString('es-UY')}</span>
+            </div>
+            <table style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr style="background:#fff;">
+                  <th style="padding:6px 12px;text-align:left;font-size:11px;color:${BRAND.textMid};font-weight:600;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid ${BRAND.border};">#</th>
+                  <th style="padding:6px 12px;text-align:left;font-size:11px;color:${BRAND.textMid};font-weight:600;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid ${BRAND.border};">Cuenta de correo</th>
+                  <th style="padding:6px 12px;text-align:left;font-size:11px;color:${BRAND.textMid};font-weight:600;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid ${BRAND.border};">Descripción / Uso</th>
+                </tr>
+              </thead>
+              <tbody>${accountRows}</tbody>
+            </table>
+          </div>`;
+      }).join('');
+
+      const totalAccounts = subs.reduce((n, s) => n + (s.accounts as Account[]).length, 0);
+      return `
+        <div style="margin-bottom:32px;page-break-inside:avoid;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <h3 style="font-size:15px;font-weight:700;color:${BRAND.primary};margin:0;">${tok.client_name}</h3>
+            ${statusBadge}
+          </div>
+          <div style="font-size:11px;color:${BRAND.textMid};margin-bottom:12px;">
+            ${subs.length} ${subs.length === 1 ? 'respuesta' : 'respuestas'} · ${totalAccounts} ${totalAccounts === 1 ? 'cuenta' : 'cuentas'} relevadas
+            ${tok.open_count > 0 ? ` · Abierto ${tok.open_count} ${tok.open_count === 1 ? 'vez' : 'veces'}` : ''}
+            · Vence ${new Date(tok.expires_at).toLocaleDateString('es-UY')}
+          </div>
+          ${submissionsHtml}
+        </div>`;
+    }).join('');
+
+    const totalClients = tokensWithSubs.length;
+    const totalAccounts = submissions.reduce((n, s) => n + (s.accounts as Account[]).length, 0);
+
+    const summary = `
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px;">
+        ${[
+          ['Clientes relevados', String(totalClients)],
+          ['Respuestas recibidas', String(submissions.length)],
+          ['Cuentas registradas', String(totalAccounts)],
+        ].map(([label, value]) => `
+          <div style="padding:14px 16px;background:${BRAND.bg};border-radius:8px;border:1px solid ${BRAND.border};">
+            <div style="font-size:22px;font-weight:700;color:${BRAND.primary};">${value}</div>
+            <div style="font-size:11px;color:${BRAND.textMid};margin-top:2px;">${label}</div>
+          </div>`).join('')}
+      </div>`;
+
+    const body = `
+      ${pdfHeader({ logoUrl, companyName, title: 'Auditoría de Cuentas de Correo', subtitle: 'Relevamiento de cuentas activas por cliente', date })}
+      ${pdfSection('Resumen')}
+      ${summary}
+      ${tokensWithSubs.length === 0
+        ? `<p style="color:${BRAND.textSoft};font-size:13px;">No hay respuestas registradas todavía.</p>`
+        : `${pdfSection('Detalle por cliente')}${clientSections}`}`;
+
+    openPrintWindow('Auditoría Email — ' + date, body, companyName);
+  }
+
   function toggleExpand(tokenId: string) {
     setExpanded(prev => {
       const next = new Set(prev);
@@ -202,13 +289,24 @@ export function EmailAuditAdminView({ clients }: Props) {
             {tokens.length} {tokens.length === 1 ? 'enlace' : 'enlaces'} · {submissions.length} {submissions.length === 1 ? 'respuesta' : 'respuestas'}
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          Nuevo enlace
-        </button>
+        <div className="flex items-center gap-2">
+          {submissions.length > 0 && (
+            <button
+              onClick={generateReport}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors"
+            >
+              <FileText className="w-4 h-4" />
+              Reporte PDF
+            </button>
+          )}
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Nuevo enlace
+          </button>
+        </div>
       </div>
 
       {/* Create modal */}

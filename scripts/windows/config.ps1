@@ -36,8 +36,9 @@ $KUMA_PUSH_URL_BACKUP = ""   # kopia-report.ps1 / veeam-agent-report.ps1 / kls-r
 # ---------- system-health.ps1 — secciones opcionales ----------
 # Poner $false en los checks que el cliente NO usa para que no
 # aparezcan como "failed" en telemetría.
-$CHECK_RDP     = $true   # $false si el cliente no usa Remote Desktop
-$CHECK_SPEEDTEST = $true  # $false si no hay herramienta speedtest instalada
+$CHECK_RDP       = $true   # $false si el cliente no usa Remote Desktop
+$CHECK_SPEEDTEST = $true   # $false si no hay herramienta speedtest instalada
+$CHECK_SMART     = $true   # $false en VMs (discos virtuales no reportan SMART real)
 
 function Invoke-Kuma {
     param([string]$Status, [string]$Msg, [string]$Url = "")
