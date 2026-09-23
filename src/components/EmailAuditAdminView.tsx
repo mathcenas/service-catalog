@@ -6,7 +6,7 @@ import { BRAND, pdfHeader, pdfSection, openPrintWindow } from '../lib/pdfBrand';
 type Token = {
   id: string;
   token: string;
-  client_id: string | null;
+  client_id: string;
   client_name: string;
   expires_at: string;
   created_at: string;
@@ -53,6 +53,7 @@ export function EmailAuditAdminView({ clients }: Props) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [companyName, setCompanyName] = useState('Cenas IT Solutions');
+  const [reportClientId, setReportClientId] = useState<string>('all');
 
   // Create token modal state
   const [showCreate, setShowCreate] = useState(false);
@@ -174,9 +175,13 @@ export function EmailAuditAdminView({ clients }: Props) {
     load();
   }
 
-  function generateReport() {
+  function generateReport(filterClientId: string = 'all') {
     const date = new Date().toLocaleDateString('es-UY', { day: '2-digit', month: 'long', year: 'numeric' });
-    const tokensWithSubs = tokens.filter(t => subsForToken(t.id).length > 0);
+    const tokensWithSubs = tokens.filter(t => {
+      if (subsForToken(t.id).length === 0) return false;
+      if (filterClientId === 'all') return true;
+      return t.client_id === filterClientId;
+    });
 
     const clientSections = tokensWithSubs.map(tok => {
       const subs = subsForToken(tok.id);
@@ -228,14 +233,20 @@ export function EmailAuditAdminView({ clients }: Props) {
         </div>`;
     }).join('');
 
+    const filteredSubs = submissions.filter(s =>
+      tokensWithSubs.some(t => t.id === s.token_id)
+    );
     const totalClients = tokensWithSubs.length;
-    const totalAccounts = submissions.reduce((n, s) => n + (s.accounts as Account[]).length, 0);
+    const totalAccounts = filteredSubs.reduce((n, s) => n + (s.accounts as Account[]).length, 0);
+    const clientLabel = filterClientId !== 'all'
+      ? (clients.find(c => c.id === filterClientId)?.company_name ?? 'Cliente')
+      : null;
 
     const summary = `
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px;">
         ${[
           ['Clientes relevados', String(totalClients)],
-          ['Respuestas recibidas', String(submissions.length)],
+          ['Respuestas recibidas', String(filteredSubs.length)],
           ['Cuentas registradas', String(totalAccounts)],
         ].map(([label, value]) => `
           <div style="padding:14px 16px;background:${BRAND.bg};border-radius:8px;border:1px solid ${BRAND.border};">
@@ -244,15 +255,18 @@ export function EmailAuditAdminView({ clients }: Props) {
           </div>`).join('')}
       </div>`;
 
+    const title = clientLabel ? `Auditoría de Correo — ${clientLabel}` : 'Auditoría de Cuentas de Correo';
+    const subtitle = clientLabel ? `Relevamiento de cuentas activas` : 'Relevamiento de cuentas activas por cliente';
+
     const body = `
-      ${pdfHeader({ logoUrl, companyName, title: 'Auditoría de Cuentas de Correo', subtitle: 'Relevamiento de cuentas activas por cliente', date })}
+      ${pdfHeader({ logoUrl, companyName, title, subtitle, date })}
       ${pdfSection('Resumen')}
       ${summary}
       ${tokensWithSubs.length === 0
         ? `<p style="color:${BRAND.textSoft};font-size:13px;">No hay respuestas registradas todavía.</p>`
-        : `${pdfSection('Detalle por cliente')}${clientSections}`}`;
+        : `${pdfSection(clientLabel ? 'Detalle' : 'Detalle por cliente')}${clientSections}`}`;
 
-    openPrintWindow('Auditoría Email — ' + date, body, companyName);
+    openPrintWindow(title + ' — ' + date, body, companyName);
   }
 
   function toggleExpand(tokenId: string) {
@@ -291,13 +305,29 @@ export function EmailAuditAdminView({ clients }: Props) {
         </div>
         <div className="flex items-center gap-2">
           {submissions.length > 0 && (
-            <button
-              onClick={generateReport}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors"
-            >
-              <FileText className="w-4 h-4" />
-              Reporte PDF
-            </button>
+            <div className="flex items-center gap-1.5">
+              <select
+                value={reportClientId}
+                onChange={e => setReportClientId(e.target.value)}
+                className="border border-gray-200 rounded-lg px-2.5 py-2 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-slate-400"
+              >
+                <option value="all">Todos los clientes</option>
+                {tokens
+                  .filter(t => subsForToken(t.id).length > 0)
+                  .filter((t, i, arr) => arr.findIndex(x => x.client_id === t.client_id) === i)
+                  .map(t => (
+                    <option key={t.client_id} value={t.client_id}>{t.client_name}</option>
+                  ))
+                }
+              </select>
+              <button
+                onClick={() => generateReport(reportClientId)}
+                className="flex items-center gap-1.5 px-3 py-2 text-sm bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition-colors whitespace-nowrap"
+              >
+                <FileText className="w-4 h-4" />
+                Reporte PDF
+              </button>
+            </div>
           )}
           <button
             onClick={() => setShowCreate(true)}
