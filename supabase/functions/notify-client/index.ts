@@ -153,18 +153,48 @@ Deno.serve(async (req: Request) => {
       ? `<img src="${logo_url}" alt="Logo" style="max-height:32px;max-width:140px;" />`
       : emailLogo(sender_name || "Cenas IT");
 
+    const resolveHeaderLabel = (color: string): { bg: string; border: string; text: string } => {
+      const map: Record<string, { bg: string; border: string; text: string }> = {
+        "#16a34a": { bg: "#ECFDF5", border: "#A7F3D0", text: "#15803d" },
+        "#dc2626": { bg: "#FEF2F2", border: "#FECACA", text: "#dc2626" },
+        "#7c3aed": { bg: "#F5F3FF", border: "#DDD6FE", text: "#6d28d9" },
+        "#0284c7": { bg: "#EFF6FF", border: "#BAE6FD", text: "#0284c7" },
+        "#0d9488": { bg: "#F0FDFA", border: "#99F6E4", text: "#0d9488" },
+        "#2563eb": { bg: "#EFF6FF", border: "#BFDBFE", text: "#2563eb" },
+        "#b45309": { bg: "#FFFBEB", border: "#FDE68A", text: "#b45309" },
+      };
+      return map[color] ?? { bg: "#F1F5F9", border: "#CBD5E1", text: "#334155" };
+    };
+    const labelPair = resolveHeaderLabel(meta.color);
+    const FONT = "'Plus Jakarta Sans',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+
     const htmlBody = `
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;font-family:${EMAIL_FONT};">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;font-family:${FONT};">
         <tr><td align="center" style="padding:32px 24px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;border:1px solid ${B.border};">
         <tr><td style="padding:28px;">
 
-          ${emailHeader({
-            logoHtml: logoHtmlInner,
-            senderName: sender_name || "Cenas IT",
-            label: meta.label,
-            accentColor: meta.color,
-          })}
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid ${B.border};">
+            <tr>
+              <td valign="middle">
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td valign="middle" style="padding-right:10px;">${logoHtmlInner}</td>
+                    <td valign="middle">
+                      <div style="background:${B.primary};padding:7px 13px;border-radius:7px;display:inline-block;">
+                        <span style="color:${B.accent};font-size:11px;font-weight:700;letter-spacing:.5px;">${(sender_name || user.email || "Cenas IT").toUpperCase()}</span>
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+              <td valign="middle" align="right">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="background:${labelPair.bg};border:1px solid ${labelPair.border};border-radius:8px;">
+                  <tr><td style="padding:4px 12px;"><span style="color:${labelPair.text};font-size:11px;font-weight:700;letter-spacing:.5px;">${meta.label}</span></td></tr>
+                </table>
+              </td>
+            </tr>
+          </table>
 
           <p style="color:${B.textMain};font-size:15px;line-height:1.6;margin:0 0 16px;">
             Hola ${client_name || ""},
