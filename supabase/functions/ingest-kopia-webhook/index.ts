@@ -136,7 +136,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: service } = await supabase
       .from("services")
-      .select("user_id, ingest_secret, name, business_name")
+      .select("user_id, ingest_secret, name, business_name, notification_email")
       .eq("id", serviceId)
       .maybeSingle();
 
@@ -266,7 +266,7 @@ Deno.serve(async (req: Request) => {
 
     // Send email notification via Resend
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-    const toEmail = Deno.env.get("RESEND_KOPIA_TO") || Deno.env.get("RESEND_REPLY_TO");
+    const toEmail = service.notification_email || Deno.env.get("RESEND_KOPIA_TO") || Deno.env.get("RESEND_REPLY_TO");
 
     if (RESEND_API_KEY && toEmail) {
       try {
