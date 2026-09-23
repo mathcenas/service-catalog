@@ -47,8 +47,8 @@ function buildEmailHtml(opts: {
   const st = statusMap[opts.status] || statusMap.warning;
 
   const logoHtml = opts.logoUrl
-    ? `<img src="${opts.logoUrl}" alt="Logo" style="max-height:28px;max-width:120px;display:block;border:0;" />`
-    : `<span style="font-weight:700;font-size:13px;color:${B.accent};">${esc(opts.companyName)}</span>`;
+    ? `<img src="${opts.logoUrl}" alt="${esc(opts.companyName)}" style="max-height:32px;max-width:140px;display:block;border:0;" />`
+    : `<div style="background:${B.primary};padding:5px 11px;border-radius:6px;display:inline-block;"><span style="color:${B.accent};font-size:10px;font-weight:700;letter-spacing:.5px;">${esc(opts.companyName.toUpperCase())}</span></div>`;
 
   const row = (label: string, value: string) => `
     <tr>
@@ -66,16 +66,7 @@ function buildEmailHtml(opts: {
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid ${B.border};">
         <tr>
           <td valign="middle">
-            <table role="presentation" cellpadding="0" cellspacing="0">
-              <tr>
-                <td valign="middle" style="padding-right:10px;">
-                  <div style="background:${B.primary};padding:5px 11px;border-radius:6px;display:inline-block;">
-                    <span style="color:${B.accent};font-size:10px;font-weight:700;letter-spacing:.5px;">${esc(opts.companyName.toUpperCase())}</span>
-                  </div>
-                </td>
-                <td valign="middle">${logoHtml}</td>
-              </tr>
-            </table>
+            ${logoHtml}
             <div style="font-size:15px;font-weight:700;color:${B.primary};margin-top:6px;">Backup Kopia — ${esc(opts.serviceName)}</div>
           </td>
           <td valign="middle" align="right">
@@ -317,6 +308,7 @@ Deno.serve(async (req: Request) => {
           },
           body: JSON.stringify({
             from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Alerts <alerts@updates.cenas.uy>",
+            ...(Deno.env.get("RESEND_KOPIA_REPLY_TO") ? { reply_to: Deno.env.get("RESEND_KOPIA_REPLY_TO") } : {}),
             to: [toEmail],
             subject,
             html: htmlBody,
