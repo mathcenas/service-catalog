@@ -266,15 +266,46 @@ Deno.serve(async (req: Request) => {
 
     // Send email notification via Resend
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-    const toEmail = service.notification_email || Deno.env.get("RESEND_KOPIA_TO") || Deno.env.get("RESEND_REPLY_TO");
 
-    if (RESEND_API_KEY && toEmail) {
+    if (RESEND_API_KEY) {
       try {
-        const { data: settings } = await supabase
-          .from("user_settings")
-          .select("company_name, logo_url")
-          .eq("user_id", service.user_id)
+        // Build recipient list: client contacts + service notification_email + env fallback
+        const recipients = new Set<string>();
+
+        // 1. Contacts of the client that owns this service
+        const { data: svcWithClient } = await supabase
+          .from("services")
+          .select("client_id")
+          .eq("id", serviceId)
           .maybeSingle();
+
+        if (svcWithClient?.client_id) {
+          const { data: client } = await supabase
+            .from("clients")
+            .select("email, alt_email, cc_emails")
+            .eq("id", svcWithClient.client_id)
+            .maybeSingle();
+          if (client?.email) recipients.add(client.email);
+          if (client?.alt_email) recipients.add(client.alt_email);
+          if (client?.cc_emails) {
+            client.cc_emails.split(",").map((e: string) => e.trim()).filter(Boolean).forEach((e: string) => recipients.add(e));
+          }
+        }
+
+        // 2. Per-service override
+        if (service.notification_email) recipients.add(service.notification_email);
+
+        // 3. Global fallback if nothing found
+        if (recipients.size === 0) {
+          const fallback = Deno.env.get("RESEND_KOPIA_TO") || Deno.env.get("RESEND_REPLY_TO");
+          if (fallback) recipients.add(fallback);
+        }
+
+        if (recipients.size === 0) throw new Error("No recipients configured");
+
+        const [settings] = await Promise.all([
+          supabase.from("user_settings").select("company_name, logo_url").eq("user_id", service.user_id).maybeSingle().then(r => r.data),
+        ]);
 
         const companyName = settings?.company_name || "Cenas IT";
         const serviceName = service.business_name || service.name || "Backup";
@@ -309,7 +340,7 @@ Deno.serve(async (req: Request) => {
           body: JSON.stringify({
             from: Deno.env.get("RESEND_KOPIA_FROM") || Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Alerts <alerts@updates.cenas.uy>",
             ...(Deno.env.get("RESEND_KOPIA_REPLY_TO") ? { reply_to: Deno.env.get("RESEND_KOPIA_REPLY_TO") } : {}),
-            to: [toEmail],
+            to: Array.from(recipients),
             subject,
             html: htmlBody,
           }),
