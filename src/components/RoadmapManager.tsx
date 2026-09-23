@@ -682,40 +682,43 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
             title="Scheduled date"
           />
         </div>
-        <div className="md:col-span-1">
-          <input
-            type="number"
-            value={item.sort_order}
-            onChange={e => onUpdate(item.id, { sort_order: parseInt(e.target.value) || 0 })}
-            className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            title="Sort order (lower = higher)"
-          />
-          <div className="flex rounded-md border border-gray-200 overflow-hidden mt-1 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-300">
-            <select
-              value={item.amount_type || 'money'}
-              onChange={e => onUpdate(item.id, { amount_type: e.target.value as 'money' | 'hours' })}
-              className="px-1.5 py-1 text-[10px] bg-gray-50 border-r border-gray-200 text-gray-500 outline-none"
-            >
-              <option value="money">$</option>
-              <option value="hours">hs</option>
-            </select>
+        <div className="md:col-span-2 flex flex-col gap-1.5">
+          {/* Amount: number first, unit selector as suffix */}
+          <div className="flex rounded-md border border-gray-300 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-300">
             <input
               type="number"
               value={item.amount ?? ''}
               onChange={e => onUpdate(item.id, { amount: e.target.value ? parseFloat(e.target.value) : undefined })}
-              placeholder="0"
-              className="w-full px-1.5 py-1 text-xs outline-none"
-              title="Amount (cost or hours)"
+              placeholder="Monto / hs"
+              className="w-full px-2 py-1.5 text-xs outline-none min-w-0"
+              title="Monto o horas"
             />
+            <select
+              value={item.amount_type || 'money'}
+              onChange={e => onUpdate(item.id, { amount_type: e.target.value as 'money' | 'hours' })}
+              className="px-1.5 py-1 text-xs bg-gray-50 border-l border-gray-200 text-gray-500 outline-none shrink-0"
+            >
+              <option value="money">$</option>
+              <option value="hours">hs</option>
+            </select>
           </div>
+          {/* Sort order — compact, secondary */}
+          <input
+            type="number"
+            value={item.sort_order}
+            onChange={e => onUpdate(item.id, { sort_order: parseInt(e.target.value) || 0 })}
+            className="w-full px-2 py-1 border border-gray-200 rounded-md text-[10px] text-gray-400 focus:ring-1 focus:ring-blue-400 focus:border-transparent outline-none"
+            title="Orden (menor = arriba)"
+            placeholder="Orden"
+          />
           {item.scheduled_date && (
-            <div className="flex items-center gap-1 mt-1 text-xs text-blue-600">
-              <CalendarClock className="w-3 h-3" />
+            <div className="flex items-center gap-1 text-xs text-blue-600">
+              <CalendarClock className="w-3 h-3 shrink-0" />
               {new Date(item.scheduled_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
             </div>
           )}
         </div>
-        <div className="md:col-span-3 flex items-center justify-end gap-1.5 flex-wrap">
+        <div className="md:col-span-2 flex items-center justify-end gap-1.5 flex-wrap">
           <label className="inline-flex items-center gap-1 text-[10px] text-gray-500 cursor-pointer select-none" title="Publish to changelog when released">
             <input
               type="checkbox"
