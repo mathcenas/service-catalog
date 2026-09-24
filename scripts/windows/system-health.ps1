@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.5.0"
+$SCRIPT_VERSION = "1.5.1"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -60,88 +60,108 @@ $hwStatus = if   ($diskUsePct -gt 90 -or $ramUsePct -gt 92 -or $cpuUsage -gt 95)
             else { "success" }
 
 # ---------- SMART (salud de discos físicos) ----------
-$CHECK_SMART = if (Get-Variable 'CHECK_SMART' -ErrorAction SilentlyContinue) { $CHECK_SMART } else { $true }
+$CHECK_SMART = if (
+    Get-Variable 'CHECK_SMART' -ErrorAction SilentlyContinue
+) { $CHECK_SMART } else { $true }
+
 $diskSmartList = @()
+
 if (-not $CHECK_SMART) {
+
     Write-Log "⏭️ SMART — omitido (CHECK_SMART = false en config.ps1)"
+
 } else {
-try {
-    $physDisks = Get-PhysicalDisk -ErrorAction Stop
-    foreach ($pd in $physDisks) {
-        $devType = switch ($pd.MediaType) {
-            'SSD'           { 'SSD' }
-            'HDD'           { 'HDD' }
-            'SCM'           { 'NVMe' }
-            'Unspecified'   { if ($pd.BusType -eq 'NVMe') { 'NVMe' } else { 'HDD' } }
-            default         { if ($pd.BusType -eq 'NVMe') { 'NVMe' } else { $pd.MediaType } }
+
+    try {
+
+        $physDisks = Get-PhysicalDisk -ErrorAction Stop
+
+        foreach ($pd in $physDisks) {
+
+            if ($pd.BusType -eq 'NVMe') { $devType = 'NVMe' }
+            elseif ($pd.MediaType -eq 'SSD') { $devType = 'SSD' }
+            elseif ($pd.MediaType -eq 'HDD') { $devType = 'HDD' }
+            else { $devType = [string]$pd.MediaType }
+
+            $smartStatus = [string]$pd.HealthStatus
+            $opStatus    = [string]$pd.OperationalStatus
+
+            $tempC       = $null
+            $pohours     = $null
+            $readErrors  = $null
+            $writeErrors = $null
+            $wearLevel   = $null
+
+            try {
+                $rel = Get-StorageReliabilityCounter `
+                    -PhysicalDisk $pd `
+                    -ErrorAction Stop
+
+                if ($null -ne $rel.Temperature -and $rel.Temperature -gt 0) {
+                    $tempC = [int]$rel.Temperature
+                }
+                if ($null -ne $rel.PowerOnHours) {
+                    $pohours = [int]$rel.PowerOnHours
+                }
+                if ($null -ne $rel.ReadErrorsUncorrected) {
+                    $readErrors = [int]$rel.ReadErrorsUncorrected
+                }
+                if ($null -ne $rel.WriteErrorsUncorrected) {
+                    $writeErrors = [int]$rel.WriteErrorsUncorrected
+                }
+                if ($null -ne $rel.Wear -and $rel.Wear -ge 0) {
+                    $wearLevel = [int]$rel.Wear
+                }
+            } catch {}
+
+            $capGB  = if ($pd.Size -gt 0) { [math]::Round($pd.Size / 1GB, 0) } else { $null }
+            $capStr = if ($capGB) { "${capGB} GB" } else { "" }
+
+            switch ($smartStatus) {
+                'Healthy'   { $dStatus = 'ok' }
+                'Warning'   { $dStatus = 'warning' }
+                'Unhealthy' { $dStatus = 'error' }
+                default     { $dStatus = 'warning' }
+            }
+
+            if ($null -ne $tempC) {
+                if ($tempC -gt 65) { $dStatus = 'error' }
+                elseif ($tempC -gt 55 -and $dStatus -eq 'ok') { $dStatus = 'warning' }
+            }
+            if ($null -ne $wearLevel) {
+                if ($wearLevel -gt 90) { $dStatus = 'error' }
+                elseif ($wearLevel -gt 75 -and $dStatus -eq 'ok') { $dStatus = 'warning' }
+            }
+
+            $uncorrectableErrors = 0
+            if ($null -ne $readErrors)  { $uncorrectableErrors += $readErrors }
+            if ($null -ne $writeErrors) { $uncorrectableErrors += $writeErrors }
+            if ($uncorrectableErrors -gt 0 -and $dStatus -eq 'ok') { $dStatus = 'warning' }
+
+            if ($dStatus -eq 'warning' -and $hwStatus -eq 'success') { $hwStatus = 'warning' }
+            if ($dStatus -eq 'error') { $hwStatus = 'failed' }
+
+            $diskSmartList += @{
+                dev                  = [string]$pd.DeviceId
+                type                 = $devType
+                model                = [string]$pd.FriendlyName
+                serial               = [string]$pd.SerialNumber
+                capacity             = $capStr
+                smart_health         = $smartStatus
+                operational_status   = $opStatus
+                status               = $dStatus
+                temp_c               = $tempC
+                power_on_hours       = $pohours
+                pct_used             = $wearLevel
+                read_uncorrectable   = $readErrors
+                write_uncorrectable  = $writeErrors
+                uncorrectable_errors = $uncorrectableErrors
+            }
         }
 
-        # Salud SMART via WMI (requiere Storage module — disponible en Win 8+ / Server 2012+)
-        $smartStatus  = $pd.HealthStatus   # Healthy / Warning / Unhealthy
-        $opStatus     = $pd.OperationalStatus
-
-        # Temperatura via MSFT_StorageReliabilityCounter (Win 10+/Server 2016+)
-        $tempC        = $null
-        $pohours      = $null
-        $readErrors   = $null
-        $writeErrors  = $null
-        $wearLevel    = $null
-        try {
-            $rel = Get-StorageReliabilityCounter -PhysicalDisk $pd -ErrorAction Stop
-            if ($rel.Temperature -gt 0) { $tempC    = [int]$rel.Temperature }
-            if ($rel.PowerOnHours -gt 0){ $pohours  = [int]$rel.PowerOnHours }
-            if ($null -ne $rel.ReadErrorsUncorrected) { $readErrors  = [int]$rel.ReadErrorsUncorrected }
-            if ($null -ne $rel.WriteErrorsUncorrected){ $writeErrors = [int]$rel.WriteErrorsUncorrected }
-            if ($null -ne $rel.Wear -and $rel.Wear -ge 0) { $wearLevel = [int]$rel.Wear }
-        } catch {}
-
-        # Capacidad legible
-        $capGB = if ($pd.Size -gt 0) { [math]::Round($pd.Size / 1GB, 0) } else { $null }
-        $capStr = if ($capGB) { "${capGB} GB" } else { "" }
-
-        # Determinar estado
-        $dStatus = switch ($smartStatus) {
-            'Healthy'   { 'ok' }
-            'Warning'   { 'warning' }
-            'Unhealthy' { 'error' }
-            default     { 'warning' }
-        }
-        # Escalar por temperatura
-        if ($tempC -ne $null -and $tempC -gt 65) { $dStatus = 'error' }
-        elseif ($tempC -ne $null -and $tempC -gt 55 -and $dStatus -eq 'ok') { $dStatus = 'warning' }
-        # Escalar por wear level (% vida usada)
-        if ($wearLevel -ne $null -and $wearLevel -gt 90) { $dStatus = 'error' }
-        elseif ($wearLevel -ne $null -and $wearLevel -gt 75 -and $dStatus -eq 'ok') { $dStatus = 'warning' }
-        # Escalar por errores no corregibles
-        if (($readErrors -gt 0 -or $writeErrors -gt 0) -and $dStatus -eq 'ok') { $dStatus = 'warning' }
-
-        if ($dStatus -ne 'ok' -and $hwStatus -eq 'success') { $hwStatus = 'warning' }
-        if ($dStatus -eq 'error' -and $hwStatus -ne 'failed') { $hwStatus = 'warning' }
-
-        $reallocSectors = $null
-        if ($null -ne $readErrors) {
-            $writeErrVal = if ($null -ne $writeErrors) { $writeErrors } else { 0 }
-            $reallocSectors = $readErrors + $writeErrVal
-        }
-
-        $diskSmartList += @{
-            dev              = $pd.DeviceId
-            type             = $devType
-            model            = $pd.FriendlyName
-            serial           = $pd.SerialNumber
-            capacity         = $capStr
-            smart_health     = $smartStatus
-            status           = $dStatus
-            temp_c           = $tempC
-            power_on_hours   = $pohours
-            pct_used         = $wearLevel
-            tbw              = $null
-            reallocated_sectors = $reallocSectors
-        }
+    } catch {
+        Write-Log "⚠️ SMART: $($_.Exception.Message)"
     }
-} catch {
-    Write-Log "⚠️ SMART: $($_.Exception.Message)"
-}
 } # end CHECK_SMART
 
 # ---------- RAID / Storage Spaces ----------
