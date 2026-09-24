@@ -73,8 +73,10 @@ interface DiskSmartEntry {
   temp_c: number | null;
   power_on_hours: number | null;
   pct_used: number | null;
-  tbw: string | null;
-  reallocated_sectors: number | null;
+  operational_status: string | null;
+  read_uncorrectable: number | null;
+  write_uncorrectable: number | null;
+  uncorrectable_errors: number | null;
 }
 
 // Maps heartbeat source → { windows, linux } script paths
@@ -1593,9 +1595,11 @@ function DiskSmartPanel({ disks }: { disks: DiskSmartEntry[] }) {
               {d.power_on_hours !== null && (
                 <span title="Power-On Hours">⏱ {d.power_on_hours.toLocaleString()}h ({Math.round(d.power_on_hours / 24 / 365 * 10) / 10}yr)</span>
               )}
-              {d.tbw !== null && <span title="Total Data Written">✍ {d.tbw} TBW</span>}
-              {d.reallocated_sectors !== null && d.reallocated_sectors > 0 && (
-                <span className="text-amber-600 font-semibold">⚠ {d.reallocated_sectors} sect. reasignados</span>
+              {d.operational_status && d.operational_status !== 'OK' && (
+                <span className="text-amber-600 font-semibold">Op: {d.operational_status}</span>
+              )}
+              {d.uncorrectable_errors !== null && d.uncorrectable_errors > 0 && (
+                <span className="text-amber-600 font-semibold">⚠ {d.uncorrectable_errors} err. incorregibles</span>
               )}
             </div>
             {pctBar !== null && (
