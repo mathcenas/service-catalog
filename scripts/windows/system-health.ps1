@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.4.9"
+$SCRIPT_VERSION = "1.5.0"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -205,21 +205,31 @@ try {
 # ---------- 2. RED (ping + speedtest) ----------
 $targetHost = "1.1.1.1"
 $pingCount  = 5
-$pingResult = Test-Connection -ComputerName $targetHost -Count $pingCount -ErrorAction SilentlyContinue
+
+$pingResult = Test-Connection `
+    -ComputerName $targetHost `
+    -Count $pingCount `
+    -ErrorAction SilentlyContinue
 
 if ($pingResult) {
-    $received   = ($pingResult | Where-Object { $_.ResponseTime -ne $null }).Count
+    $received   = @($pingResult).Count
     $packetLoss = [math]::Round((($pingCount - $received) / $pingCount) * 100, 1)
-    $avgPing    = [math]::Round(($pingResult | Measure-Object -Property ResponseTime -Average).Average, 1)
+    $avgPing    = [math]::Round(
+        ($pingResult | Measure-Object -Property ResponseTime -Average).Average, 1)
 } else {
-    $packetLoss = 100; $avgPing = 0
+    $packetLoss = 100
+    $avgPing    = 0
 }
 
-# Speedtest (opcional — requiere speedtest.exe en C:\Scripts\)
-$CHECK_SPEEDTEST = if (Get-Variable 'CHECK_SPEEDTEST' -ErrorAction SilentlyContinue) { $CHECK_SPEEDTEST } else { $true }
+# Speedtest (opcional — requiere speedtest.exe en la misma carpeta)
+$CHECK_SPEEDTEST = if (
+    Get-Variable 'CHECK_SPEEDTEST' -ErrorAction SilentlyContinue
+) { $CHECK_SPEEDTEST } else { $true }
 
-$downloadMbps = 0; $uploadMbps = 0
+$downloadMbps  = 0
+$uploadMbps    = 0
 $speedtestPath = "$PSScriptRoot\speedtest.exe"
+
 if ($CHECK_SPEEDTEST -and (Test-Path $speedtestPath)) {
     try {
         $speedData    = & $speedtestPath --format=json --accept-license --accept-gdpr 2>$null | ConvertFrom-Json
@@ -229,23 +239,46 @@ if ($CHECK_SPEEDTEST -and (Test-Path $speedtestPath)) {
 }
 
 if ($CHECK_SPEEDTEST) {
-    # Ping 100% loss con speedtest OK = ICMP bloqueado por firewall, no es falla real
-    $netStatus = if ($packetLoss -eq 100 -and $downloadMbps -eq 0) { "failed" }
-                 elseif ($packetLoss -eq 100) { "warning" }
-                 elseif ($packetLoss -gt 15 -or $avgPing -gt 150) { "warning" }
-                 else { "success" }
+
+    # Determinar disponibilidad de ICMP y evaluación de calidad
+    $icmpAvailable  = ($packetLoss -lt 100)
+    $speedAvailable = ($downloadMbps -gt 0)
+
+    if (!$icmpAvailable -and !$speedAvailable) {
+        $netStatus = "failed"
+        $quality   = "offline"
+    } elseif (!$icmpAvailable -and $speedAvailable) {
+        # ICMP bloqueado por firewall pero internet funciona — no es falla real
+        $netStatus = "success"
+        $quality   = "good"
+    } elseif ($packetLoss -gt 15 -or $avgPing -gt 150) {
+        $netStatus = "warning"
+        $quality   = "degraded"
+    } elseif ($packetLoss -gt 0 -or $avgPing -gt 80) {
+        $netStatus = "warning"
+        $quality   = "fair"
+    } else {
+        $netStatus = "success"
+        $quality   = "good"
+    }
 
     $netPayload = @{
         ping_ms         = $avgPing
         packet_loss_pct = $packetLoss
+        quality         = $quality
+        icmp_available  = $icmpAvailable
     }
     if ($downloadMbps -gt 0) {
         $netPayload.download_mbps = $downloadMbps
         $netPayload.upload_mbps   = $uploadMbps
     }
 
-    $netMsg = "Ping: ${avgPing}ms | Loss: ${packetLoss}%"
-    if ($downloadMbps -gt 0) { $netMsg += " | Down: ${downloadMbps} Mbps | Up: ${uploadMbps} Mbps" }
+    if (!$icmpAvailable -and $speedAvailable) {
+        $netMsg = "Quality: $quality | ICMP: unavailable | Down: ${downloadMbps} Mbps | Up: ${uploadMbps} Mbps"
+    } else {
+        $netMsg = "Quality: $quality | Ping: ${avgPing}ms | Loss: ${packetLoss}%"
+        if ($downloadMbps -gt 0) { $netMsg += " | Down: ${downloadMbps} Mbps | Up: ${uploadMbps} Mbps" }
+    }
 
     $netBody = @{
         service_id = $SERVICE_ID

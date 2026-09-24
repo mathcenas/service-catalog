@@ -159,10 +159,13 @@ function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersi
     if (p.rdp_tcp_connections != null) chips.push({ label: 'TCP 3389', value: `${p.rdp_tcp_connections}` });
     if (p.disk_latency_sec != null && Number(p.disk_latency_sec) > 0) chips.push({ label: 'DiskIO', value: `${p.disk_latency_sec}s`, warn: Number(p.disk_latency_sec) > 0.03, error: Number(p.disk_latency_sec) > 0.05 });
   } else if (hb.source === 'speedtest') {
-    if (p.ping_ms != null) chips.push({ label: 'Ping', value: `${p.ping_ms}ms` });
-    if (p.packet_loss_pct != null) chips.push({ label: 'Loss', value: `${p.packet_loss_pct}%`, warn: Number(p.packet_loss_pct) > 2 });
+    const icmpOk = p.icmp_available !== false;
+    if (icmpOk && p.ping_ms != null) chips.push({ label: 'Ping', value: `${p.ping_ms}ms`, warn: Number(p.ping_ms) > 100, error: Number(p.ping_ms) > 200 });
+    if (icmpOk && p.packet_loss_pct != null) chips.push({ label: 'Loss', value: `${p.packet_loss_pct}%`, warn: Number(p.packet_loss_pct) > 2 });
+    if (!icmpOk) chips.push({ label: 'ICMP', value: 'N/A', warn: false, error: false });
     if (p.download_mbps != null) chips.push({ label: '↓', value: `${p.download_mbps} Mbps` });
     if (p.upload_mbps != null) chips.push({ label: '↑', value: `${p.upload_mbps} Mbps` });
+    if (p.quality != null) chips.push({ label: 'Quality', value: String(p.quality), warn: p.quality === 'fair', error: p.quality === 'degraded' || p.quality === 'offline' });
   } else if (hb.source === 'mikrotik') {
     if (p.cpu_pct != null) chips.push({ label: 'CPU', value: `${p.cpu_pct}%`, warn: Number(p.cpu_pct) > 80, error: Number(p.cpu_pct) > 95 });
     if (p.ram_pct != null) chips.push({ label: 'RAM', value: `${p.ram_pct}%`, warn: Number(p.ram_pct) > 85, error: Number(p.ram_pct) > 92 });
