@@ -56,7 +56,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: service, error: svcErr } = await supabaseAdmin
       .from("services")
-      .select("user_id, ingest_secret")
+      .select("user_id, ingest_secret, name, business_name, notification_email")
       .eq("id", service_id)
       .maybeSingle();
 
@@ -104,22 +104,37 @@ Deno.serve(async (req: Request) => {
       await supabaseAdmin.from("services").update(updatePayload).eq("id", service_id);
     }
 
-    // Send alert email on warning or failed
-    if (normalizedStatus !== "success") {
+    // Send email notification (always)
+    {
       const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-      const alertTo = Deno.env.get("RESEND_REPLY_TO") || "mathias@cenas.uy";
 
       if (RESEND_API_KEY) {
         const { data: svcRow } = await supabaseAdmin
           .from("services")
-          .select("name, business_name, clients(company_name)")
+          .select("client_id, name, business_name, clients(company_name, email, alt_email, cc_emails)")
           .eq("id", service_id)
           .maybeSingle();
 
-        const clientName = (svcRow as any)?.clients?.company_name || null;
-        const serviceName = svcRow?.business_name || svcRow?.name || service_id;
+        // Build recipient list: client contacts + service notification_email + env fallback
+        const recipients = new Set<string>();
+        const clientData = (svcRow as any)?.clients;
+        if (clientData?.email)     recipients.add(clientData.email);
+        if (clientData?.alt_email) recipients.add(clientData.alt_email);
+        if (clientData?.cc_emails) {
+          (clientData.cc_emails as string).split(",").map((e: string) => e.trim()).filter(Boolean).forEach((e: string) => recipients.add(e));
+        }
+        if ((service as any).notification_email) recipients.add((service as any).notification_email);
+        if (recipients.size === 0) {
+          const fallback = Deno.env.get("RESEND_KOPIA_TO") || Deno.env.get("RESEND_REPLY_TO");
+          if (fallback) recipients.add(fallback);
+        }
+
+        if (recipients.size > 0) {
+        const clientName = clientData?.company_name || null;
+        const serviceName = service.business_name || service.name || service_id;
         const isFailure = normalizedStatus === "failed";
-        const statusLabel = isFailure ? "FAILED" : "WARNING";
+        const isWarning = normalizedStatus === "warning";
+        const statusLabel = isFailure ? "FAILED" : isWarning ? "WARNING" : "OK";
         const durationStr = duration_seconds != null ? `${Math.round(duration_seconds / 60)} min` : "";
         const sizeStr = size_bytes != null
           ? size_bytes >= 1073741824 ? `${(size_bytes / 1073741824).toFixed(2)} GB`
@@ -127,10 +142,10 @@ Deno.serve(async (req: Request) => {
           : `${(size_bytes / 1024).toFixed(1)} KB`
           : "";
 
-        const statusColor  = isFailure ? "#DC2626" : "#B45309";
-        const statusBg     = isFailure ? "#FEF2F2" : "#FFFBEB";
-        const statusBorder = isFailure ? "#FECACA" : "#FDE68A";
-        const statusLabel2 = isFailure ? "Backup fallido" : "Backup con advertencia";
+        const statusColor  = isFailure ? "#DC2626" : isWarning ? "#B45309" : "#059669";
+        const statusBg     = isFailure ? "#FEF2F2" : isWarning ? "#FFFBEB" : "#ECFDF5";
+        const statusBorder = isFailure ? "#FECACA" : isWarning ? "#FDE68A" : "#A7F3D0";
+        const statusLabel2 = isFailure ? "Backup fallido" : isWarning ? "Backup con advertencia" : "Backup exitoso";
         const hora = new Date(backedUpAt).toLocaleString("es-UY", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Montevideo" });
 
         const htmlBody = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;font-family:${EMAIL_FONT};">
@@ -193,11 +208,12 @@ Deno.serve(async (req: Request) => {
           body: JSON.stringify({
             from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Backups <backups@updates.cenas.uy>",
             reply_to: Deno.env.get("RESEND_REPLY_TO_ADDRESS") || "info@cenas.uy",
-            to: [alertTo],
+            to: Array.from(recipients),
             subject: `[Backup ${statusLabel}] ${clientName ? `${clientName} — ` : ""}${serviceName}${job_name ? ` — ${job_name}` : ""}`,
             html: htmlBody,
           }),
         });
+        } // end recipients.size > 0
       }
     }
 

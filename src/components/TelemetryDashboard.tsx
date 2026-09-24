@@ -682,7 +682,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
             </div>
             <select value={clientFilter} onChange={e => setClientFilter(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-              <option value="all">All clients</option>
+              <option value="all">— Todos los clientes —</option>
               {clients.filter(c => c.status === 'Active').map(c => (
                 <option key={c.id} value={c.id}>{c.company_name}</option>
               ))}
