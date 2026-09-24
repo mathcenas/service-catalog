@@ -599,7 +599,8 @@ export function TelemetryDashboard({ services, clients }: Props) {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+        <StatBadge label="Todos" value={stats.ok + stats.warnings + stats.errors + stats.stale + stats.noData} color="blue" onClick={() => { setStatusFilter('all'); setViewMode('cards'); }} active={statusFilter === 'all'} />
         <StatBadge label="Healthy" value={stats.ok} color="emerald" onClick={() => { setStatusFilter(statusFilter === 'ok' ? 'all' : 'ok'); setViewMode('cards'); }} active={statusFilter === 'ok'} />
         <StatBadge label="Warnings" value={stats.warnings} color="amber" onClick={() => { setStatusFilter(statusFilter === 'warning' ? 'all' : 'warning'); setViewMode('cards'); }} active={statusFilter === 'warning'} />
         <StatBadge label="Errors" value={stats.errors} color="red" onClick={() => { setStatusFilter(statusFilter === 'error' ? 'all' : 'error'); setViewMode('cards'); }} active={statusFilter === 'error'} />
@@ -1516,6 +1517,7 @@ function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: strin
 
 function StatBadge({ label, value, color, onClick, active }: { label: string; value: number; color: string; onClick: () => void; active: boolean }) {
   const colors: Record<string, string> = {
+    blue: 'bg-blue-50 border-blue-200 text-blue-700',
     emerald: 'bg-emerald-50 border-emerald-200 text-emerald-700',
     amber: 'bg-amber-50 border-amber-200 text-amber-700',
     red: 'bg-red-50 border-red-200 text-red-700',
