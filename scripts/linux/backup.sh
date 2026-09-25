@@ -33,7 +33,7 @@ RETENTION_DAYS="${RETENTION_DAYS:-7}"
 DEST_TYPE="${DEST_TYPE:-local}"        # local | rsync | rclone
 RSYNC_DEST="${RSYNC_DEST:-}"
 RSYNC_SSH_KEY="${RSYNC_SSH_KEY:-}"
-SCRIPT_VERSION="1.2.1"
+SCRIPT_VERSION="1.2.2"
 RCLONE_REMOTE="${RCLONE_REMOTE:-}"
 PG_CONTAINERS="${PG_CONTAINERS:-}"
 KUMA_PUSH_URL="${KUMA_PUSH_URL_BACKUP:-${KUMA_PUSH_URL:-}}"
@@ -255,7 +255,16 @@ fi
 
 echo "Comprimiendo: $SRC_DIRS${PGDUMP_DIR:+ + pgdumps}"
 # shellcheck disable=SC2086
-tar czf "$ARCHIVE_TMP" "${TAR_EXCLUDES[@]}" "${TAR_SOURCES[@]}"
+tar czf "$ARCHIVE_TMP" "${TAR_EXCLUDES[@]}" "${TAR_SOURCES[@]}" || {
+  TAR_EC=$?
+  if [[ $TAR_EC -ge 2 ]]; then
+    echo "ERROR: tar falló con exit_code=$TAR_EC" >&2
+    exit $TAR_EC
+  fi
+  # exit_code=1 = archivos modificados durante el backup (warning, no error)
+  echo "ADVERTENCIA: tar exit_code=1 (archivos modificados durante compresión)" >&2
+  TAR_WARNING=1
+}
 mv "$ARCHIVE_TMP" "$ARCHIVE_PATH"
 [[ -n "$PGDUMP_DIR" ]] && rm -rf "$PGDUMP_DIR"
 
@@ -297,8 +306,14 @@ find "$BACKUP_ROOT" -maxdepth 1 -name "${HOST_TAG}_*.tar.gz" -mtime "+${RETENTIO
 
 # ---------- Notificación de éxito ----------
 ELAPSED=$(( $(date +%s) - START_TS ))
-notify_kuma "up" "OK ${HOST_TAG}: ${ARCHIVE_SIZE} en ${ELAPSED}s (dest=${DEST_TYPE})"
-report_ingest "success" "$ARCHIVE_SIZE_BYTES" "$ELAPSED" "dest=${DEST_TYPE} dirs=${SRC_DIRS}"
+FINAL_STATUS="success"
+FINAL_DETAILS="dest=${DEST_TYPE} dirs=${SRC_DIRS}"
+if [[ "${TAR_WARNING:-0}" == "1" ]]; then
+  FINAL_STATUS="warning"
+  FINAL_DETAILS="$FINAL_DETAILS | tar: archivos modificados durante compresion (exit 1)"
+fi
+notify_kuma "up" "${FINAL_STATUS^^} ${HOST_TAG}: ${ARCHIVE_SIZE} en ${ELAPSED}s (dest=${DEST_TYPE})"
+report_ingest "$FINAL_STATUS" "$ARCHIVE_SIZE_BYTES" "$ELAPSED" "$FINAL_DETAILS"
 send_email "up" "✅ Backup OK - ${HOST_TAG}" \
   "Backup de ${HOST_TAG} completado correctamente.
 Archivo: ${ARCHIVE_NAME}
