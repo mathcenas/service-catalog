@@ -33,7 +33,7 @@ RETENTION_DAYS="${RETENTION_DAYS:-7}"
 DEST_TYPE="${DEST_TYPE:-local}"        # local | rsync | rclone
 RSYNC_DEST="${RSYNC_DEST:-}"
 RSYNC_SSH_KEY="${RSYNC_SSH_KEY:-}"
-SCRIPT_VERSION="1.2.2"
+SCRIPT_VERSION="1.2.3"
 RCLONE_REMOTE="${RCLONE_REMOTE:-}"
 PG_CONTAINERS="${PG_CONTAINERS:-}"
 KUMA_PUSH_URL="${KUMA_PUSH_URL_BACKUP:-${KUMA_PUSH_URL:-}}"
@@ -62,7 +62,12 @@ mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_FILE:-$LOG_DIR/backup-$(date '+%Y-%m').log}"
 # Borrar logs de más de 90 días
 find "$LOG_DIR" -name "backup-*.log" -mtime +90 -delete 2>/dev/null || true
-exec > >(while IFS= read -r line; do printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$line"; done | tee -a "$LOG_FILE") 2>&1
+
+# Redirigir stdout+stderr al log con timestamp, manteniendo salida en consola
+_log() { while IFS= read -r line; do printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$line"; done; }
+exec > >(tee >(_log >> "$LOG_FILE")) 2>&1
+sleep 0.1  # dar tiempo al subshell de tee para arrancar
+
 echo "===== Iniciando backup de ${HOST_TAG:-$(hostname -s)} ====="
 
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
@@ -211,6 +216,7 @@ Revisar logs en el servidor para más detalle."
   exit "$exit_code"
 }
 trap 'on_error $LINENO' ERR
+trap 'sleep 0.2' EXIT  # dar tiempo al subshell de tee para vaciar el buffer
 
 # ---------- Preparación ----------
 mkdir -p "$BACKUP_ROOT"
