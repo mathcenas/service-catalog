@@ -23,7 +23,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { service_id, job_name, status, size_bytes, duration_seconds, details, backed_up_at } = body;
+    const { service_id, job_name, status, size_bytes, duration_seconds, details, backed_up_at, suppress_email } = body;
 
     if (!service_id) {
       return new Response(
@@ -104,8 +104,11 @@ Deno.serve(async (req: Request) => {
       await supabaseAdmin.from("services").update(updatePayload).eq("id", service_id);
     }
 
-    // Send email notification (always)
-    {
+    // Send email notification (unless suppressed by caller)
+    if (suppress_email) {
+      console.log("[ingest-backup] email suprimido por suppress_email=true");
+    }
+    if (!suppress_email) {
       const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
       if (!RESEND_API_KEY) {
@@ -221,7 +224,7 @@ Deno.serve(async (req: Request) => {
         });
         } // end recipients.size > 0
       } // end else RESEND_API_KEY
-    }
+    } // end if !suppress_email
 
     return new Response(
       JSON.stringify({ success: true, received_at: new Date().toISOString() }),

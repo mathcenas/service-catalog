@@ -6,7 +6,7 @@
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"
-$SCRIPT_VERSION = "1.0.2"
+$SCRIPT_VERSION = "1.0.4"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
@@ -45,26 +45,37 @@ if (-not $sessions) {
 
 $headers = @{
     "Content-Type"    = "application/json"
-    "apikey"          = $ANON_KEY
-    "Authorization"   = "Bearer $ANON_KEY"
     "X-Ingest-Secret" = $INGEST_SECRET
 }
+
+# ---------- Paso 1: registrar cada job individualmente (sin email) ----------
+$summaryLines  = @()
+$globalStatus  = "success"
+$totalBytes    = [long]0
+$totalDuration = [int]0
+$lastBackupAt  = ""
 
 foreach ($session in $sessions) {
     $status = switch ($session.Result) {
         "Success" { "success" }
-        "Warning" { "success" }
+        "Warning" { "warning" }
         "Failed"  { "failed" }
         default   { "warning" }
     }
+    if ($status -eq "failed") { $globalStatus = "failed" }
+    if ($status -eq "warning" -and $globalStatus -eq "success") { $globalStatus = "warning" }
 
     $skippedFiles = ($session.GetTaskSessions() | ForEach-Object { $_.Progress.SkippedItemsCount } | Measure-Object -Sum).Sum
-
     $sizeBytes    = if ($session.BackupStats.BackupSize -gt 0) { [long]($session.BackupStats.BackupSize) } else { [long]($session.Progress.ProcessedSize) }
     $durationSecs = [int]($session.EndTime - $session.CreationTime).TotalSeconds
     $jobName      = "Veeam - $($session.JobName)"
     $details      = "result=$($session.Result) skipped_files=$skippedFiles transferredGB=$([math]::Round($session.BackupStats.TransferedSize/1GB,2)) dedupRatio=$($session.BackupStats.DedupRatio)"
     $backedUpAt   = $session.EndTime.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+    $totalBytes    += $sizeBytes
+    $totalDuration += $durationSecs
+    $lastBackupAt   = $backedUpAt
+    $summaryLines  += "$jobName → $($session.Result) | $([math]::Round($sizeBytes/1GB,2)) GB | $([math]::Round($durationSecs/60,1)) min"
 
     $body = @{
         service_id       = $SERVICE_ID
@@ -75,6 +86,7 @@ foreach ($session in $sessions) {
         details          = $details
         backed_up_at     = $backedUpAt
         script_version   = $SCRIPT_VERSION
+        suppress_email   = $true
     } | ConvertTo-Json
 
     try {
@@ -85,4 +97,27 @@ foreach ($session in $sessions) {
         Write-Log "❌ $jobName Error: $($_.Exception.Message)"
         Invoke-Kuma -Status "down" -Msg "veeam $jobName error"
     }
+}
+
+# ---------- Paso 2: POST de resumen diario (dispara el email) ----------
+$sessionCount = @($sessions).Count
+$summaryText  = $summaryLines -join " | "
+
+$summaryBody = @{
+    service_id       = $SERVICE_ID
+    job_name         = "Veeam - Resumen diario ($sessionCount jobs)"
+    status           = $globalStatus
+    size_bytes       = $totalBytes
+    duration_seconds = $totalDuration
+    details          = $summaryText
+    backed_up_at     = $lastBackupAt
+    script_version   = $SCRIPT_VERSION
+    suppress_email   = $false
+} | ConvertTo-Json
+
+try {
+    Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $summaryBody | Out-Null
+    Write-Log "📧 Resumen diario enviado → $globalStatus | $([math]::Round($totalBytes/1GB,2)) GB total | $([math]::Round($totalDuration/60,1)) min total"
+} catch {
+    Write-Log "❌ Error enviando resumen diario: $($_.Exception.Message)"
 }
