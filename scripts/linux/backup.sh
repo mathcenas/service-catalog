@@ -33,7 +33,7 @@ RETENTION_DAYS="${RETENTION_DAYS:-7}"
 DEST_TYPE="${DEST_TYPE:-local}"        # local | rsync | rclone
 RSYNC_DEST="${RSYNC_DEST:-}"
 RSYNC_SSH_KEY="${RSYNC_SSH_KEY:-}"
-SCRIPT_VERSION="1.2.3"
+SCRIPT_VERSION="1.2.4"
 RCLONE_REMOTE="${RCLONE_REMOTE:-}"
 PG_CONTAINERS="${PG_CONTAINERS:-}"
 KUMA_PUSH_URL="${KUMA_PUSH_URL_BACKUP:-${KUMA_PUSH_URL:-}}"
@@ -313,10 +313,10 @@ find "$BACKUP_ROOT" -maxdepth 1 -name "${HOST_TAG}_*.tar.gz" -mtime "+${RETENTIO
 # ---------- Notificación de éxito ----------
 ELAPSED=$(( $(date +%s) - START_TS ))
 FINAL_STATUS="success"
-FINAL_DETAILS="dest=${DEST_TYPE} dirs=${SRC_DIRS}"
+FINAL_DETAILS="Destino: ${DEST_TYPE} | Carpetas: ${SRC_DIRS} | Archivo: ${ARCHIVE_NAME}"
 if [[ "${TAR_WARNING:-0}" == "1" ]]; then
   FINAL_STATUS="warning"
-  FINAL_DETAILS="$FINAL_DETAILS | tar: archivos modificados durante compresion (exit 1)"
+  FINAL_DETAILS="${FINAL_DETAILS} | Advertencia: archivos modificados durante compresión"
 fi
 notify_kuma "up" "${FINAL_STATUS^^} ${HOST_TAG}: ${ARCHIVE_SIZE} en ${ELAPSED}s (dest=${DEST_TYPE})"
 report_ingest "$FINAL_STATUS" "$ARCHIVE_SIZE_BYTES" "$ELAPSED" "$FINAL_DETAILS"
