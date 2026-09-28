@@ -45,6 +45,8 @@ if (-not $sessions) {
 
 $headers = @{
     "Content-Type"    = "application/json"
+    "apikey"          = $ANON_KEY
+    "Authorization"   = "Bearer $ANON_KEY"
     "X-Ingest-Secret" = $INGEST_SECRET
 }
 
