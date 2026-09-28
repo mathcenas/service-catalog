@@ -6,7 +6,7 @@
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"
-$SCRIPT_VERSION = "1.0.2"
+$SCRIPT_VERSION = "1.0.3"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
@@ -50,21 +50,33 @@ $headers = @{
     "X-Ingest-Secret" = $INGEST_SECRET
 }
 
-foreach ($session in $sessions) {
+# Procesar todos los jobs — registrar cada uno en ingest sin email,
+# y al final mandar un único POST de resumen con el email consolidado.
+$sessionList = @($sessions)
+$summaryLines = @()
+$globalStatus = "success"
+
+for ($i = 0; $i -lt $sessionList.Count; $i++) {
+    $session = $sessionList[$i]
+    $isLast  = ($i -eq $sessionList.Count - 1)
+
     $status = switch ($session.Result) {
         "Success" { "success" }
         "Warning" { "success" }
         "Failed"  { "failed" }
         default   { "warning" }
     }
+    if ($status -eq "failed")  { $globalStatus = "failed" }
+    if ($status -eq "warning" -and $globalStatus -eq "success") { $globalStatus = "warning" }
 
     $skippedFiles = ($session.GetTaskSessions() | ForEach-Object { $_.Progress.SkippedItemsCount } | Measure-Object -Sum).Sum
-
     $sizeBytes    = if ($session.BackupStats.BackupSize -gt 0) { [long]($session.BackupStats.BackupSize) } else { [long]($session.Progress.ProcessedSize) }
     $durationSecs = [int]($session.EndTime - $session.CreationTime).TotalSeconds
     $jobName      = "Veeam - $($session.JobName)"
     $details      = "result=$($session.Result) skipped_files=$skippedFiles transferredGB=$([math]::Round($session.BackupStats.TransferedSize/1GB,2)) dedupRatio=$($session.BackupStats.DedupRatio)"
     $backedUpAt   = $session.EndTime.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+    $summaryLines += "$jobName → $($session.Result) | $([math]::Round($sizeBytes/1GB,2)) GB | $([math]::Round($durationSecs/60,1)) min"
 
     $body = @{
         service_id       = $SERVICE_ID
@@ -75,7 +87,24 @@ foreach ($session in $sessions) {
         details          = $details
         backed_up_at     = $backedUpAt
         script_version   = $SCRIPT_VERSION
+        suppress_email   = (-not $isLast)  # solo el último manda email
     } | ConvertTo-Json
+
+    # Si es el último, reemplazar details con resumen de todos los jobs
+    if ($isLast) {
+        $summaryText = $summaryLines -join " | "
+        $body = @{
+            service_id       = $SERVICE_ID
+            job_name         = "Veeam - Resumen diario ($($sessionList.Count) jobs)"
+            status           = $globalStatus
+            size_bytes       = $sizeBytes
+            duration_seconds = $durationSecs
+            details          = $summaryText
+            backed_up_at     = $backedUpAt
+            script_version   = $SCRIPT_VERSION
+            suppress_email   = $false
+        } | ConvertTo-Json
+    }
 
     try {
         Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body | Out-Null
