@@ -7,7 +7,8 @@
 
 $_scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 . "$_scriptDir\config.ps1"
-$SCRIPT_VERSION = "1.0.6"
+$SCRIPT_VERSION = "1.0.7"
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
@@ -24,9 +25,20 @@ function Write-Log($msg) {
 }
 Get-ChildItem "$LogDir\veeam-report-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) } | Remove-Item -Force
 
-# Veeam 12+: módulo PowerShell reemplaza el PSSnapin legacy
-if (Get-Module -ListAvailable -Name Veeam.Backup.PowerShell -ErrorAction SilentlyContinue) {
-    Import-Module Veeam.Backup.PowerShell -ErrorAction Stop
+# Veeam 12+: módulo PowerShell — forzar TLS12 antes de cargar para evitar SSslOptions error
+$veeamModule = Get-Module -ListAvailable -Name Veeam.Backup.PowerShell -ErrorAction SilentlyContinue
+if ($veeamModule) {
+    try {
+        Import-Module Veeam.Backup.PowerShell -ErrorAction Stop
+    } catch {
+        # Fallback: cargar desde ruta absoluta (BR 12 en Program Files)
+        $veeamPsd = "C:\Program Files\Veeam\Backup and Replication\Console\Veeam.Backup.PowerShell.psd1"
+        if (Test-Path $veeamPsd) {
+            Import-Module $veeamPsd -ErrorAction Stop
+        } else {
+            throw "No se pudo cargar el módulo de Veeam: $_"
+        }
+    }
 } else {
     Add-PSSnapin VeeamPSSnapIn -ErrorAction SilentlyContinue
 }
