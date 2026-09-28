@@ -108,12 +108,16 @@ Deno.serve(async (req: Request) => {
     {
       const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
-      if (RESEND_API_KEY) {
-        const { data: svcRow } = await supabaseAdmin
+      if (!RESEND_API_KEY) {
+        console.log("[ingest-backup] RESEND_API_KEY no configurado, omitiendo email");
+      } else {
+        const { data: svcRow, error: svcRowErr } = await supabaseAdmin
           .from("services")
           .select("client_id, name, business_name, clients(company_name, email, alt_email, cc_emails)")
           .eq("id", service_id)
           .maybeSingle();
+
+        if (svcRowErr) console.error("[ingest-backup] error al obtener servicio+cliente:", svcRowErr.message);
 
         // Build recipient list: client contacts + service notification_email + env fallback
         const recipients = new Set<string>();
@@ -128,6 +132,8 @@ Deno.serve(async (req: Request) => {
           const fallback = Deno.env.get("RESEND_KOPIA_TO") || Deno.env.get("RESEND_REPLY_TO");
           if (fallback) recipients.add(fallback);
         }
+
+        console.log(`[ingest-backup] destinatarios: ${[...recipients].join(", ") || "(ninguno)"} | cliente: ${(svcRow as any)?.clients?.email || "null"}`);
 
         if (recipients.size > 0) {
         const clientName = clientData?.company_name || null;
@@ -214,7 +220,7 @@ Deno.serve(async (req: Request) => {
           }),
         });
         } // end recipients.size > 0
-      }
+      } // end else RESEND_API_KEY
     }
 
     return new Response(
