@@ -5,15 +5,16 @@
 # schedulear en Task Scheduler una vez por día
 # =============================================================
 
-. "$PSScriptRoot\config.ps1"
-$SCRIPT_VERSION = "1.0.4"
+$_scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+. "$_scriptDir\config.ps1"
+$SCRIPT_VERSION = "1.0.5"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
 # ---------- Log local con retención mensual ----------
-$LogDir  = "$PSScriptRoot\logs"
+$LogDir  = "$_scriptDir\logs"
 if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir | Out-Null }
 $LogFile = "$LogDir\veeam-report-$(Get-Date -Format 'yyyy-MM').log"
 function Write-Log($msg) {
