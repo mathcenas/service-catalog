@@ -154,8 +154,47 @@ Deno.serve(async (req: Request) => {
         const statusColor  = isFailure ? "#DC2626" : isWarning ? "#B45309" : "#059669";
         const statusBg     = isFailure ? "#FEF2F2" : isWarning ? "#FFFBEB" : "#ECFDF5";
         const statusBorder = isFailure ? "#FECACA" : isWarning ? "#FDE68A" : "#A7F3D0";
-        const statusLabel2 = isFailure ? "Backup fallido" : isWarning ? "Backup con advertencia" : "Backup exitoso";
+        const statusLabel2 = isFailure ? "Backup con fallos" : isWarning ? "Backup con advertencias" : "Backup exitoso";
         const hora = new Date(backedUpAt).toLocaleString("es-UY", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Montevideo" });
+
+        // Detectar si details es un array JSON de jobs (resumen Veeam)
+        type JobEntry = { job: string; result: string; status: string; size: number; dur: number };
+        let jobRows: JobEntry[] | null = null;
+        if (details) {
+          try {
+            const parsed = JSON.parse(details);
+            if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].job) {
+              jobRows = parsed as JobEntry[];
+            }
+          } catch { /* details es texto plano */ }
+        }
+
+        const statusBadge = (s: string) => {
+          const c = s === "failed" ? "#DC2626" : s === "warning" ? "#B45309" : "#059669";
+          const bg = s === "failed" ? "#FEF2F2" : s === "warning" ? "#FFFBEB" : "#ECFDF5";
+          const label = s === "failed" ? "FALLÓ" : s === "warning" ? "WARN" : "OK";
+          return `<span style="background:${bg};color:${c};font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:.5px;">${label}</span>`;
+        };
+
+        const detailsBlock = jobRows
+          ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:12px;border-collapse:collapse;">
+              <tr style="border-bottom:1px solid ${B.border};">
+                <td style="padding:5px 8px 5px 0;color:${B.textSoft};font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.5px;">Job</td>
+                <td style="padding:5px 8px;color:${B.textSoft};font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.5px;" align="right">Tamaño</td>
+                <td style="padding:5px 8px;color:${B.textSoft};font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.5px;" align="right">Dur.</td>
+                <td style="padding:5px 0 5px 8px;color:${B.textSoft};font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.5px;" align="right">Estado</td>
+              </tr>
+              ${jobRows.map(j => `
+              <tr style="border-bottom:1px solid ${B.border};">
+                <td style="padding:7px 8px 7px 0;color:${B.textMain};">${j.job.replace(/^Veeam - /, "")}</td>
+                <td style="padding:7px 8px;color:${B.textMid};white-space:nowrap;" align="right">${j.size} GB</td>
+                <td style="padding:7px 8px;color:${B.textMid};white-space:nowrap;" align="right">${j.dur} min</td>
+                <td style="padding:7px 0 7px 8px;" align="right">${statusBadge(j.status)}</td>
+              </tr>`).join("")}
+            </table>`
+          : details
+            ? `<div style="font-size:13px;color:${B.textMain};line-height:1.5;">${details}</div>`
+            : "";
 
         const htmlBody = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;font-family:${EMAIL_FONT};">
   <tr><td align="center" style="padding:32px 24px;">
@@ -187,10 +226,10 @@ Deno.serve(async (req: Request) => {
     <td style="padding:16px 24px 0;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${statusBg};border:1px solid ${statusBorder};border-radius:8px;">
         <tr><td style="padding:14px 16px;">
-          <div style="font-size:13px;font-weight:700;color:${statusColor};margin-bottom:8px;">${statusLabel2}</div>
-          ${details ? `<div style="font-size:13px;color:${B.textMain};line-height:1.5;margin-bottom:8px;">${details}</div>` : ""}
-          <table role="presentation" cellpadding="0" cellspacing="0" style="font-size:12px;color:${B.textMid};">
-            ${sizeStr ? `<tr><td style="padding:2px 0;padding-right:16px;">Tamaño</td><td style="padding:2px 0;font-weight:600;color:${B.primary};">${sizeStr}</td></tr>` : ""}
+          <div style="font-size:13px;font-weight:700;color:${statusColor};margin-bottom:12px;">${statusLabel2}</div>
+          ${detailsBlock}
+          <table role="presentation" cellpadding="0" cellspacing="0" style="font-size:12px;color:${B.textMid};margin-top:10px;">
+            ${sizeStr ? `<tr><td style="padding:2px 0;padding-right:16px;">Total</td><td style="padding:2px 0;font-weight:600;color:${B.primary};">${sizeStr}</td></tr>` : ""}
             ${durationStr ? `<tr><td style="padding:2px 0;padding-right:16px;">Duración</td><td style="padding:2px 0;font-weight:600;color:${B.primary};">${durationStr}</td></tr>` : ""}
             <tr><td style="padding:2px 0;padding-right:16px;">Fecha</td><td style="padding:2px 0;font-weight:600;color:${B.primary};">${hora}</td></tr>
           </table>

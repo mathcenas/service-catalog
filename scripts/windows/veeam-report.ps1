@@ -7,7 +7,7 @@
 
 $_scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 . "$_scriptDir\config.ps1"
-$SCRIPT_VERSION = "1.0.5"
+$SCRIPT_VERSION = "1.0.6"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
@@ -78,7 +78,13 @@ foreach ($session in $sessions) {
     $totalBytes    += $sizeBytes
     $totalDuration += $durationSecs
     $lastBackupAt   = $backedUpAt
-    $summaryLines  += "$jobName → $($session.Result) | $([math]::Round($sizeBytes/1GB,2)) GB | $([math]::Round($durationSecs/60,1)) min"
+    $summaryLines  += @{
+        job    = $jobName
+        result = $session.Result
+        status = $status
+        size   = [math]::Round($sizeBytes / 1GB, 2)
+        dur    = [math]::Round($durationSecs / 60, 1)
+    }
 
     $body = @{
         service_id       = $SERVICE_ID
@@ -104,7 +110,7 @@ foreach ($session in $sessions) {
 
 # ---------- Paso 2: POST de resumen diario (dispara el email) ----------
 $sessionCount = @($sessions).Count
-$summaryText  = $summaryLines -join " | "
+$summaryText  = $summaryLines | ConvertTo-Json -Compress
 
 $summaryBody = @{
     service_id       = $SERVICE_ID
