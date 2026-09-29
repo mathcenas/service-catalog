@@ -35,6 +35,16 @@ $headers = @{
     "X-Ingest-Secret" = $INGEST_SECRET
 }
 
+# ---------- IP público (WAN) ----------
+$publicIp = $null
+try {
+    $publicIp = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 5 -ErrorAction Stop).Trim()
+} catch {
+    try {
+        $publicIp = (Invoke-RestMethod -Uri "https://checkip.amazonaws.com" -TimeoutSec 5 -ErrorAction Stop).Trim()
+    } catch {}
+}
+
 # ---------- 1. HARDWARE (CPU / RAM / Disco C:) ----------
 try {
     $cpuObj    = Get-CimInstance Win32_Processor
@@ -211,6 +221,7 @@ $hwBody = @{
         disk_free_gb   = $diskFreeGB
         disk_smart     = $diskSmartList
         disk_raid      = $raidList
+        public_ip      = $publicIp
         script_version = $SCRIPT_VERSION
     }
 } | ConvertTo-Json -Depth 5
