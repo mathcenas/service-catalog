@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { B, EMAIL_FONT, LOGO_URL } from "../_shared/emailBrand.ts";
+import { canSendNotification } from "../_shared/notificationLock.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://servicios.cenas-support.com",
@@ -104,11 +105,22 @@ Deno.serve(async (req: Request) => {
       await supabaseAdmin.from("services").update(updatePayload).eq("id", service_id);
     }
 
-    // Send email notification (unless suppressed by caller)
+    // Send email notification (unless suppressed by caller or rate-limited)
     if (suppress_email) {
       console.log("[ingest-backup] email suprimido por suppress_email=true");
     }
     if (!suppress_email) {
+      // Rate limiting: un email por (service_id, event_type) cada 15 min
+      // Los backups exitosos tienen cooldown de 60 min para no saturar en runs frecuentes
+      const eventType = `backup_${normalizedStatus}`;
+      const cooldown  = normalizedStatus === "success" ? 60 : 15;
+      const allowed   = await canSendNotification(supabaseAdmin, service_id, eventType, cooldown);
+      if (!allowed) {
+        return new Response(
+          JSON.stringify({ success: true, email: "suppressed_rate_limit", received_at: new Date().toISOString() }),
+          { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
       const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
       if (!RESEND_API_KEY) {

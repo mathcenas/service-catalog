@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { B, EMAIL_FONT, emailMeta } from "../_shared/emailBrand.ts";
+import { canSendNotification } from "../_shared/notificationLock.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -265,9 +266,14 @@ Deno.serve(async (req: Request) => {
     }
 
     // Send email notification via Resend
+    // Rate limiting: fallos cada 15 min, éxitos cada 60 min por service_id
+    const emailEventType = `kopia_${status}`;
+    const emailCooldown  = status === "success" ? 60 : 15;
+    const emailAllowed   = await canSendNotification(supabase, serviceId, emailEventType, emailCooldown);
+
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
-    if (RESEND_API_KEY) {
+    if (RESEND_API_KEY && emailAllowed) {
       try {
         // Build recipient list: client contacts + service notification_email + env fallback
         const recipients = new Set<string>();
