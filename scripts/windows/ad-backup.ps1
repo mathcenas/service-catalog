@@ -1,10 +1,10 @@
 # ==========================================
-# ad-backup.ps1 v1.0.0
+# ad-backup.ps1 v1.1.0
 # Backup AD + LDIF + GPO + Supabase Telemetry
 # Windows Server 2022
 # ==========================================
 
-$SCRIPT_VERSION = "1.0.0"
+$SCRIPT_VERSION = "1.1.0"
 
 # ---------------------------
 # 1. Cargar config.ps1
@@ -111,6 +111,51 @@ $globalStatus = if (
     "warning"
 }
 
+# ==========================================
+# 7.5 dsaSignature — verificar último backup AD
+# Lee la metadata de replicación del DC para confirmar
+# cuándo fue el último System State backup registrado.
+# ==========================================
+"Leyendo dsaSignature para verificar último backup AD..." | Tee-Object -FilePath $LogFile -Append
+
+$adLastBackup      = $null
+$adBackupPartitions = @()
+
+try {
+    Import-Module ActiveDirectory -ErrorAction Stop
+
+    $domain = (Get-ADDomain -ErrorAction Stop).DNSRoot
+    $ctx    = New-Object System.DirectoryServices.ActiveDirectory.DirectoryContext(
+                  [System.DirectoryServices.ActiveDirectory.DirectoryContextType]::Domain, $domain)
+    $dc     = [System.DirectoryServices.ActiveDirectory.DomainController]::FindOne($ctx)
+
+    $namingContexts = (Get-ADRootDSE -ErrorAction Stop).namingContexts
+
+    foreach ($partition in $namingContexts) {
+        try {
+            $meta = $dc.GetReplicationMetadata($partition)
+            $sig  = $meta.Item("dsaSignature")
+            if ($sig -and $sig.LastOriginatingChangeTime) {
+                $ts = $sig.LastOriginatingChangeTime.ToUniversalTime().ToString("o")
+                $adBackupPartitions += @{ partition = $partition; last_backup = $ts }
+            }
+        } catch {
+            "  Partición $partition no disponible: $_" | Tee-Object -FilePath $LogFile -Append
+        }
+    }
+
+    if ($adBackupPartitions.Count -gt 0) {
+        $adLastBackup = ($adBackupPartitions |
+            Sort-Object { [datetime]$_.last_backup } |
+            Select-Object -Last 1).last_backup
+        "dsaSignature OK — último backup AD: $adLastBackup" | Tee-Object -FilePath $LogFile -Append
+    } else {
+        "dsaSignature: no se encontraron particiones con metadata." | Tee-Object -FilePath $LogFile -Append
+    }
+} catch {
+    "dsaSignature check falló: $_" | Tee-Object -FilePath $LogFile -Append
+}
+
 $detailsObj = @{
     systemstate = $SystemStateStatus
     ldif        = $LDIFStatus
@@ -120,8 +165,10 @@ $detailsObj = @{
         ldif        = $LDIFPath
         gpo         = $GPOPath
     }
-    log_file        = $LogFile
-    script_version  = $SCRIPT_VERSION
+    log_file           = $LogFile
+    script_version     = $SCRIPT_VERSION
+    ad_last_backup     = $adLastBackup
+    ad_backup_partitions = $adBackupPartitions
 }
 
 $body = @{
