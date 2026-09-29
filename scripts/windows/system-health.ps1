@@ -287,6 +287,7 @@ if ($CHECK_SPEEDTEST) {
         packet_loss_pct = $packetLoss
         quality         = $quality
         icmp_available  = $icmpAvailable
+        script_version  = $SCRIPT_VERSION
     }
     if ($downloadMbps -gt 0) {
         $netPayload.download_mbps = $downloadMbps
