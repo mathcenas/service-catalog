@@ -102,9 +102,12 @@ function detectOS(payload: Record<string, unknown>): 'linux' | 'windows' {
   if ('disk_mounts' in payload || 'docker_containers' in payload) return 'linux';
   return 'windows';
 }
-function isWindowsServer(payload: Record<string, unknown>): boolean {
-  // system-health-server.ps1 sends rdp_sessions in rdp payload, or disk_raid in system-health
-  return 'rdp_sessions' in payload || 'rdp_disconnects' in payload || ('disk_raid' in payload && !('disk_mounts' in payload));
+function isWindowsServer(p: Record<string, unknown>): boolean {
+  if (typeof p.is_server === 'boolean') return p.is_server;
+  const osName = String(p.os_name || p.os_caption || p.os || '').toLowerCase();
+  if (osName.includes('server')) return true;
+  // Fallback: system-health-server.ps1 sends rdp_sessions/rdp_disconnects in rdp payload
+  return 'rdp_sessions' in p || 'rdp_disconnects' in p || ('disk_raid' in p && !('disk_mounts' in p));
 }
 
 async function fetchLatestVersions(): Promise<Record<string, { windows?: string; windowsServer?: string; linux?: string }>> {
@@ -218,8 +221,8 @@ function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersi
         ? (versions.windowsServer ?? versions.windows)
         : versions.windows
     : undefined;
-  const versionOutdated = !!latestVer && scriptVer !== null && scriptVer !== latestVer;
-  const versionUnknown  = !!latestVer && scriptVer === null;
+  const versionOutdated = !!latestVer && (scriptVer === null || scriptVer !== latestVer);
+  const versionUnknown  = false; // null script_version = script too old to report → treated as outdated
   if (scriptVer) {
     chips.push({ label: 'v', value: scriptVer, warn: versionOutdated });
   } else if (latestVer) {
