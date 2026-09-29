@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, Fragment } from 'react';
-import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, Trash2, HardDrive, Wifi, Monitor, Server, LayoutGrid, List, Users, Download, ChevronRight, ChevronDown } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, Trash2, HardDrive, Wifi, Monitor, Server, LayoutGrid, List, Users, Download, ChevronRight, ChevronDown, TrendingUp } from 'lucide-react';
 import { supabase, Service, Client, ServiceHeartbeat } from '../lib/supabase';
+import { ServiceMetricsModal } from './ServiceMetricsModal';
 import { BRAND, pdfHeader, pdfSection, openPrintWindow } from '../lib/pdfBrand';
 
 interface ServiceBackup {
@@ -266,6 +267,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
   const [sendingReview, setSendingReview] = useState<string | null>(null);
   const [reviewLinks, setReviewLinks] = useState<Record<string, string>>({});
   const [latestVersions, setLatestVersions] = useState<Record<string, { windows?: string; linux?: string }>>({});
+  const [metricsModal, setMetricsModal] = useState<{ serviceId: string; name: string } | null>(null);
   const [yesterdayOutdated, setYesterdayOutdated] = useState<number | null>(null);
 
   const load = async () => {
@@ -584,6 +586,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
   };
 
   return (
+    <>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
@@ -755,9 +758,18 @@ export function TelemetryDashboard({ services, clients }: Props) {
                     </div>
                     {client && <div className="text-xs text-gray-500 mt-0.5 ml-4">{client.company_name}</div>}
                   </div>
-                  {latest && (
-                    <span className="text-xs text-gray-400 whitespace-nowrap shrink-0">{timeAgo(latest.received_at)}</span>
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {latest && (
+                      <span className="text-xs text-gray-400 whitespace-nowrap">{timeAgo(latest.received_at)}</span>
+                    )}
+                    <button
+                      onClick={() => setMetricsModal({ serviceId, name: svc?.business_name || svc?.name || serviceId.slice(0, 8) })}
+                      className="p-1 rounded hover:bg-white/70 text-gray-400 hover:text-blue-600 transition-colors"
+                      title="Ver historial de métricas"
+                    >
+                      <TrendingUp className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Sources */}
@@ -1157,6 +1169,15 @@ export function TelemetryDashboard({ services, clients }: Props) {
         );
       })()}
     </div>
+
+    {metricsModal && (
+      <ServiceMetricsModal
+        serviceId={metricsModal.serviceId}
+        serviceName={metricsModal.name}
+        onClose={() => setMetricsModal(null)}
+      />
+    )}
+    </>
   );
 }
 
