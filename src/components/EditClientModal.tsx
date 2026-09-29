@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { Client, supabase } from '../lib/supabase';
+import { ClientContactsPanel } from './ClientContactsPanel';
 
 type Props = {
   client: Client;
@@ -186,18 +187,8 @@ export function EditClientModal({ client, onClose, onSuccess }: Props) {
             />
           </div>
 
-          <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-            <div>
-              <p className="text-sm font-medium text-gray-700">Resumen semanal por email</p>
-              <p className="text-xs text-gray-500 mt-0.5">Envía un digest semanal al cliente con estado de servicios, backups y renovaciones</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setFormData(f => ({ ...f, digest_enabled: !f.digest_enabled }))}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${formData.digest_enabled ? 'bg-blue-600' : 'bg-gray-300'}`}
-            >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${formData.digest_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
+          <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <ClientContactsPanel clientId={client.id} userId={client.user_id} />
           </div>
 
           <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
