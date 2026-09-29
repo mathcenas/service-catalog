@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS notification_locks (
   last_sent_at timestamptz NOT NULL DEFAULT now(),
   send_count   integer     NOT NULL DEFAULT 1,  -- cuántas veces se envió en total
   suppressed_count integer NOT NULL DEFAULT 0,  -- cuántas veces se suprimió por cooldown
-  CONSTRAINT notification_locks_pkey UNIQUE (service_id, event_type)
+  CONSTRAINT notification_locks_service_event_key UNIQUE (service_id, event_type)
 );
 
 -- Sin RLS: solo accede el service role desde edge functions
