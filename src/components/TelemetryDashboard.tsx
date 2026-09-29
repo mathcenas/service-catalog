@@ -82,10 +82,10 @@ interface DiskSmartEntry {
 }
 
 // Maps heartbeat source → { windows, linux } script paths
-const SCRIPT_SOURCE_FILES: Record<string, { windows: string; linux?: string }> = {
-  'system-health':   { windows: 'scripts/windows/system-health.ps1',   linux: 'scripts/linux/system-health.sh' },
-  'rdp':             { windows: 'scripts/windows/system-health.ps1' },
-  'network':         { windows: 'scripts/windows/system-health.ps1' },
+const SCRIPT_SOURCE_FILES: Record<string, { windows: string; windowsServer?: string; linux?: string }> = {
+  'system-health':   { windows: 'scripts/windows/system-health.ps1', windowsServer: 'scripts/windows/system-health-server.ps1', linux: 'scripts/linux/system-health.sh' },
+  'rdp':             { windows: 'scripts/windows/system-health.ps1', windowsServer: 'scripts/windows/system-health-server.ps1' },
+  'network':         { windows: 'scripts/windows/system-health.ps1', windowsServer: 'scripts/windows/system-health-server.ps1' },
   'server-snapshot': { windows: 'scripts/windows/server-snapshot.ps1' },
   'speedtest':       { windows: 'scripts/windows/system-health.ps1' },
   'mikrotik':        { windows: 'scripts/windows/system-health.ps1',   linux: 'scripts/linux/mikrotik-heartbeat.sh' },
@@ -94,21 +94,26 @@ const SCRIPT_SOURCE_FILES: Record<string, { windows: string; linux?: string }> =
   'veeam':           { windows: 'scripts/windows/veeam-report.ps1' },
 };
 
-// Detect OS from heartbeat payload.
-// Linux system-health.sh always includes disk_mounts and docker_containers keys.
-// Windows system-health.ps1 never sends those keys.
+// Detect OS and variant from heartbeat payload.
+// Linux: always has disk_mounts or docker_containers.
+// Windows Server: rdp payload has rdp_sessions/rdp_disconnects; system-health has disk_raid but no disk_mounts.
+// Windows Workstation: no rdp_sessions, no disk_raid (usually).
 function detectOS(payload: Record<string, unknown>): 'linux' | 'windows' {
   if ('disk_mounts' in payload || 'docker_containers' in payload) return 'linux';
   return 'windows';
 }
+function isWindowsServer(payload: Record<string, unknown>): boolean {
+  // system-health-server.ps1 sends rdp_sessions in rdp payload, or disk_raid in system-health
+  return 'rdp_sessions' in payload || 'rdp_disconnects' in payload || ('disk_raid' in payload && !('disk_mounts' in payload));
+}
 
-async function fetchLatestVersions(): Promise<Record<string, { windows?: string; linux?: string }>> {
+async function fetchLatestVersions(): Promise<Record<string, { windows?: string; windowsServer?: string; linux?: string }>> {
   const base = 'https://raw.githubusercontent.com/mathcenas/service-catalog/main/';
 
-  // Collect all unique file paths across both OS variants
   const allPaths = new Set<string>();
   for (const entry of Object.values(SCRIPT_SOURCE_FILES)) {
     allPaths.add(entry.windows);
+    if (entry.windowsServer) allPaths.add(entry.windowsServer);
     if (entry.linux) allPaths.add(entry.linux);
   }
 
@@ -118,24 +123,23 @@ async function fetchLatestVersions(): Promise<Record<string, { windows?: string;
       const res = await fetch(base + path, { cache: 'no-store' });
       if (!res.ok) return;
       const text = await res.text();
-      // PowerShell: $SCRIPT_VERSION = "x.y.z"
-      // Bash:       SCRIPT_VERSION="x.y.z"
       const match = text.match(/^\$?SCRIPT_VERSION\s*=\s*["']?([0-9]+\.[0-9]+\.[0-9]+)["']?/m);
       if (match) fileVersions[path] = match[1];
     } catch { /* network failure — skip */ }
   }));
 
-  const result: Record<string, { windows?: string; linux?: string }> = {};
+  const result: Record<string, { windows?: string; windowsServer?: string; linux?: string }> = {};
   for (const [source, entry] of Object.entries(SCRIPT_SOURCE_FILES)) {
     result[source] = {
-      windows: fileVersions[entry.windows],
-      linux:   entry.linux ? fileVersions[entry.linux] : undefined,
+      windows:       fileVersions[entry.windows],
+      windowsServer: entry.windowsServer ? fileVersions[entry.windowsServer] : undefined,
+      linux:         entry.linux ? fileVersions[entry.linux] : undefined,
     };
   }
   return result;
 }
 
-function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersions: Record<string, { windows?: string; linux?: string }> }) {
+function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersions: Record<string, { windows?: string; windowsServer?: string; linux?: string }> }) {
   const p = hb.payload as Record<string, unknown>;
   if (!p) return null;
 
@@ -202,11 +206,18 @@ function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersi
     }
   }
 
-  // Script version chip — pick latest based on detected OS
-  const scriptVer = p.script_version != null ? String(p.script_version) : null;
-  const osType    = detectOS(p);
-  const versions  = latestVersions[hb.source];
-  const latestVer = versions ? (osType === 'linux' ? (versions.linux ?? versions.windows) : versions.windows) : undefined;
+  // Script version chip — pick latest based on detected OS and server/workstation variant
+  const scriptVer  = p.script_version != null ? String(p.script_version) : null;
+  const osType     = detectOS(p);
+  const isServer   = osType === 'windows' && isWindowsServer(p);
+  const versions   = latestVersions[hb.source];
+  const latestVer  = versions
+    ? osType === 'linux'
+      ? (versions.linux ?? versions.windows)
+      : isServer
+        ? (versions.windowsServer ?? versions.windows)
+        : versions.windows
+    : undefined;
   const versionOutdated = !!latestVer && scriptVer !== null && scriptVer !== latestVer;
   const versionUnknown  = !!latestVer && scriptVer === null;
   if (scriptVer) {
@@ -271,7 +282,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
   const [companyName, setCompanyName] = useState<string>('Cenas-Support');
   const [sendingReview, setSendingReview] = useState<string | null>(null);
   const [reviewLinks, setReviewLinks] = useState<Record<string, string>>({});
-  const [latestVersions, setLatestVersions] = useState<Record<string, { windows?: string; linux?: string }>>({});
+  const [latestVersions, setLatestVersions] = useState<Record<string, { windows?: string; windowsServer?: string; linux?: string }>>({});
   const [metricsModal, setMetricsModal]       = useState<{ serviceId: string; name: string } | null>(null);
   const [backupModal, setBackupModal]         = useState<{ serviceId: string; name: string } | null>(null);
   const [yesterdayOutdated, setYesterdayOutdated] = useState<number | null>(null);
@@ -476,9 +487,14 @@ export function TelemetryDashboard({ services, clients }: Props) {
     for (const [, hb] of latestPerServiceSource.entries()) {
       const versions = latestVersions[hb.source];
       if (!versions) continue;
-      const payload = (hb.payload ?? {}) as Record<string, unknown>;
-      const os      = detectOS(payload);
-      const latest  = os === 'linux' ? (versions.linux ?? versions.windows) : versions.windows;
+      const payload  = (hb.payload ?? {}) as Record<string, unknown>;
+      const os       = detectOS(payload);
+      const server   = os === 'windows' && isWindowsServer(payload);
+      const latest   = os === 'linux'
+        ? (versions.linux ?? versions.windows)
+        : server
+          ? (versions.windowsServer ?? versions.windows)
+          : versions.windows;
       if (!latest) continue;
       const current = payload.script_version != null ? String(payload.script_version) : null;
       if (current === null || current !== latest) {
