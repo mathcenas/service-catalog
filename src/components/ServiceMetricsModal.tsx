@@ -25,15 +25,6 @@ type DataPoint = {
 
 const DAYS_OPTIONS = [7, 14, 30];
 
-const fmt = (iso: string) => {
-  const d = new Date(iso);
-  return `${d.getDate()}/${d.getMonth() + 1} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-};
-
-const fmtDay = (iso: string) => {
-  const d = new Date(iso);
-  return `${d.getDate()}/${d.getMonth() + 1}`;
-};
 
 export function ServiceMetricsModal({ serviceId, serviceName, onClose }: Props) {
   const [days, setDays] = useState(7);
@@ -42,6 +33,8 @@ export function ServiceMetricsModal({ serviceId, serviceName, onClose }: Props) 
   const [loading, setLoading]       = useState(true);
 
   useEffect(() => {
+    let active = true;
+
     const load = async () => {
       setLoading(true);
       const since = new Date(Date.now() - days * 86400000).toISOString();
@@ -54,12 +47,17 @@ export function ServiceMetricsModal({ serviceId, serviceName, onClose }: Props) 
         .gte('received_at', since)
         .order('received_at', { ascending: true });
 
+      if (!active) return;
+
       const sys: DataPoint[] = [];
       const net: DataPoint[] = [];
 
       for (const row of data || []) {
         const p = row.payload || {};
-        const label = days <= 7 ? fmt(row.received_at) : fmtDay(row.received_at);
+        const dateObj = new Date(row.received_at);
+        const label = days <= 7
+          ? `${dateObj.getDate()}/${dateObj.getMonth() + 1} ${String(dateObj.getHours()).padStart(2, '0')}:${String(dateObj.getMinutes()).padStart(2, '0')}`
+          : `${dateObj.getDate()}/${dateObj.getMonth() + 1}`;
 
         if (row.source === 'system-health') {
           if (p.cpu_pct != null || p.ram_pct != null || p.disk_pct != null) {
@@ -84,15 +82,28 @@ export function ServiceMetricsModal({ serviceId, serviceName, onClose }: Props) 
         }
       }
 
-      // For >7 days, bucket by day (keep last value per day per source)
+      // For >7 days, bucket by day keeping the MAX value to preserve spikes
+      const bucketByDayMax = (pts: DataPoint[]) => {
+        const map = new Map<string, DataPoint>();
+        for (const pt of pts) {
+          const existing = map.get(pt.ts);
+          if (!existing) {
+            map.set(pt.ts, pt);
+          } else {
+            map.set(pt.ts, {
+              ...pt,
+              cpu:  Math.max(existing.cpu ?? 0, pt.cpu ?? 0) || undefined,
+              ram:  Math.max(existing.ram ?? 0, pt.ram ?? 0) || undefined,
+              disk: Math.max(existing.disk ?? 0, pt.disk ?? 0) || undefined,
+            });
+          }
+        }
+        return Array.from(map.values());
+      };
+
       if (days > 7) {
-        const bucket = (pts: DataPoint[]) => {
-          const map = new Map<string, DataPoint>();
-          for (const p of pts) map.set(p.ts, p);
-          return Array.from(map.values());
-        };
-        setSystemData(bucket(sys));
-        setNetData(bucket(net));
+        setSystemData(bucketByDayMax(sys));
+        setNetData(bucketByDayMax(net));
       } else {
         setSystemData(sys);
         setNetData(net);
@@ -100,7 +111,10 @@ export function ServiceMetricsModal({ serviceId, serviceName, onClose }: Props) 
 
       setLoading(false);
     };
+
     load();
+
+    return () => { active = false; };
   }, [serviceId, days]);
 
   const hasSystem = systemData.length > 0;
