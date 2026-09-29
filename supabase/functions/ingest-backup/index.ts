@@ -56,7 +56,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: service, error: svcErr } = await supabaseAdmin
       .from("services")
-      .select("user_id, ingest_secret, name, business_name, notification_email")
+      .select("user_id, ingest_secret, name, business_name, notification_email, provider_email")
       .eq("id", service_id)
       .maybeSingle();
 
@@ -131,6 +131,10 @@ Deno.serve(async (req: Request) => {
           (clientData.cc_emails as string).split(",").map((e: string) => e.trim()).filter(Boolean).forEach((e: string) => recipients.add(e));
         }
         if ((service as any).notification_email) recipients.add((service as any).notification_email);
+
+        // provider_email siempre va como CC (IT proveedor), aunque haya otros destinatarios
+        const providerEmail = (service as any).provider_email;
+
         if (recipients.size === 0) {
           const fallback = Deno.env.get("RESEND_KOPIA_TO") || Deno.env.get("RESEND_REPLY_TO");
           if (fallback) recipients.add(fallback);
@@ -218,6 +222,7 @@ Deno.serve(async (req: Request) => {
             from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Backups <backups@updates.cenas.uy>",
             reply_to: Deno.env.get("RESEND_REPLY_TO_ADDRESS") || "info@cenas.uy",
             to: Array.from(recipients),
+            ...(providerEmail ? { cc: [providerEmail] } : {}),
             subject: `[Backup ${statusLabel}] ${clientName ? `${clientName} — ` : ""}${serviceName}${job_name ? ` — ${job_name}` : ""}`,
             html: htmlBody,
           }),

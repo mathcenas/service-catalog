@@ -151,6 +151,8 @@ export type Service = {
   paid_by?: PaidBy;
   payment_card_last4?: string;
   ingest_secret?: string;
+  notification_email?: string;
+  provider_email?: string;
   created_at: string;
   updated_at: string;
 };
