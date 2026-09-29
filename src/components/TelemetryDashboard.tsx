@@ -148,7 +148,8 @@ function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersi
     if (p.disk_pct != null) chips.push({ label: 'Disk', value: `${p.disk_pct}%`, warn: Number(p.disk_pct) > 75, error: Number(p.disk_pct) > 90 });
     if (p.disk_free_gb != null) chips.push({ label: 'Free', value: `${p.disk_free_gb} GB` });
     if (p.uptime_str != null) chips.push({ label: 'Up', value: String(p.uptime_str) });
-    if (p.public_ip != null) chips.push({ label: 'IP', value: String(p.public_ip) });
+    if (p.local_ip  != null) chips.push({ label: 'LAN', value: String(p.local_ip) });
+    if (p.public_ip != null) chips.push({ label: 'WAN', value: String(p.public_ip) });
     if (Array.isArray(p.disk_smart) && (p.disk_smart as DiskSmartEntry[]).length > 0) {
       const disks = p.disk_smart as DiskSmartEntry[];
       const worst = disks.some(d => d.status === 'error') ? 'error' : disks.some(d => d.status === 'warning') ? 'warning' : false;

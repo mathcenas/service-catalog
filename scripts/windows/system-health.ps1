@@ -35,7 +35,7 @@ $headers = @{
     "X-Ingest-Secret" = $INGEST_SECRET
 }
 
-# ---------- IP público (WAN) ----------
+# ---------- IPs (pública WAN + local) ----------
 $publicIp = $null
 try {
     $publicIp = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 5 -ErrorAction Stop).Trim()
@@ -44,6 +44,15 @@ try {
         $publicIp = (Invoke-RestMethod -Uri "https://checkip.amazonaws.com" -TimeoutSec 5 -ErrorAction Stop).Trim()
     } catch {}
 }
+
+$localIp = $null
+try {
+    # Prefer the IP on the default route (avoids loopback / VPN adapters)
+    $localIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+        Where-Object { $_.PrefixOrigin -ne 'WellKnown' -and $_.IPAddress -notmatch '^127\.' } |
+        Sort-Object { $_.InterfaceMetric } |
+        Select-Object -First 1).IPAddress
+} catch {}
 
 # ---------- 1. HARDWARE (CPU / RAM / Disco C:) ----------
 try {
@@ -222,6 +231,7 @@ $hwBody = @{
         disk_smart     = $diskSmartList
         disk_raid      = $raidList
         public_ip      = $publicIp
+        local_ip       = $localIp
         script_version = $SCRIPT_VERSION
     }
 } | ConvertTo-Json -Depth 5

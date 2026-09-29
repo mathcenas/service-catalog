@@ -49,7 +49,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: service, error: svcErr } = await supabaseAdmin
       .from("services")
-      .select("user_id, ingest_secret")
+      .select("user_id, ingest_secret, ip_public, ip_internal")
       .eq("id", service_id)
       .maybeSingle();
 
@@ -80,6 +80,19 @@ Deno.serve(async (req: Request) => {
         status: status || "ok",
         message: message || null,
       });
+
+    // Auto-update ip_public / ip_internal on the service if the heartbeat
+    // reports IPs that differ from what's stored (or fields are empty).
+    if (source === "system-health" && payload) {
+      const ipUpdate: Record<string, string> = {};
+      const reportedPublic   = typeof payload.public_ip === "string" ? payload.public_ip.trim() : null;
+      const reportedInternal = typeof payload.local_ip  === "string" ? payload.local_ip.trim()  : null;
+      if (reportedPublic   && reportedPublic   !== service.ip_public)   ipUpdate.ip_public   = reportedPublic;
+      if (reportedInternal && reportedInternal !== service.ip_internal) ipUpdate.ip_internal = reportedInternal;
+      if (Object.keys(ipUpdate).length > 0) {
+        await supabaseAdmin.from("services").update(ipUpdate).eq("id", service_id);
+      }
+    }
 
     if (insertErr) {
       return new Response(
