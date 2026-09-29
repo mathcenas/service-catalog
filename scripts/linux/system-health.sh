@@ -185,6 +185,12 @@ ISSUES=$(echo "$ISSUES" | xargs)
 
 MESSAGE="CPU: ${CPU_PCT}% | RAM: ${RAM_PCT}% | Disk: ${DISK_PCT}% (${DISK_FREE_GB} GB free) | Up: ${UPTIME_STR}"
 
+# ---------- IP público (WAN) ----------
+PUBLIC_IP=""
+PUBLIC_IP=$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || \
+            curl -fsS --max-time 5 https://checkip.amazonaws.com 2>/dev/null || true)
+PUBLIC_IP=$(echo "$PUBLIC_IP" | tr -d '[:space:]')
+
 # ---------- Samba sessions ----------
 SMB_SESSIONS_JSON="[]"
 SMB_SESSION_COUNT=0
@@ -483,6 +489,7 @@ PAYLOAD=$(jq -n \
   --argjson docker "$DOCKER_JSON" \
   --argjson ports "$PORT_CHECKS_JSON" \
   --argjson smart "$DISK_SMART_JSON" \
+  --arg public_ip "$PUBLIC_IP" \
   --arg script_version "$SCRIPT_VERSION" \
   '{
     service_id: $service_id,
@@ -504,6 +511,7 @@ PAYLOAD=$(jq -n \
       docker_containers: $docker,
       port_checks: $ports,
       disk_smart: $smart,
+      public_ip: (if $public_ip == "" then null else $public_ip end),
       script_version: $script_version
     }
   }')

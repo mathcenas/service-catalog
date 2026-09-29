@@ -148,6 +148,7 @@ function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersi
     if (p.disk_pct != null) chips.push({ label: 'Disk', value: `${p.disk_pct}%`, warn: Number(p.disk_pct) > 75, error: Number(p.disk_pct) > 90 });
     if (p.disk_free_gb != null) chips.push({ label: 'Free', value: `${p.disk_free_gb} GB` });
     if (p.uptime_str != null) chips.push({ label: 'Up', value: String(p.uptime_str) });
+    if (p.public_ip != null) chips.push({ label: 'IP', value: String(p.public_ip) });
     if (Array.isArray(p.disk_smart) && (p.disk_smart as DiskSmartEntry[]).length > 0) {
       const disks = p.disk_smart as DiskSmartEntry[];
       const worst = disks.some(d => d.status === 'error') ? 'error' : disks.some(d => d.status === 'warning') ? 'warning' : false;
@@ -162,6 +163,8 @@ function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersi
     if (p.rdp_disconnects != null) chips.push({ label: 'Disconnects', value: `${p.rdp_disconnects}`, warn: Number(p.rdp_disconnects) > 0, error: Number(p.rdp_disconnects) > 3 });
     if (p.rdp_tcp_connections != null) chips.push({ label: 'TCP 3389', value: `${p.rdp_tcp_connections}` });
     if (p.disk_latency_sec != null && Number(p.disk_latency_sec) > 0) chips.push({ label: 'DiskIO', value: `${p.disk_latency_sec}s`, warn: Number(p.disk_latency_sec) > 0.03, error: Number(p.disk_latency_sec) > 0.05 });
+    if (p.anydesk_id != null) chips.push({ label: 'AnyDesk', value: String(p.anydesk_id) });
+    if (p.anydesk_status != null && p.anydesk_status !== 'Running') chips.push({ label: 'AD svc', value: String(p.anydesk_status), warn: p.anydesk_status === 'Restarted', error: p.anydesk_status === 'NotFound' });
   } else if (hb.source === 'speedtest') {
     const icmpOk = p.icmp_available !== false;
     if (icmpOk && p.ping_ms != null) chips.push({ label: 'Ping', value: `${p.ping_ms}ms`, warn: Number(p.ping_ms) > 100, error: Number(p.ping_ms) > 200 });
