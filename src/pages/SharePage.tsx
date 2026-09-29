@@ -5,6 +5,7 @@ import {
   Sparkles, Rocket, DollarSign, Send, Loader2, HelpCircle,
 } from 'lucide-react';
 import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapItemUpdate, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat, ClientApp } from '../lib/supabase';
+import { BackupMetricsModal } from '../components/BackupMetricsModal';
 
 type Props = { token: string };
 type Section = 'overview' | 'services' | 'licenses' | 'changes' | 'hours' | 'support' | 'tickets';
@@ -771,6 +772,8 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
   const withBackup = services.filter(s => s.last_backup_at || backups.some(b => b.service_id === s.id));
   if (withBackup.length === 0) return null;
 
+  const [historyModal, setHistoryModal] = useState<{ serviceId: string; name: string } | null>(null);
+
   function jobDotColor(status: string, hoursOld: number) {
     if (status === 'failed') return 'bg-red-500';
     if (status === 'warning') return 'bg-amber-500';
@@ -822,13 +825,23 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
             );
           }
 
+          const svcName = s.business_name || s.name;
+
           const jobs = [...byJob.entries()];
           const multiJob = jobs.length > 1;
 
           return (
             <div key={s.id} className="px-4 py-3 space-y-2.5">
               {multiJob && (
-                <p className="text-sm font-medium text-white">{s.business_name || s.name}</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-white">{svcName}</p>
+                  <button
+                    onClick={() => setHistoryModal({ serviceId: s.id, name: svcName })}
+                    className="text-[10px] text-slate-500 hover:text-emerald-400 transition-colors"
+                  >
+                    ver historial
+                  </button>
+                </div>
               )}
               {jobs.map(([jobName, entries]) => {
                 const last = entries[0];
@@ -858,6 +871,14 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
                         <span className={`text-xs font-medium ${jobTextColor(last.status, hoursOld)}`}>
                           {formatTimeAgo(last.backed_up_at)}
                         </span>
+                        {!multiJob && (
+                          <button
+                            onClick={() => setHistoryModal({ serviceId: s.id, name: svcName })}
+                            className="text-[10px] text-slate-500 hover:text-emerald-400 transition-colors"
+                          >
+                            ver historial
+                          </button>
+                        )}
                       </div>
                     </div>
                     {history.length > 1 && (
@@ -876,6 +897,13 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
           );
         })}
       </div>
+      {historyModal && (
+        <BackupMetricsModal
+          serviceId={historyModal.serviceId}
+          serviceName={historyModal.name}
+          onClose={() => setHistoryModal(null)}
+        />
+      )}
     </section>
   );
 }
