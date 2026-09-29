@@ -11,7 +11,25 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.2.3"
+$SCRIPT_VERSION = "1.3.0"
+
+# ---------- IPs (pública WAN + local) ----------
+$publicIp = $null
+try {
+    $publicIp = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 5 -ErrorAction Stop).Trim()
+} catch {
+    try {
+        $publicIp = (Invoke-RestMethod -Uri "https://checkip.amazonaws.com" -TimeoutSec 5 -ErrorAction Stop).Trim()
+    } catch {}
+}
+
+$localIp = $null
+try {
+    $localIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+        Where-Object { $_.PrefixOrigin -ne 'WellKnown' -and $_.IPAddress -notmatch '^127\.' } |
+        Sort-Object { $_.InterfaceMetric } |
+        Select-Object -First 1).IPAddress
+} catch {}
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -139,6 +157,8 @@ $hwBody = @{
         disk_pct       = $diskUsePct
         disk_free_gb   = $diskFreeGB
         disk_raid      = $raidList
+        public_ip      = $publicIp
+        local_ip       = $localIp
         script_version = $SCRIPT_VERSION
     }
 } | ConvertTo-Json -Depth 5
