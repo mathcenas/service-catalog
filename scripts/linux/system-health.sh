@@ -185,11 +185,16 @@ ISSUES=$(echo "$ISSUES" | xargs)
 
 MESSAGE="CPU: ${CPU_PCT}% | RAM: ${RAM_PCT}% | Disk: ${DISK_PCT}% (${DISK_FREE_GB} GB free) | Up: ${UPTIME_STR}"
 
-# ---------- IP público (WAN) ----------
+# ---------- IPs (pública WAN + local) ----------
 PUBLIC_IP=""
 PUBLIC_IP=$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || \
             curl -fsS --max-time 5 https://checkip.amazonaws.com 2>/dev/null || true)
 PUBLIC_IP=$(echo "$PUBLIC_IP" | tr -d '[:space:]')
+
+LOCAL_IP=""
+LOCAL_IP=$(ip route get 1.1.1.1 2>/dev/null | awk '/src/{for(i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}' || \
+           hostname -I 2>/dev/null | awk '{print $1}' || true)
+LOCAL_IP=$(echo "$LOCAL_IP" | tr -d '[:space:]')
 
 # ---------- Samba sessions ----------
 SMB_SESSIONS_JSON="[]"
@@ -490,6 +495,7 @@ PAYLOAD=$(jq -n \
   --argjson ports "$PORT_CHECKS_JSON" \
   --argjson smart "$DISK_SMART_JSON" \
   --arg public_ip "$PUBLIC_IP" \
+  --arg local_ip "$LOCAL_IP" \
   --arg script_version "$SCRIPT_VERSION" \
   '{
     service_id: $service_id,
@@ -512,6 +518,7 @@ PAYLOAD=$(jq -n \
       port_checks: $ports,
       disk_smart: $smart,
       public_ip: (if $public_ip == "" then null else $public_ip end),
+      local_ip: (if $local_ip == "" then null else $local_ip end),
       script_version: $script_version
     }
   }')
