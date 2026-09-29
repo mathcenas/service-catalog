@@ -29,6 +29,18 @@ export type Client = {
   updated_at: string;
 };
 
+export type ClientContact = {
+  id: string;
+  user_id: string;
+  client_id: string;
+  name: string;
+  email: string;
+  role?: string;
+  digest_frequency: 'none' | 'daily' | 'weekly';
+  created_at: string;
+  updated_at: string;
+};
+
 export type UserSettings = {
   id: string;
   user_id: string;
@@ -151,6 +163,8 @@ export type Service = {
   paid_by?: PaidBy;
   payment_card_last4?: string;
   ingest_secret?: string;
+  notification_email?: string;
+  provider_email?: string;
   created_at: string;
   updated_at: string;
 };

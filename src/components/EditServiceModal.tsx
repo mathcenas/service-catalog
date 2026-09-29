@@ -48,6 +48,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
     paid_by: (service.paid_by || '') as '' | PaidBy,
     payment_card_last4: service.payment_card_last4 || '',
     notification_email: service.notification_email || '',
+    provider_email: service.provider_email || '',
   });
 
   const buildInitialTypeValues = (): Record<string, any> => {
@@ -174,6 +175,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
         paid_by: formData.paid_by || null,
         payment_card_last4: formData.payment_card_last4 ? formData.payment_card_last4.slice(-4) : null,
         notification_email: formData.notification_email || null,
+        provider_email: formData.provider_email || null,
       })
       .eq('id', service.id);
 
@@ -512,13 +514,27 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               Email de notificación
-              <span className="ml-1 text-xs font-normal text-gray-400">(alertas de backup, Kopia, etc.)</span>
+              <span className="ml-1 text-xs font-normal text-gray-400">(destinatario principal — cliente)</span>
             </label>
             <input
               type="email"
               value={formData.notification_email}
               onChange={e => set('notification_email', e.target.value)}
               placeholder="cliente@empresa.com"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Email del proveedor IT
+              <span className="ml-1 text-xs font-normal text-gray-400">(CC fijo en todas las alertas)</span>
+            </label>
+            <input
+              type="email"
+              value={formData.provider_email}
+              onChange={e => set('provider_email', e.target.value)}
+              placeholder="it@proveedor.com"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
             />
           </div>

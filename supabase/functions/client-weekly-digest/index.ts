@@ -5,7 +5,7 @@ import { B, EMAIL_FONT, emailHeader, emailPortalPanel, emailMeta } from "../_sha
 // POST body options:
 //   { preview: true, client_id: "uuid" }  → returns { html } without sending
 //   { client_id: "uuid" }                 → sends to that client only
-//   {}                                     → sends to all clients with digest_enabled = true (pg_cron)
+//   {}                                     → pg_cron: daily contacts always, weekly contacts only on Monday
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
@@ -38,17 +38,44 @@ Deno.serve(async (req: Request) => {
     if (user) userId = user.id;
   }
 
-  // Fetch target clients
-  let clientsQuery = supabase
-    .from("clients")
-    .select("id, company_name, email, alt_email, cc_emails, uptime_status_url, user_id")
-    .eq("status", "Active");
+  // Monday check for weekly digests (0=Sun, 1=Mon in UTC)
+  const isMonday = new Date().getUTCDay() === 1;
+
+  // Fetch contacts with active digest frequency
+  // For pg_cron run: daily contacts always, weekly contacts only on Monday
+  // For preview/targeted run: fetch all contacts of that client
+  type ContactRow = { id: string; client_id: string; name: string; email: string; digest_frequency: string };
+  let contactsQuery = supabase
+    .from("client_contacts")
+    .select("id, client_id, name, email, digest_frequency");
 
   if (targetClientId) {
-    clientsQuery = clientsQuery.eq("id", targetClientId);
+    contactsQuery = contactsQuery.eq("client_id", targetClientId).neq("digest_frequency", "none");
   } else {
-    clientsQuery = clientsQuery.eq("digest_enabled", true);
+    const freqFilter = isMonday ? ["daily", "weekly"] : ["daily"];
+    contactsQuery = contactsQuery.in("digest_frequency", freqFilter);
   }
+
+  const { data: allContacts } = await contactsQuery;
+  if (!allContacts || allContacts.length === 0) {
+    return new Response(JSON.stringify({ sent: 0, reason: "No contacts with active digest" }), { status: 200 });
+  }
+
+  // Group contacts by client_id
+  const contactsByClient = new Map<string, ContactRow[]>();
+  for (const c of allContacts as ContactRow[]) {
+    const arr = contactsByClient.get(c.client_id) || [];
+    arr.push(c);
+    contactsByClient.set(c.client_id, arr);
+  }
+
+  // Fetch clients for those IDs
+  const clientIds = [...contactsByClient.keys()];
+  let clientsQuery = supabase
+    .from("clients")
+    .select("id, company_name, uptime_status_url, user_id")
+    .in("id", clientIds)
+    .eq("status", "Active");
   if (userId) clientsQuery = clientsQuery.eq("user_id", userId);
 
   const { data: targetClients } = await clientsQuery;
@@ -56,8 +83,9 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify({ sent: 0, reason: "No clients found" }), { status: 200 });
   }
 
-  const since7d = new Date(Date.now() - 7 * 86400000).toISOString();
-  const in60d  = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+  const since7d  = new Date(Date.now() - 7 * 86400000).toISOString();
+  const since24h = new Date(Date.now() - 86400000).toISOString();
+  const in60d    = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
   let sent = 0;
 
   for (const client of targetClients) {
@@ -84,18 +112,27 @@ Deno.serve(async (req: Request) => {
     const serviceList = services || [];
     const serviceIds  = serviceList.map((s: any) => s.id);
 
+    // Determine which contact types are receiving this run for this client
+    const clientContacts = contactsByClient.get(client.id) || [];
+    const hasDailyContact  = clientContacts.some(c => c.digest_frequency === "daily");
+    const hasWeeklyContact = clientContacts.some(c => c.digest_frequency === "weekly");
+    // Daily email covers 24h; weekly email covers 7d — fetch the broader window needed
+    const backupSince = since7d;
+
     const [
       { data: backups },
       { data: heartbeats },
       { data: changes },
     ] = await Promise.all([
       serviceIds.length
-        ? supabase.from("service_backups").select("service_id, status, backed_up_at, job_name").gte("backed_up_at", since7d).in("service_id", serviceIds).order("backed_up_at", { ascending: false })
+        ? supabase.from("service_backups").select("service_id, status, backed_up_at, job_name").gte("backed_up_at", backupSince).in("service_id", serviceIds).order("backed_up_at", { ascending: false })
         : { data: [] },
       serviceIds.length
         ? supabase.from("service_heartbeats").select("service_id, source, status, message, payload, received_at").in("service_id", serviceIds).gte("received_at", since7d)
         : { data: [] },
-      supabase.from("service_changes").select("service_id, summary, change_date").gte("change_date", since7d).in("service_id", serviceIds).order("change_date", { ascending: false }),
+      serviceIds.length
+        ? supabase.from("service_changes").select("service_id, summary, change_date").gte("change_date", since7d).in("service_id", serviceIds).order("change_date", { ascending: false })
+        : { data: [] },
     ]);
 
     // ── Helpers ──────────────────────────────────────────────
@@ -222,92 +259,92 @@ Deno.serve(async (req: Request) => {
       </li>`
     ).join('');
 
-    // ── Compose ────────────────────────────────────────────────
-    const weekLabel = new Date().toLocaleDateString('es-UY', { day: 'numeric', month: 'long', year: 'numeric' });
+    // ── Compose HTML per frequency ──────────────────────────────
+    const dateLabel = new Date().toLocaleDateString('es-UY', { day: 'numeric', month: 'long', year: 'numeric' });
 
-    const bodyContent = `
-      ${emailHeader({
-        senderName,
-        label: 'Resumen Semanal',
-        accentColor: B.accent,
-        title: client.company_name,
-        subtitle: weekLabel,
-      })}
+    const backups24h = (backups || []).filter((b: any) => b.backed_up_at >= since24h);
+    const backupRows24h = serviceList
+      .filter((s: any) => backups24h.some((b: any) => b.service_id === s.id) || s.last_backup_at >= since24h)
+      .map((s: any) => {
+        const latest = backups24h.find((b: any) => b.service_id === s.id);
+        const age = latest ? 'Hoy' : 'Ayer';
+        return `<tr>
+          <td style="padding:5px 8px;font-size:12px;color:${B.primary};">${s.business_name || s.name}</td>
+          <td style="padding:5px 8px;">${latest ? statusPill(latest.status) : ''}</td>
+          <td style="padding:5px 8px;font-size:12px;color:${B.textMid};">${age}</td>
+        </tr>`;
+      }).join('');
 
-      ${diskRows   ? section('Estado de Discos (SMART)', '💾', tableWrap(diskRows,   ['Servidor', 'Disco', 'Estado', 'Detalles'])) : ''}
-      ${healthRows ? section('Salud del Sistema',        '🖥️', tableWrap(healthRows, ['Servicio', 'Estado', 'Detalles'])) : ''}
+    const buildHtml = (frequency: "daily" | "weekly") => {
+      const isDaily = frequency === "daily";
+      const label   = isDaily ? 'Resumen Diario' : 'Resumen Semanal';
+      const bRows   = isDaily ? backupRows24h : backupRows;
+      const bLabel  = isDaily ? 'Backups — últimas 24h' : 'Backups — últimos 7 días';
+      const bEmpty  = isDaily ? 'Sin backups en las últimas 24h.' : 'Sin servicios con backup monitoreado esta semana.';
 
-      ${section('Backups — últimos 7 días', '📦',
-        backupRows
-          ? tableWrap(backupRows, ['Servicio', 'Resultado', 'Último backup'])
-          : emptyNote('Sin servicios con backup monitoreado esta semana.')
-      )}
-
-      ${renewalRows ? section('Próximas Renovaciones', '📅', tableWrap(renewalRows, ['Servicio', 'Fecha'])) : ''}
-      ${changeItems ? section('Cambios realizados esta semana', '🔧', `<ul style="margin:4px 0;padding-left:16px;">${changeItems}</ul>`) : ''}
-
-      ${emailPortalPanel({ companyName: client.company_name, portalUrl })}
-      ${emailMeta(senderName)}
-    `;
-
-    const html = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${B.bg};font-family:${EMAIL_FONT};">
-      <tr><td align="center" style="padding:32px 24px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;border:1px solid ${B.border};">
-      <tr><td style="padding:28px;">
-        ${bodyContent}
-      </td></tr>
-      </table>
-      </td></tr>
-    </table>`;
+      const bodyContent = `
+        ${emailHeader({ senderName, label, accentColor: B.accent, title: client.company_name, subtitle: dateLabel })}
+        ${section(bLabel, '📦',
+          bRows ? tableWrap(bRows, ['Servicio', 'Resultado', 'Último backup']) : emptyNote(bEmpty)
+        )}
+        ${!isDaily && diskRows   ? section('Estado de Discos (SMART)', '💾', tableWrap(diskRows,   ['Servidor', 'Disco', 'Estado', 'Detalles'])) : ''}
+        ${!isDaily && healthRows ? section('Salud del Sistema',        '🖥️', tableWrap(healthRows, ['Servicio', 'Estado', 'Detalles'])) : ''}
+        ${!isDaily && renewalRows ? section('Próximas Renovaciones', '📅', tableWrap(renewalRows, ['Servicio', 'Fecha'])) : ''}
+        ${!isDaily && changeItems ? section('Cambios realizados esta semana', '🔧', `<ul style="margin:4px 0;padding-left:16px;">${changeItems}</ul>`) : ''}
+        ${emailPortalPanel({ companyName: client.company_name, portalUrl })}
+        ${emailMeta(senderName)}
+      `;
+      return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${B.bg};font-family:${EMAIL_FONT};">
+        <tr><td align="center" style="padding:32px 24px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;border:1px solid ${B.border};">
+        <tr><td style="padding:28px;">${bodyContent}</td></tr>
+        </table>
+        </td></tr>
+      </table>`;
+    };
 
     if (previewMode) {
+      const html = buildHtml(hasWeeklyContact ? "weekly" : "daily");
       return new Response(JSON.stringify({ html, client_name: client.company_name }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    // Build recipient list
-    const toEmails = [client.email].filter(Boolean);
-    if (client.alt_email) toEmails.push(client.alt_email);
-    const ccEmails = client.cc_emails
-      ? client.cc_emails.split(',').map((e: string) => e.trim()).filter(Boolean)
-      : [];
-
-    if (toEmails.length === 0) continue;
-
-    // Insert tracking record and embed pixel
-    const trackingId = crypto.randomUUID();
+    // Send one email per frequency group, to the matching contacts
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const pixelUrl = `${supabaseUrl}/functions/v1/track-open?t=${trackingId}`;
+    for (const frequency of (["daily", "weekly"] as const)) {
+      const group = clientContacts.filter(c => c.digest_frequency === frequency);
+      if (group.length === 0) continue;
+      // In pg_cron mode, skip weekly if not Monday
+      if (frequency === "weekly" && !isMonday && !targetClientId) continue;
 
-    await supabase.from("email_opens").insert({
-      user_id:    userId || client.user_id,
-      client_id:  client.id,
-      client_email: toEmails[0],
-      tracking_id: trackingId,
-      email_type: "digest",
-      subject:    `Resumen semanal — ${weekLabel}`,
-    });
+      const html        = buildHtml(frequency);
+      const label       = frequency === "daily" ? "Resumen diario" : "Resumen semanal";
+      const subject     = `${label} — ${client.company_name} — ${dateLabel}`;
+      const toEmails    = group.map(c => c.email);
+      const trackingId  = crypto.randomUUID();
+      const pixelUrl    = `${supabaseUrl}/functions/v1/track-open?t=${trackingId}`;
 
-    const htmlWithPixel = html.replace(
-      "</div>\n    </div>",
-      `<img src="${pixelUrl}" width="1" height="1" style="display:block;width:1px;height:1px;border:0;" alt="" /></div>\n    </div>`,
-    );
+      await supabase.from("email_opens").insert({
+        user_id:      userId || client.user_id,
+        client_id:    client.id,
+        client_email: toEmails[0],
+        tracking_id:  trackingId,
+        email_type:   `digest_${frequency}`,
+        subject,
+      });
 
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from:    FROM_EMAIL,
-        to:      toEmails,
-        cc:      ccEmails.length ? ccEmails : undefined,
-        subject: `Resumen semanal — ${weekLabel}`,
-        html:    htmlWithPixel,
-      }),
-    });
+      const htmlWithPixel = html + `<img src="${pixelUrl}" width="1" height="1" style="display:none;" alt="" />`;
 
-    sent++;
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ from: FROM_EMAIL, to: toEmails, subject, html: htmlWithPixel }),
+      });
+
+      sent++;
+    }
   }
 
   return new Response(JSON.stringify({ sent }), { status: 200 });
