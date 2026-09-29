@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, Fragment } from 'react';
 import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, Trash2, HardDrive, Wifi, Monitor, Server, LayoutGrid, List, Users, Download, ChevronRight, ChevronDown, TrendingUp } from 'lucide-react';
 import { supabase, Service, Client, ServiceHeartbeat } from '../lib/supabase';
 import { ServiceMetricsModal } from './ServiceMetricsModal';
+import { BackupMetricsModal } from './BackupMetricsModal';
 import { BRAND, pdfHeader, pdfSection, openPrintWindow } from '../lib/pdfBrand';
 
 interface ServiceBackup {
@@ -267,7 +268,8 @@ export function TelemetryDashboard({ services, clients }: Props) {
   const [sendingReview, setSendingReview] = useState<string | null>(null);
   const [reviewLinks, setReviewLinks] = useState<Record<string, string>>({});
   const [latestVersions, setLatestVersions] = useState<Record<string, { windows?: string; linux?: string }>>({});
-  const [metricsModal, setMetricsModal] = useState<{ serviceId: string; name: string } | null>(null);
+  const [metricsModal, setMetricsModal]       = useState<{ serviceId: string; name: string } | null>(null);
+  const [backupModal, setBackupModal]         = useState<{ serviceId: string; name: string } | null>(null);
   const [yesterdayOutdated, setYesterdayOutdated] = useState<number | null>(null);
 
   const load = async () => {
@@ -769,6 +771,13 @@ export function TelemetryDashboard({ services, clients }: Props) {
                     >
                       <TrendingUp className="w-3.5 h-3.5" />
                     </button>
+                    <button
+                      onClick={() => setBackupModal({ serviceId, name: svc?.business_name || svc?.name || serviceId.slice(0, 8) })}
+                      className="p-1 rounded hover:bg-white/70 text-gray-400 hover:text-emerald-600 transition-colors"
+                      title="Ver historial de backups"
+                    >
+                      <HardDrive className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
 
@@ -1175,6 +1184,13 @@ export function TelemetryDashboard({ services, clients }: Props) {
         serviceId={metricsModal.serviceId}
         serviceName={metricsModal.name}
         onClose={() => setMetricsModal(null)}
+      />
+    )}
+    {backupModal && (
+      <BackupMetricsModal
+        serviceId={backupModal.serviceId}
+        serviceName={backupModal.name}
+        onClose={() => setBackupModal(null)}
       />
     )}
     </>
