@@ -48,6 +48,15 @@ function isHbStale(hb: ServiceHeartbeat): boolean {
   return (Date.now() - new Date(hb.received_at).getTime()) > staleThresholdForSource(hb.source);
 }
 
+// Card-level silence alert — independent of per-source thresholds
+function cardStaleLevel(latest: ServiceHeartbeat | undefined): 'none' | 'warn' | 'dead' {
+  if (!latest) return 'none';
+  const hours = (Date.now() - new Date(latest.received_at).getTime()) / 3600000;
+  if (hours > 72) return 'dead';
+  if (hours > 24) return 'warn';
+  return 'none';
+}
+
 type Props = {
   services: Service[];
   clients: Client[];
@@ -779,12 +788,16 @@ export function TelemetryDashboard({ services, clients }: Props) {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filteredCards.map(({ serviceId, svc, client, sources, worstStatus, latest }) => (
+            {filteredCards.map(({ serviceId, svc, client, sources, worstStatus, latest }) => {
+              const slevel = cardStaleLevel(latest);
+              return (
               <div key={serviceId} className={`rounded-xl border overflow-hidden ${
-                worstStatus === 'error' ? 'bg-white border-red-200' :
-                worstStatus === 'warning' ? 'bg-white border-amber-200' :
-                worstStatus === 'stale' ? 'bg-white border-gray-200' :
-                worstStatus === 'no-data' ? 'bg-slate-50 border-slate-200 border-dashed' : 'bg-white border-gray-200'
+                slevel === 'dead'        ? 'bg-white border-orange-300 border-l-4 border-l-orange-500' :
+                slevel === 'warn'        ? 'bg-white border-yellow-300' :
+                worstStatus === 'error'  ? 'bg-white border-red-200' :
+                worstStatus === 'warning'? 'bg-white border-amber-200' :
+                worstStatus === 'stale'  ? 'bg-white border-gray-200' :
+                worstStatus === 'no-data'? 'bg-slate-50 border-slate-200 border-dashed' : 'bg-white border-gray-200'
               }`}>
                 {/* Card header */}
                 <div className={`px-4 py-3 border-b flex items-start justify-between gap-2 ${
@@ -850,6 +863,29 @@ export function TelemetryDashboard({ services, clients }: Props) {
                   </div>
                 </div>
 
+                {/* Stale banner */}
+                {slevel === 'dead' && latest && (
+                  <div className="px-4 py-2.5 bg-orange-50 border-b border-orange-200 flex flex-col gap-1.5">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-orange-700">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      Script caído o desconectado — sin datos hace más de 72 hs
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-orange-600">
+                      <span><span className="text-orange-400">Última señal:</span> {new Date(latest.received_at).toLocaleString('es-UY', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                      <span><span className="text-orange-400">Source:</span> {latest.source}</span>
+                      {(latest.payload as Record<string, unknown>)?.script_version && (
+                        <span><span className="text-orange-400">v</span> {String((latest.payload as Record<string, unknown>).script_version)}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {slevel === 'warn' && (
+                  <div className="px-4 py-2 bg-yellow-50 border-b border-yellow-200 flex items-center gap-1.5 text-xs font-medium text-yellow-700">
+                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                    Sin datos hace más de 24 hs — verificar script o conexión
+                  </div>
+                )}
+
                 {/* Sources */}
                 <div className="divide-y divide-gray-100">
                   {worstStatus === 'no-data' && (
@@ -886,7 +922,8 @@ export function TelemetryDashboard({ services, clients }: Props) {
                   })}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )
       ) : viewMode === 'backups' || viewMode === 'acl' || viewMode === 'sessions' ? null : (
