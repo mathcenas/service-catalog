@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, Fragment } from 'react';
-import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, Trash2, HardDrive, Wifi, Monitor, Server, LayoutGrid, List, Users, Download, ChevronRight, ChevronDown, TrendingUp } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, Trash2, HardDrive, Wifi, Monitor, Server, LayoutGrid, List, Users, Download, ChevronRight, ChevronDown, TrendingUp, Globe, Network, MonitorSmartphone } from 'lucide-react';
 import { supabase, Service, Client, ServiceHeartbeat } from '../lib/supabase';
 import { ServiceMetricsModal } from './ServiceMetricsModal';
 import { BackupMetricsModal } from './BackupMetricsModal';
@@ -250,6 +250,25 @@ function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersi
       })}
     </div>
   );
+}
+
+// Extract key network/identity info from all sources of a card for the header summary
+function extractCardSummary(sources: ServiceHeartbeat[]) {
+  let wanIp: string | null = null;
+  let lanIp: string | null = null;
+  let anydeskId: string | null = null;
+
+  for (const hb of sources) {
+    const p = (hb.payload ?? {}) as Record<string, unknown>;
+    if (hb.source === 'system-health' || hb.source === 'network') {
+      if (!wanIp && p.public_ip) wanIp = String(p.public_ip);
+      if (!lanIp && p.local_ip)  lanIp  = String(p.local_ip);
+    }
+    if (hb.source === 'rdp') {
+      if (!anydeskId && p.anydesk_id) anydeskId = String(p.anydesk_id);
+    }
+  }
+  return { wanIp, lanIp, anydeskId };
 }
 
 const SOURCE_ICONS: Record<string, typeof Monitor> = {
@@ -782,6 +801,33 @@ export function TelemetryDashboard({ services, clients }: Props) {
                       </span>
                     </div>
                     {client && <div className="text-xs text-gray-500 mt-0.5 ml-4">{client.company_name}</div>}
+                    {(() => {
+                      const { wanIp, lanIp, anydeskId } = extractCardSummary(sources);
+                      if (!wanIp && !lanIp && !anydeskId) return null;
+                      return (
+                        <div className="flex flex-wrap items-center gap-2 mt-1.5 ml-4">
+                          {wanIp && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-blue-700 bg-blue-50 border border-blue-100 rounded px-1.5 py-0.5 font-mono" title="WAN IP">
+                              <Globe className="w-2.5 h-2.5 shrink-0" />{wanIp}
+                            </span>
+                          )}
+                          {lanIp && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 font-mono" title="LAN IP">
+                              <Network className="w-2.5 h-2.5 shrink-0" />{lanIp}
+                            </span>
+                          )}
+                          {anydeskId && (
+                            <button
+                              onClick={() => navigator.clipboard.writeText(anydeskId!)}
+                              className="inline-flex items-center gap-1 text-[10px] text-violet-700 bg-violet-50 border border-violet-200 rounded px-1.5 py-0.5 font-mono hover:bg-violet-100 transition-colors"
+                              title="AnyDesk ID — click para copiar"
+                            >
+                              <MonitorSmartphone className="w-2.5 h-2.5 shrink-0" />{anydeskId}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {latest && (
