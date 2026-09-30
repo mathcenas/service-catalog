@@ -128,20 +128,27 @@ Deno.serve(async (req: Request) => {
       } else {
         const { data: svcRow, error: svcRowErr } = await supabaseAdmin
           .from("services")
-          .select("client_id, name, business_name, clients(company_name, email, alt_email, cc_emails)")
+          .select("client_id, name, business_name, clients(company_name)")
           .eq("id", service_id)
           .maybeSingle();
 
         if (svcRowErr) console.error("[ingest-backup] error al obtener servicio+cliente:", svcRowErr.message);
 
-        // Build recipient list: client contacts + service notification_email + env fallback
+        // Build recipient list from client_contacts (primary) + service notification_email + env fallback
         const recipients = new Set<string>();
-        const clientData = (svcRow as any)?.clients;
-        if (clientData?.email)     recipients.add(clientData.email);
-        if (clientData?.alt_email) recipients.add(clientData.alt_email);
-        if (clientData?.cc_emails) {
-          (clientData.cc_emails as string).split(",").map((e: string) => e.trim()).filter(Boolean).forEach((e: string) => recipients.add(e));
+        const clientId = (svcRow as any)?.client_id;
+
+        if (clientId) {
+          const { data: contacts } = await supabaseAdmin
+            .from("client_contacts")
+            .select("email")
+            .eq("client_id", clientId)
+            .neq("digest_frequency", "none");
+          for (const c of (contacts || []) as { email: string }[]) {
+            if (c.email) recipients.add(c.email);
+          }
         }
+
         if ((service as any).notification_email) recipients.add((service as any).notification_email);
 
         // provider_email siempre va como CC (IT proveedor), aunque haya otros destinatarios
@@ -152,10 +159,10 @@ Deno.serve(async (req: Request) => {
           if (fallback) recipients.add(fallback);
         }
 
-        console.log(`[ingest-backup] destinatarios: ${[...recipients].join(", ") || "(ninguno)"} | cliente: ${(svcRow as any)?.clients?.email || "null"}`);
+        console.log(`[ingest-backup] destinatarios: ${[...recipients].join(", ") || "(ninguno)"} | cliente: ${clientName || "null"}`);
 
         if (recipients.size > 0) {
-        const clientName = clientData?.company_name || null;
+        const clientName = (svcRow as any)?.clients?.company_name || null;
         const serviceName = service.business_name || service.name || service_id;
         const isFailure = normalizedStatus === "failed";
         const isWarning = normalizedStatus === "warning";
