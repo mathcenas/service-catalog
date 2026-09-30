@@ -143,7 +143,7 @@ Deno.serve(async (req: Request) => {
             .from("client_contacts")
             .select("email")
             .eq("client_id", clientId)
-            .neq("digest_frequency", "none");
+            .eq("digest_frequency", "daily");
           for (const c of (contacts || []) as { email: string }[]) {
             if (c.email) recipients.add(c.email);
           }
