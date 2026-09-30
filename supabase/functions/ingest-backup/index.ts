@@ -159,10 +159,10 @@ Deno.serve(async (req: Request) => {
           if (fallback) recipients.add(fallback);
         }
 
+        const clientName = (svcRow as any)?.clients?.company_name || null;
         console.log(`[ingest-backup] destinatarios: ${[...recipients].join(", ") || "(ninguno)"} | cliente: ${clientName || "null"}`);
 
         if (recipients.size > 0) {
-        const clientName = (svcRow as any)?.clients?.company_name || null;
         const serviceName = service.business_name || service.name || service_id;
         const isFailure = normalizedStatus === "failed";
         const isWarning = normalizedStatus === "warning";
