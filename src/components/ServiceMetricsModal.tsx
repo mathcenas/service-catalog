@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, TrendingUp } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend,
+  ResponsiveContainer, Legend, ReferenceArea,
 } from 'recharts';
 import { supabase } from '../lib/supabase';
 
@@ -25,6 +25,19 @@ type DataPoint = {
 
 const DAYS_OPTIONS = [7, 14, 30];
 
+// Returns [{x1, x2}] for each consecutive weekend (Sat/Sun) run in the series
+function weekendAreas(pts: DataPoint[]) {
+  const areas: { x1: string; x2: string }[] = [];
+  let start: string | null = null;
+  for (const pt of pts) {
+    const day = new Date(pt.iso).getDay(); // 0=Sun, 6=Sat
+    const isWe = day === 0 || day === 6;
+    if (isWe && start === null) { start = pt.ts; }
+    else if (!isWe && start !== null) { areas.push({ x1: start, x2: pt.ts }); start = null; }
+  }
+  if (start !== null && pts.length > 0) areas.push({ x1: start, x2: pts[pts.length - 1].ts });
+  return areas;
+}
 
 export function ServiceMetricsModal({ serviceId, serviceName, onClose }: Props) {
   const [days, setDays] = useState(7);
@@ -192,6 +205,9 @@ export function ServiceMetricsModal({ serviceId, serviceName, onClose }: Props) 
                         formatter={(v) => [`${v}%`, '']}
                       />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
+                      {weekendAreas(systemData).map((a, i) => (
+                        <ReferenceArea key={i} x1={a.x1} x2={a.x2} fill="#f0f9ff" fillOpacity={0.7} strokeOpacity={0} />
+                      ))}
                       <Area type="monotone" dataKey="cpu"  name="CPU"   stroke="#3b82f6" fill="url(#gCpu)"  strokeWidth={1.5} dot={false} connectNulls />
                       <Area type="monotone" dataKey="ram"  name="RAM"   stroke="#8b5cf6" fill="url(#gRam)"  strokeWidth={1.5} dot={false} connectNulls />
                       <Area type="monotone" dataKey="disk" name="Disco" stroke="#f59e0b" fill="url(#gDisk)" strokeWidth={1.5} dot={false} connectNulls />
@@ -222,6 +238,9 @@ export function ServiceMetricsModal({ serviceId, serviceName, onClose }: Props) 
                         <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
                           formatter={(v) => [`${v} Mbps`, '']} />
                         <Legend wrapperStyle={{ fontSize: 11 }} />
+                        {weekendAreas(netData).map((a, i) => (
+                          <ReferenceArea key={i} x1={a.x1} x2={a.x2} fill="#f0f9ff" fillOpacity={0.7} strokeOpacity={0} />
+                        ))}
                         <Area type="monotone" dataKey="download" name="Descarga" stroke="#10b981" fill="url(#gDown)" strokeWidth={1.5} dot={false} connectNulls />
                         <Area type="monotone" dataKey="upload"   name="Subida"   stroke="#06b6d4" fill="url(#gUp)"   strokeWidth={1.5} dot={false} connectNulls />
                       </AreaChart>
@@ -243,6 +262,9 @@ export function ServiceMetricsModal({ serviceId, serviceName, onClose }: Props) 
                         <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} unit=" ms" />
                         <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e2e8f0' }}
                           formatter={(v) => [`${v} ms`, 'Ping']} />
+                        {weekendAreas(netData).map((a, i) => (
+                          <ReferenceArea key={i} x1={a.x1} x2={a.x2} fill="#f0f9ff" fillOpacity={0.7} strokeOpacity={0} />
+                        ))}
                         <Area type="monotone" dataKey="ping" name="Ping" stroke="#f43f5e" fill="url(#gPing)" strokeWidth={1.5} dot={false} connectNulls />
                       </AreaChart>
                     </ResponsiveContainer>

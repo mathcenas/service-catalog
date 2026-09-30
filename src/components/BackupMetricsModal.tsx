@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, HardDrive, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell
+  ResponsiveContainer, Cell, ReferenceArea,
 } from 'recharts';
 import { supabase } from '../lib/supabase';
 
@@ -24,6 +24,19 @@ type BackupPoint = {
 };
 
 const DAYS_OPTIONS = [14, 30, 60];
+
+function weekendAreas(pts: BackupPoint[]) {
+  const areas: { x1: string; x2: string }[] = [];
+  let start: string | null = null;
+  for (const pt of pts) {
+    const day = new Date(pt.date).getDay();
+    const isWe = day === 0 || day === 6;
+    if (isWe && start === null) { start = pt.ts; }
+    else if (!isWe && start !== null) { areas.push({ x1: start, x2: pt.ts }); start = null; }
+  }
+  if (start !== null && pts.length > 0) areas.push({ x1: start, x2: pts[pts.length - 1].ts });
+  return areas;
+}
 
 export function BackupMetricsModal({ serviceId, serviceName, onClose }: Props) {
   const [days, setDays] = useState(30);
@@ -159,6 +172,9 @@ export function BackupMetricsModal({ serviceId, serviceName, onClose }: Props) {
                         item.payload.jobName || 'Backup',
                       ]}
                     />
+                    {weekendAreas(data).map((a, i) => (
+                      <ReferenceArea key={i} x1={a.x1} x2={a.x2} fill="#f0f9ff" fillOpacity={0.7} strokeOpacity={0} />
+                    ))}
                     <Bar dataKey="sizeGb" radius={[4, 4, 0, 0]}>
                       {data.map((entry, i) => (
                         <Cell
