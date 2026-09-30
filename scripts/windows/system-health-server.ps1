@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.3.0"
+$SCRIPT_VERSION = "1.3.1"
 
 # ---------- IPs (pública WAN + local) ----------
 $publicIp = $null
@@ -159,6 +159,8 @@ $hwBody = @{
         disk_raid      = $raidList
         public_ip      = $publicIp
         local_ip       = $localIp
+        is_server      = $true
+        os_caption     = (Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue).Caption
         script_version = $SCRIPT_VERSION
     }
 } | ConvertTo-Json -Depth 5
