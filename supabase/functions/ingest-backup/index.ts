@@ -110,10 +110,10 @@ Deno.serve(async (req: Request) => {
       console.log("[ingest-backup] email suprimido por suppress_email=true");
     }
     if (!suppress_email) {
-      // Rate limiting: un email por (service_id, event_type) cada 15 min
-      // Los backups exitosos tienen cooldown de 60 min para no saturar en runs frecuentes
+      // Rate limiting: un email por (service_id, event_type) por día para success,
+      // 15 min para warning/failed para no suprimir alertas reales.
       const eventType = `backup_${normalizedStatus}`;
-      const cooldown  = normalizedStatus === "success" ? 60 : 15;
+      const cooldown  = normalizedStatus === "success" ? 23 * 60 : 15;
       const allowed   = await canSendNotification(supabaseAdmin, service_id, eventType, cooldown);
       if (!allowed) {
         return new Response(
