@@ -88,6 +88,18 @@ Deno.serve(async (req: Request) => {
   }
 
   // ----------------------------------------------------------------
+  // email.opened
+  // ----------------------------------------------------------------
+  if (type === "email.opened") {
+    // Marcar opened_at en email_opens si aún no está marcado
+    await supabase
+      .from("email_opens")
+      .update({ opened_at: new Date().toISOString() })
+      .eq("resend_email_id", resendEmailId)
+      .is("opened_at", null);
+  }
+
+  // ----------------------------------------------------------------
   // email.bounced / email.complained
   // ----------------------------------------------------------------
   if (type === "email.bounced" || type === "email.complained") {
