@@ -59,12 +59,12 @@ const MOCK_SITES: Record<string, { nodes: Node[]; edges: Edge[] }> = {
       },
     ],
     edges: [
-      { id: 'e1', source: 'router-1',   target: 'sw-access-1', animated: false, style: { stroke: '#334155', strokeWidth: 2 } },
-      { id: 'e2', source: 'router-1',   target: 'sw-access-2', animated: false, style: { stroke: '#334155', strokeWidth: 2 } },
-      { id: 'e3', source: 'sw-access-1', target: 'srv-1',      style: { stroke: '#1e3a5f', strokeWidth: 1.5 } },
-      { id: 'e4', source: 'sw-access-1', target: 'srv-2',      style: { stroke: '#1e3a5f', strokeWidth: 1.5 } },
-      { id: 'e5', source: 'sw-access-2', target: 'ws-1',       style: { stroke: '#1e3a5f', strokeWidth: 1.5 } },
-      { id: 'e6', source: 'sw-access-2', target: 'ws-2',       style: { stroke: '#1e3a5f', strokeWidth: 1.5 } },
+      { id: 'e1', source: 'router-1',    target: 'sw-access-1', type: 'smoothstep', label: 'Fibra · Te1', labelStyle: { fill: '#06B6D4', fontSize: 10 }, labelBgStyle: { fill: '#0B192C' }, style: { stroke: '#06B6D4', strokeWidth: 2 } },
+      { id: 'e2', source: 'router-1',    target: 'sw-access-2', type: 'smoothstep', label: 'Fibra · Te2', labelStyle: { fill: '#06B6D4', fontSize: 10 }, labelBgStyle: { fill: '#0B192C' }, style: { stroke: '#06B6D4', strokeWidth: 2 } },
+      { id: 'e3', source: 'sw-access-1', target: 'srv-1',       type: 'smoothstep', label: 'UTP · Gi1',  labelStyle: { fill: '#64748B', fontSize: 10 }, labelBgStyle: { fill: '#0B192C' }, style: { stroke: '#334155', strokeWidth: 1.5, strokeDasharray: '5 3' } },
+      { id: 'e4', source: 'sw-access-1', target: 'srv-2',       type: 'smoothstep', label: 'UTP · Gi2',  labelStyle: { fill: '#64748B', fontSize: 10 }, labelBgStyle: { fill: '#0B192C' }, style: { stroke: '#334155', strokeWidth: 1.5, strokeDasharray: '5 3' } },
+      { id: 'e5', source: 'sw-access-2', target: 'ws-1',        type: 'smoothstep', style: { stroke: '#1e3a5f', strokeWidth: 1.5, strokeDasharray: '5 3' } },
+      { id: 'e6', source: 'sw-access-2', target: 'ws-2',        type: 'smoothstep', style: { stroke: '#1e3a5f', strokeWidth: 1.5, strokeDasharray: '5 3' } },
     ],
   },
   'rbuy-sucursal': {

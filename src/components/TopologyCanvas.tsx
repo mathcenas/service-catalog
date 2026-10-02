@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import {
   ReactFlow, Background, Controls, MiniMap,
   applyNodeChanges, applyEdgeChanges,
-  Node, Edge, NodeChange, EdgeChange, Connection,
+  Node, Edge, NodeChange, EdgeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Lock, Unlock, RefreshCw } from 'lucide-react';
@@ -12,10 +12,47 @@ import UnmanagedNode from './nodes/UnmanagedNode';
 import EndpointNode from './nodes/EndpointNode';
 
 const nodeTypes = {
-  mikrotik:  MikroTikNode,
-  unmanaged: UnmanagedNode,
-  endpoint:  EndpointNode,
+  mikrotik:       MikroTikNode,
+  unmanaged:      UnmanagedNode,
+  endpoint:       EndpointNode,
+  critical_asset: UnmanagedNode, // reutiliza UnmanagedNode, el borde cian viene del data.critical flag
 };
+
+// Leyenda técnica fija en esquina superior izquierda (debajo del site label)
+function TopologyLegend() {
+  return (
+    <div className="absolute top-14 left-4 z-10 bg-[#1E293B] border border-[#334155] rounded-lg p-3 text-[10px] space-y-2 w-44">
+      <div className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Estado</div>
+      <div className="flex flex-col gap-1">
+        {[
+          { color: '#10B981', label: 'Operativo' },
+          { color: '#F59E0B', label: 'Advertencia' },
+          { color: '#EF4444', label: 'Caído / Crítico' },
+        ].map(({ color, label }) => (
+          <div key={label} className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
+            <span className="text-slate-300">{label}</span>
+          </div>
+        ))}
+      </div>
+      <div className="border-t border-slate-700 pt-2 text-slate-400 font-bold uppercase tracking-wider text-[9px]">Enlaces</div>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center gap-2">
+          <svg width="24" height="6"><line x1="0" y1="3" x2="24" y2="3" stroke="#06B6D4" strokeWidth="2"/></svg>
+          <span className="text-slate-300">Fibra 10G</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <svg width="24" height="6"><line x1="0" y1="3" x2="24" y2="3" stroke="#475569" strokeWidth="1.5" strokeDasharray="4 2"/></svg>
+          <span className="text-slate-300">Cobre / UTP 1G</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-5 h-3.5 rounded border flex-shrink-0" style={{ borderColor: '#06B6D4', background: 'rgba(6,182,212,0.08)' }} />
+          <span className="text-slate-300">Activo crítico</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface Props {
   initialNodes: Node[];
@@ -81,12 +118,17 @@ export function TopologyCanvas({ initialNodes, initialEdges, clientId, siteId, o
         </button>
       </div>
 
-      {/* Site label */}
+      {/* Site label + footer institucional */}
       <div className="absolute top-4 left-4 z-10">
         <span className="text-[10px] font-bold tracking-widest text-slate-500 bg-[#1E293B]/80 px-2.5 py-1.5 rounded-lg border border-slate-700 font-mono uppercase">
           {siteId}
         </span>
       </div>
+      <div className="absolute bottom-3 left-4 z-10 text-[11px] text-slate-600 pointer-events-none select-none">
+        Cenas.uy IT Solutions · cenas.uy
+      </div>
+
+      <TopologyLegend />
 
       <ReactFlow
         nodes={nodes}
@@ -96,6 +138,10 @@ export function TopologyCanvas({ initialNodes, initialEdges, clientId, siteId, o
         onEdgesChange={onEdgesChange}
         onNodeDragStop={onNodeDragStop}
         nodesDraggable={editMode}
+        defaultEdgeOptions={{
+          type: 'smoothstep',
+          style: { stroke: '#334155', strokeWidth: 2 },
+        }}
         fitView
         fitViewOptions={{ padding: 0.2 }}
         proOptions={{ hideAttribution: true }}
@@ -103,7 +149,7 @@ export function TopologyCanvas({ initialNodes, initialEdges, clientId, siteId, o
         <Background color="#1e3a5f" gap={24} size={1} variant={'dots' as any} />
         <Controls className="!bg-[#1E293B] !border-slate-700 [&>button]:!bg-[#1E293B] [&>button]:!border-slate-700 [&>button_svg]:!fill-slate-400" />
         <MiniMap
-          nodeColor={(n) => n.type === 'mikrotik' ? '#06B6D4' : n.type === 'endpoint' ? '#334155' : '#475569'}
+          nodeColor={(n) => n.type === 'mikrotik' ? '#06B6D4' : n.type === 'critical_asset' ? '#06B6D4' : n.type === 'endpoint' ? '#334155' : '#475569'}
           maskColor="rgba(11,25,44,0.75)"
           className="!bg-[#111c2d] !border-slate-700"
         />
