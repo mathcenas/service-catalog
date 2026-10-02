@@ -40,6 +40,14 @@ type NotificationLock = {
   cooldown_active: boolean;
 };
 
+type LockEvent = {
+  id: string;
+  service_id: string;
+  event_type: string;
+  action: string;
+  performed_at: string;
+};
+
 type Props = { clients: Client[] };
 
 const FREQ_LABEL: Record<string, string> = {
@@ -78,6 +86,7 @@ export function NotificationCenterView({ clients }: Props) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [emailOpens, setEmailOpens] = useState<EmailOpen[]>([]);
   const [locks, setLocks] = useState<NotificationLock[]>([]);
+  const [lockEvents, setLockEvents] = useState<LockEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [sendingWelcome, setSendingWelcome] = useState<string | null>(null);
   const [deletingLock, setDeletingLock] = useState<string | null>(null);
@@ -92,7 +101,7 @@ export function NotificationCenterView({ clients }: Props) {
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const [{ data: ctcs }, { data: opens }, { data: lockRows }] = await Promise.all([
+    const [{ data: ctcs }, { data: opens }, { data: lockRows }, { data: events }] = await Promise.all([
       supabase
         .from('client_contacts')
         .select('id, name, email, role, digest_frequency, client_id, subscription_confirmed, welcome_sent_at, last_email_at')
@@ -103,10 +112,16 @@ export function NotificationCenterView({ clients }: Props) {
         .order('sent_at', { ascending: false })
         .limit(300),
       supabase.rpc('get_my_notification_locks'),
+      supabase
+        .from('notification_lock_events')
+        .select('id, service_id, event_type, action, performed_at')
+        .order('performed_at', { ascending: false })
+        .limit(100),
     ]);
     setContacts((ctcs ?? []) as Contact[]);
     setEmailOpens((opens ?? []) as EmailOpen[]);
     setLocks((lockRows ?? []) as NotificationLock[]);
+    setLockEvents((events ?? []) as LockEvent[]);
     setLoading(false);
   }, [user]);
 
@@ -439,7 +454,44 @@ export function NotificationCenterView({ clients }: Props) {
                 </div>
               )}
 
-              {locks.length === 0 && (
+              {lockEvents.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                    <History className="w-3.5 h-3.5" /> Acciones de cooldowns
+                  </h3>
+                  <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-50 overflow-hidden">
+                    {lockEvents.map(ev => {
+                      const lock = locks.find(l => l.service_id === ev.service_id && l.event_type === ev.event_type);
+                      return (
+                        <div key={ev.id} className="px-4 py-3 flex items-center gap-4">
+                          <div className="shrink-0 w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center">
+                            <Unlock className="w-3.5 h-3.5 text-blue-600" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap text-sm">
+                              <span className="font-medium text-gray-900">
+                                {lock?.service_name ?? ev.service_id.slice(0, 8)}
+                              </span>
+                              {lock && <span className="text-xs text-gray-400">· {lock.client_name}</span>}
+                              <span className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-medium">
+                                {EVENT_LABEL[ev.event_type] ?? ev.event_type}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-400 mt-0.5">
+                              Liberado manualmente · {fmtTime(ev.performed_at)}
+                            </div>
+                          </div>
+                          <span className="shrink-0 text-xs text-gray-300 tabular-nums">
+                            {fmtRelative(ev.performed_at)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {locks.length === 0 && lockEvents.length === 0 && (
                 <div className="text-center py-12 text-gray-400">No hay registros de cooldowns.</div>
               )}
             </div>
