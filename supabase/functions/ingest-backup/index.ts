@@ -128,7 +128,7 @@ Deno.serve(async (req: Request) => {
       } else {
         const { data: svcRow, error: svcRowErr } = await supabaseAdmin
           .from("services")
-          .select("client_id, name, business_name, clients(company_name)")
+          .select("client_id, name, business_name, clients(company_name, user_id)")
           .eq("id", service_id)
           .maybeSingle();
 
@@ -137,15 +137,19 @@ Deno.serve(async (req: Request) => {
         // Build recipient list from client_contacts (primary) + service notification_email + env fallback
         const recipients = new Set<string>();
         const clientId = (svcRow as any)?.client_id;
+        const contactMap = new Map<string, string>(); // email → contact_id
 
         if (clientId) {
           const { data: contacts } = await supabaseAdmin
             .from("client_contacts")
-            .select("email")
+            .select("id, email")
             .eq("client_id", clientId)
             .eq("digest_frequency", "daily");
-          for (const c of (contacts || []) as { email: string }[]) {
-            if (c.email) recipients.add(c.email);
+          for (const c of (contacts || []) as { id: string; email: string }[]) {
+            if (c.email) {
+              recipients.add(c.email);
+              contactMap.set(c.email, c.id);
+            }
           }
         }
 
@@ -234,7 +238,7 @@ Deno.serve(async (req: Request) => {
   </td></tr>
 </table>`;
 
-        await fetch("https://api.resend.com/emails", {
+        const resendRes = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -246,6 +250,27 @@ Deno.serve(async (req: Request) => {
             html: htmlBody,
           }),
         });
+
+        const resendData = resendRes.ok ? await resendRes.json() as { id?: string } : null;
+        const resendEmailId = resendData?.id ?? null;
+
+        // Registrar en email_opens por cada contacto para tracking
+        const now = new Date().toISOString();
+        const userId = (svcRow as any)?.clients?.user_id ?? null;
+        for (const email of recipients) {
+          const contactId = contactMap.get(email) ?? null;
+          if (contactId) {
+            await supabaseAdmin.from("email_opens").insert({
+              user_id:         userId,
+              client_id:       clientId ?? null,
+              contact_id:      contactId,
+              client_email:    email,
+              resend_email_id: resendEmailId,
+              email_type:      `backup_${normalizedStatus}`,
+              sent_at:         now,
+            });
+          }
+        }
         } // end recipients.size > 0
       } // end else RESEND_API_KEY
     } // end if !suppress_email
