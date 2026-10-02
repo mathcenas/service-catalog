@@ -6,7 +6,7 @@
 -- 1. Tabla de ubicaciones físicas por cliente
 create table if not exists sites (
   id          uuid primary key default gen_random_uuid(),
-  client_id   uuid references clients(id) on delete cascade not null,
+  client_id   text not null,             -- texto para compatibilidad con clients.id
   name        text not null,             -- ej: 'Casa Central', 'Sucursal Norte'
   address     text,
   city        text,
@@ -17,13 +17,13 @@ create table if not exists sites (
 
 create index if not exists sites_client_id_idx on sites(client_id);
 
--- RLS
+-- RLS: el usuario dueño del cliente puede ver/modificar sus sites
 alter table sites enable row level security;
 
 create policy "sites: owner full access" on sites
   using (
     client_id in (
-      select id from clients where user_id::text = auth.uid()::text
+      select id::text from clients where user_id::text = auth.uid()::text
     )
   );
 
@@ -31,15 +31,15 @@ create policy "sites: owner full access" on sites
 create table if not exists net_devices (
   id           uuid primary key default gen_random_uuid(),
   site_id      uuid references sites(id) on delete cascade not null,
-  name         text not null,           -- ej: 'MK-Main-Router', 'Google-WiFi-Mesh'
+  name         text not null,
   device_type  text not null,           -- 'mikrotik' | 'google_wifi' | 'switch_unmanaged' | 'nvr' | 'server' | 'workstation'
   ip_address   text,
   mac_address  text,
   model        text,
   status       text default 'online',   -- 'online' | 'offline' | 'warning' | 'unknown'
   last_seen    timestamptz default now(),
-  raw_data     jsonb,                   -- payload crudo del colector
-  source       text,                   -- 'mikrotik_script' | 'unifi_webhook' | 'manual'
+  raw_data     jsonb,
+  source       text,
   created_at   timestamptz default now(),
   updated_at   timestamptz default now(),
   unique (site_id, mac_address)
@@ -53,8 +53,9 @@ create policy "net_devices: owner via site" on net_devices
   using (
     site_id in (
       select s.id from sites s
-      join clients c on c.id = s.client_id
-      where c.user_id::text = auth.uid()::text
+      where s.client_id in (
+        select id::text from clients where user_id::text = auth.uid()::text
+      )
     )
   );
 
@@ -64,10 +65,10 @@ create table if not exists net_links (
   site_id          uuid references sites(id) on delete cascade not null,
   source_device_id uuid references net_devices(id) on delete cascade not null,
   target_device_id uuid references net_devices(id) on delete cascade not null,
-  source_port      text,               -- ej: 'ether2', 'sfp1'
-  target_port      text,               -- ej: 'WAN', 'LAN1'
-  link_type        text default 'utp', -- 'utp' | 'fiber' | 'mesh_wifi'
-  label            text,               -- texto opcional en el canvas
+  source_port      text,
+  target_port      text,
+  link_type        text default 'utp',  -- 'utp' | 'fiber' | 'mesh_wifi'
+  label            text,
   updated_at       timestamptz default now()
 );
 
@@ -79,8 +80,9 @@ create policy "net_links: owner via site" on net_links
   using (
     site_id in (
       select s.id from sites s
-      join clients c on c.id = s.client_id
-      where c.user_id::text = auth.uid()::text
+      where s.client_id in (
+        select id::text from clients where user_id::text = auth.uid()::text
+      )
     )
   );
 
@@ -101,7 +103,8 @@ create policy "net_layout: owner via site" on net_layout_overrides
   using (
     site_id in (
       select s.id from sites s
-      join clients c on c.id = s.client_id
-      where c.user_id::text = auth.uid()::text
+      where s.client_id in (
+        select id::text from clients where user_id::text = auth.uid()::text
+      )
     )
   );
