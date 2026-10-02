@@ -23,7 +23,7 @@ alter table sites enable row level security;
 create policy "sites: owner full access" on sites
   using (
     client_id in (
-      select id from clients where user_id = auth.uid()
+      select id from clients where user_id::text = auth.uid()::text
     )
   );
 
@@ -54,7 +54,7 @@ create policy "net_devices: owner via site" on net_devices
     site_id in (
       select s.id from sites s
       join clients c on c.id = s.client_id
-      where c.user_id = auth.uid()
+      where c.user_id::text = auth.uid()::text
     )
   );
 
@@ -80,7 +80,7 @@ create policy "net_links: owner via site" on net_links
     site_id in (
       select s.id from sites s
       join clients c on c.id = s.client_id
-      where c.user_id = auth.uid()
+      where c.user_id::text = auth.uid()::text
     )
   );
 
@@ -102,6 +102,6 @@ create policy "net_layout: owner via site" on net_layout_overrides
     site_id in (
       select s.id from sites s
       join clients c on c.id = s.client_id
-      where c.user_id = auth.uid()
+      where c.user_id::text = auth.uid()::text
     )
   );
