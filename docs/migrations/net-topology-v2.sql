@@ -1,13 +1,21 @@
 -- ============================================================
 -- Red: Sites + Topología v2
 -- Correr en Supabase SQL Editor
+-- Dropea las tablas net_* anteriores y las recrea con el schema v2
 -- ============================================================
 
--- 1. Tabla de ubicaciones físicas por cliente
-create table if not exists sites (
+-- Limpiar tablas anteriores (sin datos reales aún)
+drop table if exists net_layout_overrides cascade;
+drop table if exists net_edges            cascade;
+drop table if exists net_links            cascade;
+drop table if exists net_devices          cascade;
+drop table if exists sites                cascade;
+
+-- 1. Ubicaciones físicas por cliente
+create table sites (
   id          uuid primary key default gen_random_uuid(),
-  client_id   text not null,             -- texto para compatibilidad con clients.id
-  name        text not null,             -- ej: 'Casa Central', 'Sucursal Norte'
+  client_id   uuid not null,
+  name        text not null,
   address     text,
   city        text,
   notes       text,
@@ -15,20 +23,20 @@ create table if not exists sites (
   updated_at  timestamptz default now()
 );
 
-create index if not exists sites_client_id_idx on sites(client_id);
+create index sites_client_id_idx on sites(client_id);
 
--- RLS: el usuario dueño del cliente puede ver/modificar sus sites
 alter table sites enable row level security;
 
 create policy "sites: owner full access" on sites
   using (
     client_id in (
-      select id::text from clients where user_id::text = auth.uid()::text
+      select id from clients
+      where user_id = (select auth.uid())
     )
   );
 
 -- 2. Dispositivos físicos de red
-create table if not exists net_devices (
+create table net_devices (
   id           uuid primary key default gen_random_uuid(),
   site_id      uuid references sites(id) on delete cascade not null,
   name         text not null,
@@ -45,7 +53,7 @@ create table if not exists net_devices (
   unique (site_id, mac_address)
 );
 
-create index if not exists net_devices_site_id_idx on net_devices(site_id);
+create index net_devices_site_id_idx on net_devices(site_id);
 
 alter table net_devices enable row level security;
 
@@ -54,13 +62,14 @@ create policy "net_devices: owner via site" on net_devices
     site_id in (
       select s.id from sites s
       where s.client_id in (
-        select id::text from clients where user_id::text = auth.uid()::text
+        select id from clients
+        where user_id = (select auth.uid())
       )
     )
   );
 
--- 3. Conexiones (aristas de la topología)
-create table if not exists net_links (
+-- 3. Conexiones entre dispositivos
+create table net_links (
   id               uuid primary key default gen_random_uuid(),
   site_id          uuid references sites(id) on delete cascade not null,
   source_device_id uuid references net_devices(id) on delete cascade not null,
@@ -72,7 +81,7 @@ create table if not exists net_links (
   updated_at       timestamptz default now()
 );
 
-create index if not exists net_links_site_id_idx on net_links(site_id);
+create index net_links_site_id_idx on net_links(site_id);
 
 alter table net_links enable row level security;
 
@@ -81,13 +90,14 @@ create policy "net_links: owner via site" on net_links
     site_id in (
       select s.id from sites s
       where s.client_id in (
-        select id::text from clients where user_id::text = auth.uid()::text
+        select id from clients
+        where user_id = (select auth.uid())
       )
     )
   );
 
--- 4. Posiciones del canvas (una fila por dispositivo, evita race conditions)
-create table if not exists net_layout_overrides (
+-- 4. Posiciones del canvas (una fila por dispositivo)
+create table net_layout_overrides (
   id         uuid primary key default gen_random_uuid(),
   site_id    uuid references sites(id) on delete cascade not null,
   device_id  uuid references net_devices(id) on delete cascade not null,
@@ -104,7 +114,8 @@ create policy "net_layout: owner via site" on net_layout_overrides
     site_id in (
       select s.id from sites s
       where s.client_id in (
-        select id::text from clients where user_id::text = auth.uid()::text
+        select id from clients
+        where user_id = (select auth.uid())
       )
     )
   );
