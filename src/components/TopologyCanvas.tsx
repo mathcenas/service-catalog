@@ -80,8 +80,8 @@ export function TopologyCanvas({ initialNodes, initialEdges, clientId, siteId, o
   const onNodeDragStop = useCallback(async (_: React.MouseEvent, node: Node) => {
     setSaving(true);
     await supabase.from('net_layout_overrides').upsert(
-      { client_id: clientId, site_id: siteId, device_id: node.id, x: node.position.x, y: node.position.y },
-      { onConflict: 'client_id,site_id,device_id' }
+      { site_id: siteId, device_id: node.id, x: node.position.x, y: node.position.y },
+      { onConflict: 'site_id,device_id' }
     );
     setSaving(false);
   }, [clientId, siteId]);
