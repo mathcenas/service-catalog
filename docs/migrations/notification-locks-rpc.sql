@@ -1,4 +1,4 @@
--- RPC para que el frontend lea los notification_locks del usuario actual
+-- RPCs para que el frontend lea y borre notification_locks del usuario actual
 -- La función corre con SECURITY DEFINER, bypasea RLS y filtra por owner
 create or replace function get_my_notification_locks()
 returns table (
@@ -36,5 +36,26 @@ begin
   join clients  c  on c.id = s.client_id
   where c.user_id = auth.uid()
   order by nl.last_sent_at desc;
+end;
+$$;
+
+-- RPC para borrar un lock verificando que pertenece al usuario actual
+create or replace function delete_my_notification_lock(p_lock_id uuid)
+returns boolean
+language plpgsql
+security definer
+as $$
+declare
+  v_deleted integer;
+begin
+  delete from notification_locks nl
+  using services s
+  join clients c on c.id = s.client_id
+  where nl.id = p_lock_id
+    and nl.service_id = s.id
+    and c.user_id = auth.uid();
+
+  get diagnostics v_deleted = row_count;
+  return v_deleted > 0;
 end;
 $$;

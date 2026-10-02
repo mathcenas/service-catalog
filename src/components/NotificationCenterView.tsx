@@ -141,12 +141,10 @@ export function NotificationCenterView({ clients }: Props) {
 
   const deleteLock = async (lock: NotificationLock) => {
     setDeletingLock(lock.lock_id);
-    const { error } = await supabase
-      .from('notification_locks')
-      .delete()
-      .eq('id', lock.lock_id);
-    if (error) {
-      showToast('No se pudo borrar el lock (RLS)', false);
+    const { data: deleted, error } = await supabase
+      .rpc('delete_my_notification_lock', { p_lock_id: lock.lock_id });
+    if (error || !deleted) {
+      showToast('No se pudo liberar el cooldown', false);
     } else {
       showToast(`Lock liberado: ${lock.service_name} · ${EVENT_LABEL[lock.event_type] ?? lock.event_type}`, true);
       await load();
