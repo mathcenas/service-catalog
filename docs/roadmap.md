@@ -42,14 +42,26 @@ Implementar sobre **Resend + Supabase** (webhooks nativos). No usar Mautic ni Ma
 
 ---
 
-## 🌐 Infraestructura de red — Vista por cliente
+## 🌐 Topología de Red
 
-**Bloqueante:** `rbuy-netinv` debe estar corriendo y empujando datos antes de construir la UI.
+### Frontend ✅ base lista
+- [x] `src/components/TopologyCanvas.tsx` — ReactFlow, modo lock/edit, persistencia de posición por nodo
+- [x] `src/components/nodes/MikroTikNode.tsx` — uptime, throughput in/out, estado online/offline
+- [x] `src/components/nodes/UnmanagedNode.tsx` — switches genéricos
+- [x] `src/components/nodes/EndpointNode.tsx` — servers y workstations
+- [x] `src/pages/NetworkTopologyPage.tsx` — selector cliente + site, mock data RBUY (central + sucursal)
+- [ ] Agregar ruta `/network` en `App.tsx`
+- [ ] Reemplazar mock data por fetch a `net_devices` + `net_edges` cuando el colector esté activo
 
-### Colector `rbuy-netinv` (Python/Docker)
+### Base de datos (pendiente migración)
+- [ ] Tabla `net_devices` — `client_id`, `site_id`, `device_id`, `type`, `hostname`, `ip`, `model`, `status`, `uptime_seconds`, `throughput_in/out_bps`, `raw_data`, `source`, `last_seen_at`
+- [ ] Tabla `net_edges` — `client_id`, `site_id`, `source_device_id`, `target_device_id`, `link_type`
+- [ ] Tabla `net_layout_overrides` — `client_id`, `site_id`, `device_id`, `x`, `y` · UNIQUE `(client_id, site_id, device_id)`
+
+### Colector `rbuy-netinv` (Python/Docker) — bloqueante para datos reales
 - [ ] Activar SNMP en los 5 switches Omada de RBUY
-- [ ] Confirmar que el script corre en Docker y hace push a `ingest-unifi-webhook`
-  - Source: `network`, `service_id` del cliente en la tabla `services` con `telemetry_enabled = true`
+- [ ] Edge function `ingest-net-topology` — recibe payload de UniFi y MikroTik, upsert en `net_devices` + `net_edges`
+- [ ] Confirmar push via webhook con `source` = `rbuy-netinv` o `mikrotik-collector`
 - [ ] Configurar detección de loops (RSTP events) como alertas
 
 ### Scope definido (RBUY)
@@ -59,12 +71,6 @@ Implementar sobre **Resend + Supabase** (webhooks nativos). No usar Mautic ni Ma
 | Switches Omada (con SNMP) | Access Points (no administrados) |
 | Detección de loops | Inventario de dispositivos |
 | Alertas de conectividad | |
-
-### Frontend
-- [ ] Subpage "Infraestructura" en el detalle de cliente
-  - Cards por dispositivo (router, switches) con estado, uptime, throughput
-  - Badge de alerta si hay loop detectado
-  - Indicador de última señal (usa `cardStaleLevel` ya implementado)
 
 ---
 
