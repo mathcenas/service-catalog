@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings, Clock, CheckCircle2, AlertTriangle, Wrench, XCircle, Globe, MonitorSmartphone, Mail, Menu, X } from 'lucide-react';
+import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings, Clock, CheckCircle2, AlertTriangle, Wrench, XCircle, Globe, MonitorSmartphone, Mail, Menu, X, Network, Bell } from 'lucide-react';
 import { supabase, Client, Service, Project, ServiceType } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { ClientList } from './ClientList';
@@ -20,6 +20,8 @@ import { InfrastructureView } from './InfrastructureView';
 import { SoftwareInventoryView } from './SoftwareInventoryView';
 import { EmailAuditAdminView } from './EmailAuditAdminView';
 import { MonthlySummaryView } from './MonthlySummaryView';
+import NetworkTopologyPage from '../pages/NetworkTopologyPage';
+import { NotificationCenterView } from './NotificationCenterView';
 
 type Stats = {
   totalClients: number;
@@ -32,7 +34,7 @@ type Stats = {
 
 export function Dashboard() {
   const { signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'projects' | 'services' | 'payments' | 'licenses' | 'roadmap' | 'hours' | 'monthly_summary' | 'telemetry' | 'infrastructure' | 'software' | 'email_audit' | 'data' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'projects' | 'services' | 'payments' | 'licenses' | 'roadmap' | 'hours' | 'monthly_summary' | 'telemetry' | 'infrastructure' | 'network' | 'notifications' | 'software' | 'email_audit' | 'data' | 'settings'>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [stats, setStats] = useState<Stats>({
     totalClients: 0,
@@ -152,6 +154,8 @@ export function Dashboard() {
     { id: 'monthly_summary', label: 'Monthly Summary', icon: CheckCircle2 },
     { id: 'telemetry',       label: 'Telemetry',       icon: Activity },
     { id: 'infrastructure',  label: 'Infrastructure', icon: Globe },
+    { id: 'network',         label: 'Network',        icon: Network },
+    { id: 'notifications',   label: 'Notifications',  icon: Bell },
     { id: 'software',        label: 'Software',       icon: MonitorSmartphone },
     { id: 'email_audit',     label: 'Email Audit',    icon: Mail },
     { id: 'data',            label: 'Data',           icon: Database },
@@ -513,6 +517,14 @@ export function Dashboard() {
 
         {activeTab === 'infrastructure' && (
           <InfrastructureView services={services} clients={clients} />
+        )}
+
+        {activeTab === 'network' && (
+          <NetworkTopologyPage />
+        )}
+
+        {activeTab === 'notifications' && (
+          <NotificationCenterView clients={clients} />
         )}
 
         {activeTab === 'software' && (
