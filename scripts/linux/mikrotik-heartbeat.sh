@@ -2,8 +2,13 @@
 # =============================================================
 # mikrotik-heartbeat.sh — Lee logs de Mikrotik y envía métricas
 # al Service Catalog como heartbeat (source: mikrotik)
-# Correr cada minuto via cron:
-#   * * * * * /srv/network-monitor/mikrotik-heartbeat.sh
+#
+# ACTUALIZAR (Linux):
+#   curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/linux/mikrotik-heartbeat.sh \
+#     -o /srv/network-monitor/mikrotik-heartbeat.sh && chmod +x /srv/network-monitor/mikrotik-heartbeat.sh
+#
+# CRON (crontab -e):
+#   * * * * * /srv/network-monitor/mikrotik-heartbeat.sh >> /var/log/mikrotik-heartbeat.log 2>&1
 # =============================================================
 SCRIPT_VERSION="1.0.1"
 

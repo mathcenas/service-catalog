@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 # =============================================================
 # mk-ingest.sh — Envía telemetría y eventos MikroTik a Supabase
-# Cron sugerido (crontab -e):
+#
+# ACTUALIZAR (Linux):
+#   curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/linux/mk-ingest.sh \
+#     -o /srv/network-monitor/mk-ingest.sh && chmod +x /srv/network-monitor/mk-ingest.sh
+#
+# CRON (crontab -e):
 #   */5 * * * * /srv/network-monitor/mk-ingest.sh >> /srv/network-monitor/logs/mk-ingest.log 2>&1
+#
 # Requiere: mk-ingest.conf en la misma carpeta (ver mk-ingest.conf.example)
 # =============================================================
 set -euo pipefail

@@ -5,10 +5,10 @@
 # ACTUALIZAR (NAS):
 #   curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/nas/parse-samba-logins.sh \
 #     -o /usr/local/bin/parse-samba-logins.sh && chmod +x /usr/local/bin/parse-samba-logins.sh
-# Corre cada hora via cron antes que report-smb-acl.sh
+# Correr cada hora antes que report-smb-acl.sh
 #
-# Cron sugerido:
-#   50 * * * * /usr/local/bin/parse-samba-logins.sh
+# CRON (crontab -e):
+#   50 * * * * /usr/local/bin/parse-samba-logins.sh >> /var/log/parse-samba-logins.log 2>&1
 #
 # Salida: /srv/dev-disk-by-label-NASFiles/.nas-acl/last_logins.json
 # Formato por usuario:
