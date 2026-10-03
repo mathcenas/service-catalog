@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.3.3"
+$SCRIPT_VERSION = "1.3.4"
 
 # ---------- IPs (pública WAN + local) ----------
 $publicIp = $null
@@ -212,11 +212,13 @@ $netBody = @{
     status     = $netStatus
     message    = $netMsg
     payload    = @{
+        is_server       = $true
         gateway_ip      = $GatewayIP
         gateway_ok      = $gatewayOk
         internet_ok     = $internetOk
         ping_ms         = $avgLatency
         packet_loss_pct = $packetLoss
+        script_version  = $SCRIPT_VERSION
     }
 } | ConvertTo-Json -Depth 3
 
