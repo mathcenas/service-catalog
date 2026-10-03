@@ -17,8 +17,8 @@
 # Orden de búsqueda del env:
 #   1. Arg CLI  2. /etc/backup-ingest.env  3. $SCRIPT_DIR/.env
 #
-# Schedulear (opcional, ej: semanalmente):
-#   0 6 * * 1 /usr/local/bin/report-smb-acl.sh
+# CRON (crontab -e):
+#   0 6 * * 1 /usr/local/bin/report-smb-acl.sh >> /var/log/report-smb-acl.log 2>&1
 # =============================================================
 
 set -euo pipefail

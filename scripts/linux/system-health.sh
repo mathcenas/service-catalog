@@ -5,10 +5,11 @@
 # ACTUALIZAR (Linux/NAS):
 #   curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/linux/system-health.sh \
 #     -o /srv/scripts/system-health.sh && chmod +x /srv/scripts/system-health.sh
+#
+# CRON (crontab -e):
+#   0 * * * * /srv/scripts/system-health.sh >> /var/log/system-health.log 2>&1
+#
 # Version: 1.6.0
-# al Service Catalog como heartbeat (source: system-health)
-# Correr cada hora via cron:
-#   0 * * * * /srv/scripts/system-health.sh
 # =============================================================
 
 SCRIPT_VERSION="1.7.0"

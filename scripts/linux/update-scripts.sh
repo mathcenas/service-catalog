@@ -8,8 +8,8 @@
 #   ./update-scripts.sh --check      # solo compara versiones, no instala
 #   ./update-scripts.sh --force      # instala aunque la versión sea igual
 #
-# Cron cada 48h (ejemplo):
-#   0 4 */2 * * /srv/scripts/update-scripts.sh
+# CRON (crontab -e):
+#   0 4 */2 * * /srv/scripts/update-scripts.sh >> /var/log/update-scripts.log 2>&1
 #
 # Variables de entorno opcionales:
 #   INSTALL_DIR   directorio destino   (default: /srv/scripts)

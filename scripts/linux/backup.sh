@@ -4,6 +4,13 @@
 # backup.sh - Backup genérico para VPS con Docker + notificación a Uptime Kuma (push monitor)
 #             + reporte a Supabase ingest
 #
+# ACTUALIZAR (Linux/VPS):
+#   curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/linux/backup.sh \
+#     -o /srv/scripts/backup.sh && chmod +x /srv/scripts/backup.sh
+#
+# CRON (crontab -e):
+#   0 2 * * * /srv/scripts/backup.sh /srv/scripts/.env >> /var/log/backup.log 2>&1
+#
 # Uso:
 #   ./backup.sh [ruta-al-.env]
 #   Si no se pasa ruta, busca ".env" en el mismo directorio que el script.

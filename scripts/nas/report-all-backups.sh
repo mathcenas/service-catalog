@@ -5,7 +5,8 @@
 # ACTUALIZAR (NAS):
 #   curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/nas/report-all-backups.sh \
 #     -o /usr/local/bin/report-backup.sh && chmod +x /usr/local/bin/report-backup.sh
-# Schedulear en crontab: 0 8 * * * /usr/local/bin/report-all-backups.sh
+# CRON (crontab -e):
+#   0 8 * * * /usr/local/bin/report-all-backups.sh >> /var/log/report-all-backups.log 2>&1
 # Requiere: /etc/backup-ingest.env con los paths configurados
 # =============================================================
 

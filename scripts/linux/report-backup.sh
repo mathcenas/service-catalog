@@ -5,9 +5,14 @@
 # ACTUALIZAR (Linux/NAS):
 #   curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/linux/report-backup.sh \
 #     -o /usr/local/bin/report-backup.sh && chmod +x /usr/local/bin/report-backup.sh
+#
 # Uso: report-backup.sh <job_name> <exit_code> <snapshot_dir>
 # Ejemplo: report-backup.sh "OMV Daily" 0 /srv/uuid.../daily.0
 # Requiere: /etc/backup-ingest.env
+#
+# CRON — llamar desde el script de rsnapshot/rsync, no directamente.
+# Ejemplo en /etc/cron.d/rsnapshot:
+#   0 3 * * * root rsnapshot daily && /usr/local/bin/report-backup.sh "Daily" $? /srv/uuid.../daily.0
 # =============================================================
 SCRIPT_VERSION="1.0.0"
 
