@@ -119,48 +119,21 @@ function isWindowsServer(p: Record<string, unknown>): boolean {
   return 'rdp_sessions' in p || 'rdp_disconnects' in p || ('disk_raid' in p && !('disk_mounts' in p));
 }
 
-const VERSIONS_CACHE_KEY = 'sc_latest_versions_v1';
-const VERSIONS_CACHE_TTL = 60 * 60 * 1000; // 1h
-
 async function fetchLatestVersions(): Promise<Record<string, { windows?: string; windowsServer?: string; linux?: string }>> {
-  try {
-    const raw = sessionStorage.getItem(VERSIONS_CACHE_KEY);
-    if (raw) {
-      const { ts, data } = JSON.parse(raw);
-      if (Date.now() - ts < VERSIONS_CACHE_TTL) return data;
-    }
-  } catch { /* sessionStorage unavailable */ }
+  const { data, error } = await supabase
+    .from('script_versions')
+    .select('source, variant, version');
 
-  const base = 'https://raw.githubusercontent.com/mathcenas/service-catalog/main/';
-
-  const allPaths = new Set<string>();
-  for (const entry of Object.values(SCRIPT_SOURCE_FILES)) {
-    allPaths.add(entry.windows);
-    if (entry.windowsServer) allPaths.add(entry.windowsServer);
-    if (entry.linux) allPaths.add(entry.linux);
+  if (error || !data || data.length === 0) {
+    console.warn('[versions] script_versions empty or error — run sync-script-versions');
+    return {};
   }
-
-  const fileVersions: Record<string, string> = {};
-  await Promise.all([...allPaths].map(async path => {
-    try {
-      const res = await fetch(base + path);
-      if (!res.ok) return;
-      const text = await res.text();
-      const match = text.match(/^\$?SCRIPT_VERSION\s*=\s*["']?([0-9]+\.[0-9]+\.[0-9]+)["']?/m);
-      if (match) fileVersions[path] = match[1];
-    } catch { /* network failure — skip */ }
-  }));
 
   const result: Record<string, { windows?: string; windowsServer?: string; linux?: string }> = {};
-  for (const [source, entry] of Object.entries(SCRIPT_SOURCE_FILES)) {
-    result[source] = {
-      windows:       fileVersions[entry.windows],
-      windowsServer: entry.windowsServer ? fileVersions[entry.windowsServer] : undefined,
-      linux:         entry.linux ? fileVersions[entry.linux] : undefined,
-    };
+  for (const row of data as { source: string; variant: string; version: string }[]) {
+    if (!result[row.source]) result[row.source] = {};
+    (result[row.source] as Record<string, string>)[row.variant] = row.version;
   }
-
-  try { sessionStorage.setItem(VERSIONS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: result })); } catch { /* ignore */ }
   return result;
 }
 
