@@ -5,6 +5,7 @@
 
 -- 1. Agregar contact_id y campos de tracking a email_opens
 alter table email_opens
+  add column if not exists client_id    uuid references clients(id) on delete set null,
   add column if not exists contact_id   uuid references client_contacts(id) on delete set null,
   add column if not exists email_type   text,        -- 'welcome' | 'backup' | 'digest' | etc
   add column if not exists sent_at      timestamptz,
