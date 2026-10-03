@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.3.2"
+$SCRIPT_VERSION = "1.3.3"
 
 # ---------- IPs (pública WAN + local) ----------
 $publicIp = $null
@@ -346,6 +346,7 @@ $rdpBody = @{
     status     = $rdpOverallStatus
     message    = $rdpMsg
     payload    = @{
+        is_server           = $true
         service_status      = $rdpSvcStatus
         port_listening      = $rdpListening
         auto_restarted      = $rdpRestarted
@@ -373,7 +374,7 @@ try {
     $disabledBody = @{
         service_id = $SERVICE_ID; source = "rdp"; status = "ok"
         message = "Deshabilitado (CHECK_RDP = false)"
-        payload = @{ disabled = $true; script_version = $SCRIPT_VERSION }
+        payload = @{ disabled = $true; is_server = $true; script_version = $SCRIPT_VERSION }
     } | ConvertTo-Json -Depth 3
     try { Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $disabledBody | Out-Null } catch {}
     Write-Log "⏭️ rdp — omitido (CHECK_RDP = false en config.ps1)"
