@@ -53,6 +53,20 @@ Deno.serve(async (req: Request) => {
     const freqLabel  = FREQ_LABEL[contact.digest_frequency] ?? "configuradas";
     const portalUrl  = Deno.env.get("PORTAL_URL") ?? null;
 
+    // Buscar share token activo del cliente para incluir en el email
+    const { data: shareToken } = await supabase
+      .from("share_tokens")
+      .select("token")
+      .eq("client_id", contact.client_id)
+      .or("expires_at.is.null,expires_at.gt." + new Date().toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const shareUrl = shareToken && portalUrl
+      ? `${portalUrl}/share/${shareToken.token}`
+      : null;
+
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     if (!RESEND_API_KEY) {
       console.log("[send-welcome] RESEND_API_KEY no configurado");
@@ -127,7 +141,38 @@ Deno.serve(async (req: Request) => {
     </td>
   </tr>
 
-  ${portalUrl ? `
+  ${shareUrl ? `
+  <!-- Share page banner -->
+  <tr>
+    <td style="padding:0 24px 20px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+        style="background:linear-gradient(135deg,#1E3A5F 0%,#2563EB 100%);border-radius:10px;overflow:hidden;">
+        <tr>
+          <td style="padding:18px 20px;">
+            <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">
+              Portal de servicios
+            </div>
+            <div style="font-size:15px;font-weight:800;color:#ffffff;margin-bottom:6px;line-height:1.3;">
+              Tu resumen de servicios IT en tiempo real
+            </div>
+            <div style="font-size:12px;color:rgba(255,255,255,.75);margin-bottom:14px;line-height:1.5;">
+              Accedé al estado de tus servicios, historial de backups, proyectos activos y más desde un solo lugar.
+            </div>
+            <table role="presentation" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="background:#ffffff;border-radius:6px;">
+                  <a href="${shareUrl}"
+                    style="display:inline-block;padding:9px 20px;font-size:12px;font-weight:700;color:#1E3A5F;text-decoration:none;letter-spacing:.2px;">
+                    Ver mi portal →
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>` : portalUrl ? `
   <tr>
     <td style="padding:0 24px 20px;">
       <table role="presentation" cellpadding="0" cellspacing="0">
