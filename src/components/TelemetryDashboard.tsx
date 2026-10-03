@@ -503,7 +503,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
 
   const outdatedScripts = useMemo(() => {
     if (Object.keys(latestVersions).length === 0) return [];
-    const results: { serviceId: string; serviceName: string; source: string; current: string; latest: string; critical: boolean }[] = [];
+    const results: { serviceId: string; serviceName: string; clientName: string; source: string; current: string; latest: string; critical: boolean }[] = [];
 
     function semverSteps(current: string, latest: string): number {
       const parse = (v: string) => v.replace(/^v/, '').split('.').map(Number);
@@ -531,9 +531,11 @@ export function TelemetryDashboard({ services, clients }: Props) {
       if (current === null || current !== latest) {
         const svc = services.find(s => s.id === hb.service_id);
         const steps = current ? semverSteps(current, latest) : 99;
+        const client = svc ? clients.find(c => c.id === svc.client_id) : null;
         results.push({
           serviceId: hb.service_id,
           serviceName: svc?.business_name || svc?.name || hb.service_id.slice(0, 8),
+          clientName: client?.company_name || '',
           source: hb.source,
           current: current ?? 'unknown',
           latest,
@@ -674,9 +676,15 @@ export function TelemetryDashboard({ services, clients }: Props) {
         const critical = outdatedScripts.filter(s => s.critical);
         const minor    = outdatedScripts.filter(s => !s.critical);
         const visibleMinor = outdatedExpanded ? minor : [];
-        const chip = ({ serviceId, serviceName, source, current, latest, critical: isCrit }: typeof outdatedScripts[0]) => (
-          <div key={`${serviceId}-${source}`} className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs border ${isCrit ? 'bg-red-50 border-red-200' : 'bg-white border-amber-200'}`}>
-            <span className="font-medium text-gray-800 truncate max-w-[120px]">{serviceName}</span>
+        const chip = ({ serviceId, serviceName, clientName, source, current, latest, critical: isCrit }: typeof outdatedScripts[0]) => (
+          <div
+            key={`${serviceId}-${source}`}
+            title={`${clientName ? clientName + ' · ' : ''}${serviceName} · ${source}: ${current} → ${latest}`}
+            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs border cursor-default ${isCrit ? 'bg-red-50 border-red-200' : 'bg-white border-amber-200'}`}
+          >
+            {clientName && <span className="text-gray-500 truncate max-w-[80px]">{clientName}</span>}
+            {clientName && <span className="text-gray-300">·</span>}
+            <span className="font-medium text-gray-800 truncate max-w-[100px]">{serviceName}</span>
             <span className="text-gray-400">·</span>
             <span className={`font-mono ${isCrit ? 'text-red-700' : 'text-amber-700'}`}>{source}</span>
             <span className="text-gray-400">·</span>
