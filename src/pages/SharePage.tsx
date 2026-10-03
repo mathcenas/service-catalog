@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Server, Globe, Calendar, Clock, Shield, CheckCircle2,
   HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X,
-  Sparkles, Rocket, DollarSign, Send, Loader2, HelpCircle,
+  Sparkles, Rocket, DollarSign, Send, Loader2, HelpCircle, ShieldCheck,
 } from 'lucide-react';
 import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapItemUpdate, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat, ClientApp } from '../lib/supabase';
 import { BackupMetricsModal } from '../components/BackupMetricsModal';
@@ -1263,6 +1263,22 @@ function ServiceCard({ service, typeName, projectName, expanded, onToggle, heart
                 {backups[0].status}
               </span>
             )}
+          </div>
+        )}
+
+        {service.last_restore_test_at && (
+          <div className="flex items-center gap-2 mt-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-gray-400" />
+            <span className="text-xs text-gray-600 dark:text-gray-400">
+              Restore test: <span className="font-medium text-gray-900 dark:text-gray-200">{formatTimeAgo(service.last_restore_test_at)}</span>
+            </span>
+            <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${
+              service.last_restore_test_result === 'success' ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400' :
+              service.last_restore_test_result === 'failed'  ? 'bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400' :
+                                                               'bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400'
+            }`}>
+              {service.last_restore_test_result ?? 'partial'}
+            </span>
           </div>
         )}
 
