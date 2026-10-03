@@ -299,7 +299,7 @@ Deno.serve(async (req: Request) => {
         for (const email of recipients) {
           const contactId = contactMap.get(email) ?? null;
           if (contactId) {
-            await supabaseAdmin.from("email_opens").insert({
+            const { error: openErr } = await supabaseAdmin.from("email_opens").insert({
               user_id:         userId,
               client_id:       clientId ?? null,
               contact_id:      contactId,
@@ -308,6 +308,7 @@ Deno.serve(async (req: Request) => {
               email_type:      `backup_${normalizedStatus}`,
               sent_at:         now,
             });
+            if (openErr) console.error("[ingest-backup] email_opens insert error:", openErr.message);
           }
         }
         } // end recipients.size > 0

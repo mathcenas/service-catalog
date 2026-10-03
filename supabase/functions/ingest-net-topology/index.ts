@@ -37,7 +37,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Validar que el site existe y el secret corresponde a un servicio del cliente
+    // Validar que el site existe
     const { data: site, error: siteErr } = await supabase
       .from("sites")
       .select("id, client_id")
@@ -50,6 +50,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // Validar que el secret pertenece a un servicio del cliente
     const { data: svc, error: svcErr } = await supabase
       .from("services")
       .select("ingest_secret")
@@ -66,49 +67,86 @@ Deno.serve(async (req: Request) => {
     const now = new Date().toISOString();
     const results: Record<string, unknown> = {};
 
-    // Upsert devices
-    if (Array.isArray(devices) && devices.length > 0) {
-      const rows = devices.map((d: Record<string, unknown>) => ({
-        site_id,
-        name:        d.name ?? d.hostname ?? d.device_id,
-        device_type: d.device_type ?? d.type ?? "switch_unmanaged",
-        ip_address:  d.ip_address ?? d.ip ?? null,
-        mac_address: d.mac_address ?? null,
-        model:       d.model ?? null,
-        status:      d.status ?? "unknown",
-        raw_data:    d.raw_data ?? null,
-        source,
-        last_seen:   now,
-        updated_at:  now,
-      }));
+    // ── Upsert devices ──────────────────────────────────────────────────────
+    // Normalizar MACs a mayúsculas para consistencia
+    const normalizeMac = (mac: string) => mac?.toUpperCase().replace(/[^0-9A-F:]/g, "") ?? null;
 
-      const { error: devErr, count } = await supabase
+    // Construir mapa mac → uuid para resolver los links después
+    const macToId = new Map<string, string>();
+
+    if (Array.isArray(devices) && devices.length > 0) {
+      const rows = devices
+        .filter((d: Record<string, unknown>) => d.mac_address)  // mac es required para upsert
+        .map((d: Record<string, unknown>) => ({
+          site_id,
+          name:        String(d.name ?? d.hostname ?? d.mac_address),
+          device_type: String(d.device_type ?? d.type ?? "switch_unmanaged"),
+          ip_address:  d.ip_address != null ? String(d.ip_address) : null,
+          mac_address: normalizeMac(String(d.mac_address)),
+          model:       d.model != null ? String(d.model) : null,
+          status:      String(d.status ?? "online"),
+          raw_data:    d.raw_data ?? null,
+          source,
+          last_seen:   now,
+          updated_at:  now,
+        }));
+
+      const { data: upserted, error: devErr } = await supabase
         .from("net_devices")
         .upsert(rows, { onConflict: "site_id,mac_address", ignoreDuplicates: false })
-        .select("id", { count: "exact", head: true });
+        .select("id, mac_address");
 
-      if (devErr) console.error("[ingest-net-topology] devices error:", devErr.message);
-      results.devices_upserted = count ?? rows.length;
+      if (devErr) {
+        console.error("[ingest-net-topology] devices error:", devErr.message);
+      } else {
+        for (const row of (upserted ?? [])) {
+          if (row.mac_address) macToId.set(row.mac_address.toUpperCase(), row.id);
+        }
+        results.devices_upserted = upserted?.length ?? 0;
+      }
     }
 
-    // Reemplazar links del site con los recibidos
+    // ── Reemplazar links del site ───────────────────────────────────────────
+    // Soporta tanto {source_device_id, target_device_id} (UUIDs) como
+    // {source_mac, target_mac} (MACs — lo que envía el script RouterOS)
     if (Array.isArray(edges) && edges.length > 0) {
-      await supabase.from("net_links").delete().eq("site_id", site_id);
+      const linkRows = [];
 
-      const linkRows = edges.map((e: Record<string, unknown>) => ({
-        site_id,
-        source_device_id: e.source_device_id,
-        target_device_id: e.target_device_id,
-        source_port:      e.source_port ?? null,
-        target_port:      e.target_port ?? null,
-        link_type:        e.link_type ?? "utp",
-        label:            e.label ?? null,
-        updated_at:       now,
-      }));
+      for (const e of edges as Record<string, unknown>[]) {
+        let srcId = e.source_device_id as string | undefined;
+        let tgtId = e.target_device_id as string | undefined;
 
-      const { error: linkErr } = await supabase.from("net_links").insert(linkRows);
-      if (linkErr) console.error("[ingest-net-topology] links error:", linkErr.message);
-      results.links_replaced = linkRows.length;
+        // Resolver por MAC si no vienen UUIDs
+        if (!srcId && e.source_mac) {
+          srcId = macToId.get(normalizeMac(String(e.source_mac)) ?? "");
+        }
+        if (!tgtId && e.target_mac) {
+          tgtId = macToId.get(normalizeMac(String(e.target_mac)) ?? "");
+        }
+
+        if (!srcId || !tgtId) {
+          console.warn("[ingest-net-topology] link ignorado — no se resolvieron los dispositivos:", e);
+          continue;
+        }
+
+        linkRows.push({
+          site_id,
+          source_device_id: srcId,
+          target_device_id: tgtId,
+          source_port:      e.source_port != null ? String(e.source_port) : null,
+          target_port:      e.target_port != null ? String(e.target_port) : null,
+          link_type:        String(e.link_type ?? "utp"),
+          label:            e.label != null ? String(e.label) : null,
+          updated_at:       now,
+        });
+      }
+
+      if (linkRows.length > 0) {
+        await supabase.from("net_links").delete().eq("site_id", site_id);
+        const { error: linkErr } = await supabase.from("net_links").insert(linkRows);
+        if (linkErr) console.error("[ingest-net-topology] links error:", linkErr.message);
+        results.links_replaced = linkRows.length;
+      }
     }
 
     console.log(`[ingest-net-topology] client=${site.client_id} site=${site_id} source=${source}`, results);
