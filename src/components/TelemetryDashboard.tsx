@@ -119,7 +119,18 @@ function isWindowsServer(p: Record<string, unknown>): boolean {
   return 'rdp_sessions' in p || 'rdp_disconnects' in p || ('disk_raid' in p && !('disk_mounts' in p));
 }
 
+const VERSIONS_CACHE_KEY = 'sc_latest_versions_v1';
+const VERSIONS_CACHE_TTL = 60 * 60 * 1000; // 1h
+
 async function fetchLatestVersions(): Promise<Record<string, { windows?: string; windowsServer?: string; linux?: string }>> {
+  try {
+    const raw = sessionStorage.getItem(VERSIONS_CACHE_KEY);
+    if (raw) {
+      const { ts, data } = JSON.parse(raw);
+      if (Date.now() - ts < VERSIONS_CACHE_TTL) return data;
+    }
+  } catch { /* sessionStorage unavailable */ }
+
   const base = 'https://raw.githubusercontent.com/mathcenas/service-catalog/main/';
 
   const allPaths = new Set<string>();
@@ -132,7 +143,7 @@ async function fetchLatestVersions(): Promise<Record<string, { windows?: string;
   const fileVersions: Record<string, string> = {};
   await Promise.all([...allPaths].map(async path => {
     try {
-      const res = await fetch(base + path, { cache: 'no-store' });
+      const res = await fetch(base + path);
       if (!res.ok) return;
       const text = await res.text();
       const match = text.match(/^\$?SCRIPT_VERSION\s*=\s*["']?([0-9]+\.[0-9]+\.[0-9]+)["']?/m);
@@ -148,6 +159,8 @@ async function fetchLatestVersions(): Promise<Record<string, { windows?: string;
       linux:         entry.linux ? fileVersions[entry.linux] : undefined,
     };
   }
+
+  try { sessionStorage.setItem(VERSIONS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: result })); } catch { /* ignore */ }
   return result;
 }
 
@@ -278,6 +291,53 @@ function extractCardSummary(sources: ServiceHeartbeat[]) {
     }
   }
   return { wanIp, lanIp, anydeskId };
+}
+
+function CardIdentityHeader({ sources }: { sources: ServiceHeartbeat[] }) {
+  const { wanIp, lanIp, anydeskId } = extractCardSummary(sources);
+  const [copied, setCopied] = useState<string | null>(null);
+  if (!wanIp && !lanIp && !anydeskId) return null;
+
+  const copy = (text: string, label: string) => {
+    navigator.clipboard.writeText(text).catch(() => {});
+    setCopied(label);
+    setTimeout(() => setCopied(null), 1500);
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 mt-1.5 ml-4">
+      {wanIp && (
+        <button
+          onClick={() => copy(wanIp, 'wan')}
+          className="inline-flex items-center gap-1 text-[10px] text-blue-700 bg-blue-50 border border-blue-100 rounded px-1.5 py-0.5 font-mono hover:bg-blue-100 transition-colors"
+          title="WAN IP — click para copiar"
+        >
+          <Globe className="w-2.5 h-2.5 shrink-0" />
+          {copied === 'wan' ? '¡Copiado!' : wanIp}
+        </button>
+      )}
+      {lanIp && (
+        <button
+          onClick={() => copy(lanIp, 'lan')}
+          className="inline-flex items-center gap-1 text-[10px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 font-mono hover:bg-slate-100 transition-colors"
+          title="LAN IP — click para copiar"
+        >
+          <Network className="w-2.5 h-2.5 shrink-0" />
+          {copied === 'lan' ? '¡Copiado!' : lanIp}
+        </button>
+      )}
+      {anydeskId && (
+        <button
+          onClick={() => copy(anydeskId, 'anydesk')}
+          className="inline-flex items-center gap-1 text-[10px] text-violet-700 bg-violet-50 border border-violet-200 rounded px-1.5 py-0.5 font-mono hover:bg-violet-100 transition-colors"
+          title="AnyDesk ID — click para copiar"
+        >
+          <MonitorSmartphone className="w-2.5 h-2.5 shrink-0" />
+          {copied === 'anydesk' ? '¡Copiado!' : anydeskId}
+        </button>
+      )}
+    </div>
+  );
 }
 
 const SOURCE_ICONS: Record<string, typeof Monitor> = {
@@ -800,8 +860,8 @@ export function TelemetryDashboard({ services, clients }: Props) {
               const slevel = cardStaleLevel(latest);
               return (
               <div key={serviceId} className={`rounded-xl border overflow-hidden ${
-                slevel === 'dead'        ? 'bg-white border-orange-300 border-l-4 border-l-orange-500' :
-                slevel === 'warn'        ? 'bg-white border-yellow-300' :
+                slevel === 'dead'        ? 'bg-orange-50/40 border-orange-300 border-l-4 border-l-orange-500' :
+                slevel === 'warn'        ? 'bg-yellow-50/30 border-yellow-300 border-l-4 border-l-yellow-400' :
                 worstStatus === 'error'  ? 'bg-white border-red-200' :
                 worstStatus === 'warning'? 'bg-white border-amber-200' :
                 worstStatus === 'stale'  ? 'bg-white border-gray-200' :
@@ -822,33 +882,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
                       </span>
                     </div>
                     {client && <div className="text-xs text-gray-500 mt-0.5 ml-4">{client.company_name}</div>}
-                    {(() => {
-                      const { wanIp, lanIp, anydeskId } = extractCardSummary(sources);
-                      if (!wanIp && !lanIp && !anydeskId) return null;
-                      return (
-                        <div className="flex flex-wrap items-center gap-2 mt-1.5 ml-4">
-                          {wanIp && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-blue-700 bg-blue-50 border border-blue-100 rounded px-1.5 py-0.5 font-mono" title="WAN IP">
-                              <Globe className="w-2.5 h-2.5 shrink-0" />{wanIp}
-                            </span>
-                          )}
-                          {lanIp && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 font-mono" title="LAN IP">
-                              <Network className="w-2.5 h-2.5 shrink-0" />{lanIp}
-                            </span>
-                          )}
-                          {anydeskId && (
-                            <button
-                              onClick={() => navigator.clipboard.writeText(anydeskId!)}
-                              className="inline-flex items-center gap-1 text-[10px] text-violet-700 bg-violet-50 border border-violet-200 rounded px-1.5 py-0.5 font-mono hover:bg-violet-100 transition-colors"
-                              title="AnyDesk ID — click para copiar"
-                            >
-                              <MonitorSmartphone className="w-2.5 h-2.5 shrink-0" />{anydeskId}
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    <CardIdentityHeader sources={sources} />
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {latest && (

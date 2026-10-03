@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.3.1"
+$SCRIPT_VERSION = "1.3.2"
 
 # ---------- IPs (pública WAN + local) ----------
 $publicIp = $null
@@ -228,6 +228,9 @@ try {
 }
 
 # ---------- 3. RDP + AnyDesk (Sesiones / TCP / Desconexiones / Disk Latency) ----------
+$CHECK_RDP = if (Get-Variable 'CHECK_RDP' -ErrorAction SilentlyContinue) { $CHECK_RDP } else { $true }
+
+if ($CHECK_RDP -ne $false) {
 
 # AnyDesk — leer ID
 $anydeskId = $null
@@ -354,6 +357,7 @@ $rdpBody = @{
         rdp_disconnects     = $disconnects
         disk_latency_sec    = $diskLatency
         disk_io_status      = $diskIOStatus
+        script_version      = $SCRIPT_VERSION
     }
 } | ConvertTo-Json -Depth 3
 
@@ -363,6 +367,16 @@ try {
     Write-Log "$icon rdp → $rdpOverallStatus | TermService: $rdpSvcStatus | Sessions: $sessions | Disconnects: $disconnects | DiskIO: ${diskLatency}s$(if ($rdpRestarted) {' | AUTO-REINICIADO'})"
 } catch {
     Write-Log "❌ rdp Error: $($_.Exception.Message)"
+}
+
+} else {
+    $disabledBody = @{
+        service_id = $SERVICE_ID; source = "rdp"; status = "ok"
+        message = "Deshabilitado (CHECK_RDP = false)"
+        payload = @{ disabled = $true; script_version = $SCRIPT_VERSION }
+    } | ConvertTo-Json -Depth 3
+    try { Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $disabledBody | Out-Null } catch {}
+    Write-Log "⏭️ rdp — omitido (CHECK_RDP = false en config.ps1)"
 }
 
 # ---------- 4. LOG LOCAL DE PROCESOS (CSV, no va a Supabase) ----------
