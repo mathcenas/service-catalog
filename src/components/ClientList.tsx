@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
-import { Mail, Phone, Building2, Share2, Search, MoreHorizontal, Pencil, Trash2, Server, ExternalLink, AppWindow, FileText, AlertTriangle, Check, Newspaper } from 'lucide-react';
+import { Mail, Phone, Building2, Share2, Search, MoreHorizontal, Pencil, Trash2, Server, ExternalLink, AppWindow, FileText, AlertTriangle, Check, Newspaper, MapPin } from 'lucide-react';
 import { Client, Service, supabase } from '../lib/supabase';
 import { EditClientModal } from './EditClientModal';
 import { ShareTokenModal } from './ShareTokenModal';
 import { ClientAppsManager } from './ClientAppsManager';
 import { ClientBriefModal } from './ClientBriefModal';
+import { ClientSitesPanel } from './ClientSitesPanel';
 
 type Props = {
   clients: Client[];
@@ -138,6 +139,7 @@ export function ClientList({ clients, services, onUpdate }: Props) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [expandedApps, setExpandedApps] = useState<string | null>(null);
   const [expandedRisks, setExpandedRisks] = useState<string | null>(null);
+  const [expandedSites, setExpandedSites] = useState<string | null>(null);
   const [briefClient, setBriefClient] = useState<Client | null>(null);
   const [clientRiskFlags, setClientRiskFlags] = useState<Record<string, string[]>>({});
 
@@ -269,6 +271,7 @@ export function ClientList({ clients, services, onUpdate }: Props) {
             const clientSvcs = servicesByClient.get(client.id) ?? [];
             const isRisksOpen = expandedRisks === client.id;
             const isAppsOpen = expandedApps === client.id;
+            const isSitesOpen = expandedSites === client.id;
 
             return (
               <div key={client.id} className="divide-y divide-gray-100">
@@ -332,11 +335,18 @@ export function ClientList({ clients, services, onUpdate }: Props) {
                       <AlertTriangle className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => { setExpandedApps(isAppsOpen ? null : client.id); setExpandedRisks(null); }}
+                      onClick={() => { setExpandedApps(isAppsOpen ? null : client.id); setExpandedRisks(null); setExpandedSites(null); }}
                       className={`p-2 rounded-lg transition-colors opacity-0 group-hover:opacity-100 ${isAppsOpen ? 'text-violet-600 bg-violet-50 opacity-100' : 'text-gray-400 hover:text-violet-600 hover:bg-violet-50'}`}
                       title="Apps & Software"
                     >
                       <AppWindow className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => { setExpandedSites(isSitesOpen ? null : client.id); setExpandedApps(null); setExpandedRisks(null); }}
+                      className={`p-2 rounded-lg transition-colors opacity-0 group-hover:opacity-100 ${isSitesOpen ? 'text-teal-600 bg-teal-50 opacity-100' : 'text-gray-400 hover:text-teal-600 hover:bg-teal-50'}`}
+                      title="Ubicaciones / Sites"
+                    >
+                      <MapPin className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => setBriefClient(client)}
@@ -415,6 +425,10 @@ export function ClientList({ clients, services, onUpdate }: Props) {
                 )}
 
                 {/* Risk flags panel */}
+                {isSitesOpen && (
+                  <ClientSitesPanel clientId={client.id} />
+                )}
+
                 {isRisksOpen && (
                   <RiskFlagsPanel
                     client={{ ...client, risk_flags: clientRiskFlags[client.id] ?? client.risk_flags ?? [] }}
