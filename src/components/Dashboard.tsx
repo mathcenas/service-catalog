@@ -307,14 +307,18 @@ export function Dashboard() {
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-gray-900">Recent Clients</h3>
                   <button
-                    onClick={() => setShowAddClient(true)}
+                    onClick={() => setActiveTab('clients')}
                     className="text-blue-600 hover:text-blue-700 text-sm font-medium"
                   >
                     View All
                   </button>
                 </div>
                 {clients.slice(0, 5).map(client => (
-                  <div key={client.id} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
+                  <button
+                    key={client.id}
+                    onClick={() => setActiveTab('clients')}
+                    className="w-full flex items-center justify-between py-3 border-b border-gray-100 last:border-0 hover:bg-gray-50 -mx-2 px-2 rounded transition-colors text-left"
+                  >
                     <div>
                       <div className="font-medium text-gray-900">{client.company_name}</div>
                       <div className="text-sm text-gray-600">{client.contact_name}</div>
@@ -326,7 +330,7 @@ export function Dashboard() {
                     }`}>
                       {client.status}
                     </span>
-                  </div>
+                  </button>
                 ))}
                 {clients.length === 0 && (
                   <p className="text-gray-500 text-sm text-center py-4">No clients yet</p>
