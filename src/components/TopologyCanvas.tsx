@@ -59,10 +59,11 @@ interface Props {
   initialEdges: Edge[];
   clientId: string;
   siteId: string;
+  siteName?: string;
   onRefresh?: () => void;
 }
 
-export function TopologyCanvas({ initialNodes, initialEdges, clientId, siteId, onRefresh }: Props) {
+export function TopologyCanvas({ initialNodes, initialEdges, clientId, siteId, siteName, onRefresh }: Props) {
   const [nodes, setNodes] = useState<Node[]>(initialNodes);
   const [edges, setEdges] = useState<Edge[]>(initialEdges);
   const [editMode, setEditMode] = useState(false);
@@ -79,9 +80,10 @@ export function TopologyCanvas({ initialNodes, initialEdges, clientId, siteId, o
 
   const onNodeDragStop = useCallback(async (_: React.MouseEvent, node: Node) => {
     setSaving(true);
+    if (!siteId) { setSaving(false); return; }
     await supabase.from('net_layout_overrides').upsert(
-      { site_id: siteId, device_id: node.id, x: node.position.x, y: node.position.y },
-      { onConflict: 'site_id,device_id' }
+      { site_id: siteId, service_id: node.id, x: node.position.x, y: node.position.y },
+      { onConflict: 'service_id,site_id' }
     );
     setSaving(false);
   }, [clientId, siteId]);
@@ -121,7 +123,7 @@ export function TopologyCanvas({ initialNodes, initialEdges, clientId, siteId, o
       {/* Site label + footer institucional */}
       <div className="absolute top-4 left-4 z-10">
         <span className="text-[10px] font-bold tracking-widest text-slate-500 bg-[#1E293B]/80 px-2.5 py-1.5 rounded-lg border border-slate-700 font-mono uppercase">
-          {siteId}
+          {siteName ?? siteId}
         </span>
       </div>
       <div className="absolute bottom-3 left-4 z-10 text-[11px] text-slate-600 pointer-events-none select-none">
