@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Bell, Mail, CheckCircle2, Clock, AlertCircle, Send, RefreshCw,
-         ChevronDown, ChevronUp, Users, Lock, Unlock, History, ShieldAlert } from 'lucide-react';
+         ChevronDown, ChevronUp, Users, Lock, Unlock, History, ShieldAlert, Link, Copy, ExternalLink, Plus } from 'lucide-react';
 import { supabase, Client } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -48,6 +48,19 @@ type LockEvent = {
   performed_at: string;
 };
 
+type ShortLinkStat = {
+  id: string;
+  slug: string;
+  client_id: string;
+  label: string | null;
+  target_url: string;
+  created_at: string;
+  expires_at: string | null;
+  total_clicks: number;
+  last_clicked_at: string | null;
+  clicks_7d: number;
+};
+
 type Props = { clients: Client[] };
 
 const FREQ_LABEL: Record<string, string> = {
@@ -78,7 +91,7 @@ function fmtTime(iso: string) {
   });
 }
 
-type Tab = 'contacts' | 'history' | 'locks';
+type Tab = 'contacts' | 'history' | 'locks' | 'links';
 
 export function NotificationCenterView({ clients }: Props) {
   const { user } = useAuth();
@@ -92,6 +105,9 @@ export function NotificationCenterView({ clients }: Props) {
   const [deletingLock, setDeletingLock] = useState<string | null>(null);
   const [expandedClient, setExpandedClient] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [shortLinks, setShortLinks] = useState<ShortLinkStat[]>([]);
+  const [creatingLink, setCreatingLink] = useState<string | null>(null);
+  const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
 
   const showToast = (msg: string, ok: boolean) => {
     setToast({ msg, ok });
@@ -101,7 +117,7 @@ export function NotificationCenterView({ clients }: Props) {
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const [{ data: ctcs }, { data: opens }, { data: lockRows }, { data: events }] = await Promise.all([
+    const [{ data: ctcs }, { data: opens }, { data: lockRows }, { data: events }, { data: links }] = await Promise.all([
       supabase
         .from('client_contacts')
         .select('id, name, email, role, digest_frequency, client_id, subscription_confirmed, welcome_sent_at, last_email_at')
@@ -117,11 +133,16 @@ export function NotificationCenterView({ clients }: Props) {
         .select('id, service_id, event_type, action, performed_at')
         .order('performed_at', { ascending: false })
         .limit(100),
+      supabase
+        .from('short_link_stats')
+        .select('id, slug, client_id, label, target_url, created_at, expires_at, total_clicks, last_clicked_at, clicks_7d')
+        .order('created_at', { ascending: false }),
     ]);
     setContacts((ctcs ?? []) as Contact[]);
     setEmailOpens((opens ?? []) as EmailOpen[]);
     setLocks((lockRows ?? []) as NotificationLock[]);
     setLockEvents((events ?? []) as LockEvent[]);
+    setShortLinks((links ?? []) as ShortLinkStat[]);
     setLoading(false);
   }, [user]);
 
@@ -174,6 +195,48 @@ export function NotificationCenterView({ clients }: Props) {
 
   const opensForContact = (cid: string) => emailOpens.filter(o => o.contact_id === cid);
 
+  const generateLink = async (clientId: string, targetUrl: string, label?: string) => {
+    setCreatingLink(clientId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUrl = (supabase as any).supabaseUrl ?? import.meta.env.VITE_SUPABASE_URL;
+      const res = await fetch(`${supabaseUrl}/functions/v1/generate-short-link`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ client_id: clientId, target_url: targetUrl, label }),
+      });
+      const json = await res.json();
+      if (res.ok && json.slug) {
+        showToast(`Link creado: /${json.slug}`, true);
+        await load();
+      } else {
+        showToast(json.error ?? 'Error al crear link', false);
+      }
+    } catch {
+      showToast('Error de red', false);
+    } finally {
+      setCreatingLink(null);
+    }
+  };
+
+  const copyShortUrl = async (shortUrl: string, slug: string) => {
+    try {
+      await navigator.clipboard.writeText(shortUrl);
+    } catch {
+      const el = document.createElement('textarea');
+      el.value = shortUrl;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+    }
+    setCopiedSlug(slug);
+    setTimeout(() => setCopiedSlug(null), 2000);
+  };
+
   const activeLocks  = locks.filter(l => l.cooldown_active);
   const expiredLocks = locks.filter(l => !l.cooldown_active);
 
@@ -190,6 +253,7 @@ export function NotificationCenterView({ clients }: Props) {
     { id: 'contacts', label: 'Contactos' },
     { id: 'history',  label: 'Historial de envíos', badge: allEmails.length },
     { id: 'locks',    label: 'Cooldowns activos',   badge: activeLocks.length },
+    { id: 'links',    label: 'Links',               badge: shortLinks.length || undefined },
   ];
 
   return (
@@ -494,6 +558,94 @@ export function NotificationCenterView({ clients }: Props) {
               {locks.length === 0 && lockEvents.length === 0 && (
                 <div className="text-center py-12 text-gray-400">No hay registros de cooldowns.</div>
               )}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Links tab */}
+      {tab === 'links' && !loading && (
+        <>
+          {shortLinks.length === 0 ? (
+            <div className="text-center py-12 text-gray-400">
+              <Link className="w-8 h-8 mx-auto mb-3 opacity-30" />
+              <p>No hay links creados aún.</p>
+              <p className="text-xs mt-1">Creá un link desde el panel de un cliente.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {clients.map(cl => {
+                const clLinks = shortLinks.filter(l => l.client_id === cl.id);
+                if (clLinks.length === 0) return null;
+                const supabaseUrl = (supabase as any).supabaseUrl ?? import.meta.env.VITE_SUPABASE_URL;
+                return (
+                  <div key={cl.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                    <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                      <span className="font-semibold text-sm text-gray-800">{cl.name}</span>
+                      <button
+                        onClick={() => generateLink(cl.id, `${window.location.origin}/portal/${cl.id}`, `Portal ${new Date().toLocaleDateString('es-UY', { month: 'short', year: 'numeric' })}`)}
+                        disabled={creatingLink === cl.id}
+                        className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {creatingLink === cl.id
+                          ? <RefreshCw className="w-3 h-3 animate-spin" />
+                          : <Plus className="w-3 h-3" />}
+                        Nuevo link
+                      </button>
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {clLinks.map(link => {
+                        const shortUrl = `${supabaseUrl}/functions/v1/r/${link.slug}`;
+                        const isExpired = link.expires_at && new Date(link.expires_at) < new Date();
+                        return (
+                          <div key={link.id} className="px-4 py-3 flex items-start gap-3">
+                            <div className="shrink-0 mt-0.5 w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center">
+                              <Link className="w-3.5 h-3.5 text-blue-600" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
+                                  /{link.slug}
+                                </span>
+                                {link.label && (
+                                  <span className="text-xs text-gray-500">{link.label}</span>
+                                )}
+                                {isExpired && (
+                                  <span className="text-xs bg-red-50 text-red-500 px-1.5 py-0.5 rounded">Expirado</span>
+                                )}
+                              </div>
+                              <div className="mt-1 text-xs text-gray-400 truncate max-w-xs" title={link.target_url}>
+                                → {link.target_url}
+                              </div>
+                              <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-500">
+                                <span className="flex items-center gap-1">
+                                  <ExternalLink className="w-3 h-3" />
+                                  {link.total_clicks} clicks totales
+                                </span>
+                                <span>{link.clicks_7d} en 7d</span>
+                                {link.last_clicked_at && (
+                                  <span>último: {fmtRelative(link.last_clicked_at)}</span>
+                                )}
+                                <span className="text-gray-300">creado {fmtRelative(link.created_at)}</span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => copyShortUrl(shortUrl, link.slug)}
+                              className="shrink-0 flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-50"
+                              title="Copiar URL corta"
+                            >
+                              {copiedSlug === link.slug
+                                ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                : <Copy className="w-3.5 h-3.5" />}
+                              {copiedSlug === link.slug ? 'Copiado' : 'Copiar'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </>

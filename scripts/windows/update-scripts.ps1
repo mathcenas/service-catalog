@@ -26,7 +26,7 @@ param(
   [switch]$Force
 )
 
-$SCRIPT_VERSION = "1.2.3"
+$SCRIPT_VERSION = "1.2.4"
 
 $ErrorActionPreference = "SilentlyContinue"
 
@@ -94,8 +94,11 @@ function Download-Temp {
     Invoke-WebRequest -Uri $Url -OutFile $tmp -UseBasicParsing -ErrorAction Stop
     $size = (Get-Item $tmp).Length
     if ($size -lt 100) {
-      throw "Archivo sospechosamente pequeno ($size bytes) — posible error de GitHub"
+      throw "Archivo sospechosamente pequeno ($size bytes) - posible error de GitHub"
     }
+    # Re-save with UTF-8 BOM so PS5.1 parses non-ASCII comments correctly
+    $content = [System.IO.File]::ReadAllText($tmp, [System.Text.Encoding]::UTF8)
+    [System.IO.File]::WriteAllText($tmp, $content, [System.Text.UTF8Encoding]::new($true))
     return $tmp
   } catch {
     Remove-Item $tmp -Force -ErrorAction SilentlyContinue
