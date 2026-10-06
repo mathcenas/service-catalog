@@ -51,6 +51,8 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notifyClient, setNotifyClient] = useState(false);
+  const [sites, setSites] = useState<{ id: string; name: string }[]>([]);
+  const [siteId, setSiteId] = useState('');
 
   useEffect(() => {
     const fetchServiceTypes = async () => {
@@ -59,6 +61,12 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
     };
     fetchServiceTypes();
   }, []);
+
+  useEffect(() => {
+    if (!formData.client_id) { setSites([]); setSiteId(''); return; }
+    supabase.from('sites').select('id, name').eq('client_id', formData.client_id).order('name')
+      .then(({ data }) => { setSites((data ?? []) as { id: string; name: string }[]); setSiteId(''); });
+  }, [formData.client_id]);
 
   const currentTypeName = useMemo(
     () => serviceTypes.find(t => t.id === formData.service_type_id)?.name,
@@ -132,6 +140,7 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
       paid_by: formData.paid_by || null,
       payment_card_last4: formData.payment_card_last4 ? formData.payment_card_last4.slice(-4) : null,
       ingest_secret: Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, '0')).join(''),
+      site_id: siteId || null,
     });
 
     if (insertError) {
@@ -474,6 +483,23 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
               </div>
             )}
           </div>
+
+          {sites.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100">Red / Topología</h3>
+              <div className="w-full md:w-1/3">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Site</label>
+                <select
+                  value={siteId}
+                  onChange={e => setSiteId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                >
+                  <option value="">— Sin site —</option>
+                  {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Description / Notes</label>
