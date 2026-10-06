@@ -14,7 +14,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.1.1"
+$SCRIPT_VERSION = "1.1.2"
 
 # Invoke-Kuma puede no estar definida en todos los config.ps1
 if (-not (Get-Command Invoke-Kuma -ErrorAction SilentlyContinue)) {
@@ -137,3 +137,7 @@ $details = if ($issues.Count -gt 0) {
 $backedUpAt = $latestDate.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
 Send-BackupReport $status "Backup Carpetas - $BACKUP_PATH" $sizeBytes $details $backedUpAt
+
+if ($status -ne 'success' -and (Get-Command Start-BackupRetry -ErrorAction SilentlyContinue)) {
+    Start-BackupRetry -ScriptPath $MyInvocation.MyCommand.Path -LogFile $LogFile -SearchPattern 'warning|failed|ERROR'
+}

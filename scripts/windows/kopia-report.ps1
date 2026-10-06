@@ -13,7 +13,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.1.1"
+$SCRIPT_VERSION = "1.1.2"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -171,5 +171,9 @@ foreach ($snap in $byPath) {
         Write-Log "  Reporte enviado OK"
     } catch {
         Write-Log "  ERROR al enviar: $_"
+    }
+
+    if ($status -eq 'failed' -and (Get-Command Start-BackupRetry -ErrorAction SilentlyContinue)) {
+        Start-BackupRetry -ScriptPath $MyInvocation.MyCommand.Path -LogFile $LogFile -SearchPattern 'failed|errors=[1-9]'
     }
 }

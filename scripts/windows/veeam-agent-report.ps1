@@ -6,7 +6,7 @@
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"
-$SCRIPT_VERSION = "1.1.2"
+$SCRIPT_VERSION = "1.1.3"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
@@ -154,3 +154,13 @@ if ($events.Count -gt 0 -and (Get-Command "Invoke-KumaBackup" -ErrorAction Silen
 }
 
 Write-Log "Fin - $reported evento(s) enviado(s) a telemetria."
+
+# Re-intento si el último evento fue warning o failed
+if ($events.Count -gt 0) {
+    $lastStatus = if ($events[-1].Message -match 'finished with (Error|Fail)') { 'failed' }
+                  elseif ($events[-1].Message -match 'finished with Warning') { 'warning' }
+                  else { 'success' }
+    if ($lastStatus -ne 'success' -and (Get-Command Start-BackupRetry -ErrorAction SilentlyContinue)) {
+        Start-BackupRetry -ScriptPath $MyInvocation.MyCommand.Path -LogFile $LogFile -SearchPattern '⚠️|❌|warning|failed'
+    }
+}

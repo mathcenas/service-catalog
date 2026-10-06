@@ -79,6 +79,8 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [sites, setSites] = useState<{ id: string; name: string }[]>([]);
+  const [siteId, setSiteId] = useState<string>(service.site_id ?? '');
 
   useEffect(() => {
     const fetchServiceTypes = async () => {
@@ -90,6 +92,12 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
     };
     fetchServiceTypes();
   }, [service.service_type_id]);
+
+  useEffect(() => {
+    if (!formData.client_id) return;
+    supabase.from('sites').select('id, name').eq('client_id', formData.client_id).order('name')
+      .then(({ data }) => setSites((data ?? []) as { id: string; name: string }[]));
+  }, [formData.client_id]);
 
   const currentTypeName = useMemo(
     () => serviceTypes.find(t => t.id === formData.service_type_id)?.name,
@@ -176,6 +184,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
         payment_card_last4: formData.payment_card_last4 ? formData.payment_card_last4.slice(-4) : null,
         notification_email: formData.notification_email || null,
         provider_email: formData.provider_email || null,
+        site_id: siteId || null,
       })
       .eq('id', service.id);
 
@@ -462,6 +471,12 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                   placeholder="https://status.example.com/api/badge/1/uptime/24" />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Status Page URL</label>
+                <input type="url" value={formData.uptime_status_url} onChange={e => set('uptime_status_url', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  placeholder="https://status.example.com/status/your-page" />
+              </div>
             </div>
             {formData.uptime_badge_url && (
               <div className="mt-3 flex items-center gap-2">
@@ -476,6 +491,17 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
               Network / IPAM
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Site</label>
+                <select
+                  value={siteId}
+                  onChange={e => setSiteId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                >
+                  <option value="">— Sin site —</option>
+                  {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
               {/* ip_internal is shown in DynamicServiceFields for types that define it (e.g. Database) */}
               {!getFieldsForType(currentTypeName).some(f => f.key === 'ip_internal') && (
               <div>

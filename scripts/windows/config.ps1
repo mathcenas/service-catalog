@@ -2,7 +2,7 @@
 # config.ps1 - Configuracion por cliente/servidor
 # Copiar este archivo por cada cliente y ajustar los valores
 # =============================================================
-$SCRIPT_VERSION = "1.2.2"
+$SCRIPT_VERSION = "1.2.3"
 
 $INGEST_URL    = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-backup"
 $HEARTBEAT_URL = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-heartbeat"
@@ -55,4 +55,54 @@ function Invoke-KumaHealth { param([string]$Status, [string]$Msg)
 function Invoke-KumaBackup { param([string]$Status, [string]$Msg)
     $url = if ($KUMA_PUSH_URL_BACKUP) { $KUMA_PUSH_URL_BACKUP } else { $KUMA_PUSH_URL }
     Invoke-Kuma -Status $Status -Msg $Msg -Url $url
+}
+
+# ---------- Re-intento automático de backup ----------
+# Llama a esto al final de un script si hubo warning/error.
+# Escribe un script temporal, lo lanza detached (WindowStyle Hidden) y sale.
+# El proceso secundario:
+#   1. Espera $CheckAfterMinutes (default 15) y lee el log buscando $SearchPattern.
+#   2. Si lo encuentra, espera los minutos restantes hasta $RetryAfterMinutes (default 60)
+#      y re-ejecuta el mismo script con PowerShell.
+function Start-BackupRetry {
+    param(
+        [string]$ScriptPath,
+        [string]$LogFile,
+        [string]$SearchPattern    = "warning|failed|ERROR",
+        [int]   $CheckAfterMinutes = 15,
+        [int]   $RetryAfterMinutes = 60
+    )
+
+    $checkSecs  = $CheckAfterMinutes * 60
+    $retrySecs  = ($RetryAfterMinutes - $CheckAfterMinutes) * 60
+    $logDir     = Split-Path $LogFile
+    $retryLog   = "$logDir\retry-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+    $tmpScript  = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "backup-retry-$([System.IO.Path]::GetRandomFileName()).ps1")
+
+    $scriptContent = @"
+Start-Sleep $checkSecs
+function ts { Get-Date -Format 'yyyy-MM-dd HH:mm:ss' }
+`$logFile  = '$($LogFile -replace "'","''")'
+`$retryLog = '$($retryLog -replace "'","''")'
+`$script   = '$($ScriptPath -replace "'","''")'
+`$tmp      = '$($tmpScript -replace "'","''")'
+if (Select-String -Path `$logFile -Pattern '$SearchPattern' -Quiet -ErrorAction SilentlyContinue) {
+    Add-Content `$retryLog "`$(ts) [retry] Patron encontrado en `$logFile. Esperando $retrySecs s mas..."
+    Start-Sleep $retrySecs
+    Add-Content `$retryLog "`$(ts) [retry] Re-ejecutando: `$script"
+    & powershell.exe -NonInteractive -ExecutionPolicy Bypass -File `$script 2>&1 | ForEach-Object { Add-Content `$retryLog `$_ }
+    Add-Content `$retryLog "`$(ts) [retry] Fin del re-intento."
+} else {
+    Add-Content `$retryLog "`$(ts) [retry] Patron no encontrado en log. Sin re-intento."
+}
+Remove-Item `$tmp -Force -ErrorAction SilentlyContinue
+"@
+
+    $scriptContent | Out-File -FilePath $tmpScript -Encoding UTF8 -Force
+
+    Start-Process -FilePath "powershell.exe" `
+        -ArgumentList "-NonInteractive -ExecutionPolicy Bypass -File `"$tmpScript`"" `
+        -WindowStyle Hidden
+
+    Write-Host "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [retry] Programado: chequeo log en ${CheckAfterMinutes}min, re-run en ${RetryAfterMinutes}min si se detecta advertencia"
 }
