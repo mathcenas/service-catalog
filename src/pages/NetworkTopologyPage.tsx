@@ -1,122 +1,73 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Node, Edge } from '@xyflow/react';
 import { TopologyCanvas } from '../components/TopologyCanvas';
 import { supabase, Client } from '../lib/supabase';
 
-// ── Mock data — reemplazar con fetch a net_devices / net_edges ──────────────
-const MOCK_SITES: Record<string, { nodes: Node[]; edges: Edge[] }> = {
-  'rbuy-central': {
-    nodes: [
-      {
-        id: 'router-1',
-        type: 'mikrotik',
-        position: { x: 280, y: 40 },
-        data: {
-          hostname: 'RB-RBUY-CORE',
-          ip: '10.0.0.1',
-          model: 'MikroTik CCR2004',
-          status: 'online',
-          uptime_seconds: 432000,
-          throughput_in_bps: 48_500_000,
-          throughput_out_bps: 12_200_000,
-        },
-      },
-      {
-        id: 'sw-access-1',
-        type: 'unmanaged',
-        position: { x: 100, y: 220 },
-        data: { hostname: 'SW-PLANTA-1', ip: '10.0.0.10', model: 'TP-Link TL-SG1024', status: 'online' },
-      },
-      {
-        id: 'sw-access-2',
-        type: 'unmanaged',
-        position: { x: 460, y: 220 },
-        data: { hostname: 'SW-ADMIN', ip: '10.0.0.11', model: 'TP-Link TL-SG1016', status: 'online' },
-      },
-      {
-        id: 'srv-1',
-        type: 'endpoint',
-        position: { x: 40, y: 400 },
-        data: { hostname: 'SRV-BACKUP', ip: '10.0.1.5', type: 'server', status: 'online' },
-      },
-      {
-        id: 'srv-2',
-        type: 'endpoint',
-        position: { x: 180, y: 400 },
-        data: { hostname: 'SRV-ERP', ip: '10.0.1.6', type: 'server', status: 'online' },
-      },
-      {
-        id: 'ws-1',
-        type: 'endpoint',
-        position: { x: 400, y: 400 },
-        data: { hostname: 'PC-ADMIN-01', ip: '10.0.2.10', status: 'online' },
-      },
-      {
-        id: 'ws-2',
-        type: 'endpoint',
-        position: { x: 540, y: 400 },
-        data: { hostname: 'PC-CONTA-01', ip: '10.0.2.11', status: 'offline' },
-      },
-    ],
-    edges: [
-      { id: 'e1', source: 'router-1',    target: 'sw-access-1', type: 'smoothstep', label: 'Fibra · Te1', labelStyle: { fill: '#06B6D4', fontSize: 10 }, labelBgStyle: { fill: '#0B192C' }, style: { stroke: '#06B6D4', strokeWidth: 2 } },
-      { id: 'e2', source: 'router-1',    target: 'sw-access-2', type: 'smoothstep', label: 'Fibra · Te2', labelStyle: { fill: '#06B6D4', fontSize: 10 }, labelBgStyle: { fill: '#0B192C' }, style: { stroke: '#06B6D4', strokeWidth: 2 } },
-      { id: 'e3', source: 'sw-access-1', target: 'srv-1',       type: 'smoothstep', label: 'UTP · Gi1',  labelStyle: { fill: '#64748B', fontSize: 10 }, labelBgStyle: { fill: '#0B192C' }, style: { stroke: '#334155', strokeWidth: 1.5, strokeDasharray: '5 3' } },
-      { id: 'e4', source: 'sw-access-1', target: 'srv-2',       type: 'smoothstep', label: 'UTP · Gi2',  labelStyle: { fill: '#64748B', fontSize: 10 }, labelBgStyle: { fill: '#0B192C' }, style: { stroke: '#334155', strokeWidth: 1.5, strokeDasharray: '5 3' } },
-      { id: 'e5', source: 'sw-access-2', target: 'ws-1',        type: 'smoothstep', style: { stroke: '#1e3a5f', strokeWidth: 1.5, strokeDasharray: '5 3' } },
-      { id: 'e6', source: 'sw-access-2', target: 'ws-2',        type: 'smoothstep', style: { stroke: '#1e3a5f', strokeWidth: 1.5, strokeDasharray: '5 3' } },
-    ],
-  },
-  'rbuy-sucursal': {
-    nodes: [
-      {
-        id: 'router-suc',
-        type: 'mikrotik',
-        position: { x: 220, y: 40 },
-        data: {
-          hostname: 'RB-RBUY-SUC',
-          ip: '10.1.0.1',
-          model: 'MikroTik hEX S',
-          status: 'online',
-          uptime_seconds: 86400,
-          throughput_in_bps: 5_200_000,
-          throughput_out_bps: 1_800_000,
-        },
-      },
-      {
-        id: 'sw-suc-1',
-        type: 'unmanaged',
-        position: { x: 220, y: 220 },
-        data: { hostname: 'SW-SUC-MAIN', ip: '10.1.0.10', model: 'TP-Link TL-SG1008', status: 'online' },
-      },
-      {
-        id: 'ws-suc-1',
-        type: 'endpoint',
-        position: { x: 100, y: 380 },
-        data: { hostname: 'PC-SUC-01', ip: '10.1.2.10', status: 'online' },
-      },
-      {
-        id: 'ws-suc-2',
-        type: 'endpoint',
-        position: { x: 340, y: 380 },
-        data: { hostname: 'PC-SUC-02', ip: '10.1.2.11', status: 'unknown' },
-      },
-    ],
-    edges: [
-      { id: 'e1', source: 'router-suc', target: 'sw-suc-1',  style: { stroke: '#334155', strokeWidth: 2 } },
-      { id: 'e2', source: 'sw-suc-1',   target: 'ws-suc-1',  style: { stroke: '#1e3a5f', strokeWidth: 1.5 } },
-      { id: 'e3', source: 'sw-suc-1',   target: 'ws-suc-2',  style: { stroke: '#1e3a5f', strokeWidth: 1.5 } },
-    ],
-  },
+type Site = { id: string; name: string; city?: string };
+
+type ServiceRow = {
+  id: string;
+  name: string;
+  business_name?: string;
+  server_ip?: string;
+  provider?: string;
+  status: string;
+  site_id?: string;
+  service_types: { name: string } | null;
 };
-// ── Fin mock data ────────────────────────────────────────────────────────────
+
+type LayoutOverride = { service_id: string; x: number; y: number };
+type NetEdge = {
+  id: string;
+  source_id: string;
+  target_id: string;
+  label?: string;
+  edge_style?: Record<string, unknown>;
+};
+
+function serviceTypeToNodeType(typeName: string | undefined): string {
+  if (!typeName) return 'endpoint';
+  const n = typeName.toLowerCase();
+  if (n.includes('router') || n.includes('switch') || n.includes('firewall')) return 'mikrotik';
+  return 'endpoint';
+}
+
+function serviceToNode(svc: ServiceRow, pos: { x: number; y: number }): Node {
+  const typeName = svc.service_types?.name;
+  const nodeType = serviceTypeToNodeType(typeName);
+  const isMikrotik = nodeType === 'mikrotik';
+
+  return {
+    id: svc.id,
+    type: nodeType,
+    position: pos,
+    data: {
+      hostname: svc.business_name || svc.name,
+      ip:       svc.server_ip ?? '',
+      model:    isMikrotik ? (svc.provider ?? typeName ?? '') : undefined,
+      type:     isMikrotik ? undefined : 'server',
+      status:   svc.status === 'Active' ? 'online' : 'offline',
+    },
+  };
+}
+
+function defaultGrid(index: number): { x: number; y: number } {
+  const col = index % 3;
+  const row = Math.floor(index / 3);
+  return { x: 80 + col * 260, y: 60 + row * 220 };
+}
 
 export default function NetworkTopologyPage() {
   const [clients, setClients]     = useState<Client[]>([]);
   const [clientId, setClientId]   = useState<string>('');
-  const [siteId, setSiteId]       = useState<string>('rbuy-central');
+  const [sites, setSites]         = useState<Site[]>([]);
+  const [siteId, setSiteId]       = useState<string>('');
+  const [nodes, setNodes]         = useState<Node[]>([]);
+  const [edges, setEdges]         = useState<Edge[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [loading, setLoading]     = useState(false);
 
+  // Load clients once
   useEffect(() => {
     supabase.from('clients').select('id, company_name').order('company_name')
       .then(({ data }) => {
@@ -127,8 +78,69 @@ export default function NetworkTopologyPage() {
       });
   }, []);
 
-  const siteData = MOCK_SITES[siteId] ?? { nodes: [], edges: [] };
-  const sites    = Object.keys(MOCK_SITES);
+  // Load sites when client changes
+  useEffect(() => {
+    if (!clientId) return;
+    supabase.from('sites').select('id, name, city').eq('client_id', clientId).order('name')
+      .then(({ data }) => {
+        const list = (data ?? []) as Site[];
+        setSites(list);
+        setSiteId(list[0]?.id ?? '');
+      });
+  }, [clientId]);
+
+  // Load services + layout + edges when site or client changes
+  useEffect(() => {
+    if (!clientId) return;
+    loadTopology();
+  }, [clientId, siteId, refreshKey]);
+
+  async function loadTopology() {
+    setLoading(true);
+
+    // Services: filter by site if one is selected, otherwise all client services
+    let svcQuery = supabase
+      .from('services')
+      .select('id, name, business_name, server_ip, provider, status, site_id, service_types(name)')
+      .eq('client_id', clientId)
+      .neq('status', 'Cancelled');
+
+    if (siteId) svcQuery = svcQuery.eq('site_id', siteId);
+
+    const [{ data: svcs }, { data: layoutRows }, { data: edgeRows }] = await Promise.all([
+      svcQuery,
+      siteId
+        ? supabase.from('net_layout_overrides').select('service_id, x, y').eq('site_id', siteId)
+        : Promise.resolve({ data: [] }),
+      siteId
+        ? supabase.from('net_edges').select('id, source_id, target_id, label, edge_style').eq('site_id', siteId)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    const overrides: Record<string, { x: number; y: number }> = {};
+    for (const r of (layoutRows ?? []) as LayoutOverride[]) {
+      overrides[r.service_id] = { x: r.x, y: r.y };
+    }
+
+    const builtNodes: Node[] = ((svcs ?? []) as ServiceRow[]).map((svc, i) =>
+      serviceToNode(svc, overrides[svc.id] ?? defaultGrid(i))
+    );
+
+    const builtEdges: Edge[] = ((edgeRows ?? []) as NetEdge[]).map(e => ({
+      id:     e.id,
+      source: e.source_id,
+      target: e.target_id,
+      type:   'smoothstep',
+      label:  e.label ?? undefined,
+      style:  (e.edge_style as React.CSSProperties) ?? { stroke: '#334155', strokeWidth: 2 },
+    }));
+
+    setNodes(builtNodes);
+    setEdges(builtEdges);
+    setLoading(false);
+  }
+
+  const selectedSite = sites.find(s => s.id === siteId);
 
   return (
     <div className="flex flex-col h-full bg-[#0B192C] text-white">
@@ -139,45 +151,68 @@ export default function NetworkTopologyPage() {
           <p className="text-[11px] text-slate-500">Vista por site</p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Cliente selector */}
           <select
             value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
+            onChange={e => setClientId(e.target.value)}
             className="bg-[#1E293B] border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-1.5 outline-none focus:border-cyan-500"
           >
-            {clients.map((c) => (
+            {clients.map(c => (
               <option key={c.id} value={c.id}>{c.company_name}</option>
             ))}
           </select>
-          {/* Site selector */}
-          <div className="flex gap-1">
-            {sites.map((s) => (
+
+          {sites.length > 0 ? (
+            <div className="flex gap-1">
+              {sites.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setSiteId(s.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    siteId === s.id
+                      ? 'bg-cyan-600 text-white'
+                      : 'bg-[#1E293B] border border-slate-700 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {s.name}
+                </button>
+              ))}
               <button
-                key={s}
-                onClick={() => setSiteId(s)}
+                onClick={() => setSiteId('')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                  siteId === s
+                  !siteId
                     ? 'bg-cyan-600 text-white'
                     : 'bg-[#1E293B] border border-slate-700 text-slate-400 hover:text-slate-200'
                 }`}
               >
-                {s}
+                Todos
               </button>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <span className="text-xs text-slate-500 italic">Sin sites — asigná servicios a un site</span>
+          )}
         </div>
       </div>
 
       {/* Canvas */}
       <div className="flex-1 p-4 min-h-0">
-        <TopologyCanvas
-          key={`${clientId}-${siteId}-${refreshKey}`}
-          initialNodes={siteData.nodes}
-          initialEdges={siteData.edges}
-          clientId={clientId}
-          siteId={siteId}
-          onRefresh={() => setRefreshKey((k) => k + 1)}
-        />
+        {loading ? (
+          <div className="flex items-center justify-center h-full text-slate-500 text-sm">Cargando…</div>
+        ) : nodes.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-slate-500 text-sm gap-2">
+            <p>No hay servicios en este site.</p>
+            <p className="text-xs text-slate-600">Asigná un site a los servicios desde el panel de servicios del cliente.</p>
+          </div>
+        ) : (
+          <TopologyCanvas
+            key={`${clientId}-${siteId}-${refreshKey}`}
+            initialNodes={nodes}
+            initialEdges={edges}
+            clientId={clientId}
+            siteId={siteId}
+            siteName={selectedSite?.name ?? 'Todos'}
+            onRefresh={() => setRefreshKey(k => k + 1)}
+          />
+        )}
       </div>
     </div>
   );

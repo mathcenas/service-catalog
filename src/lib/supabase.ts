@@ -131,6 +131,7 @@ export type Service = {
   confirmed_hours_monthly?: number;
   managed_roles?: ManagedRole[];
   location?: string;
+  site_id?: string;
   business_name?: string;
   business_description?: string;
   sla_level?: string;
