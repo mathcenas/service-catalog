@@ -54,6 +54,7 @@ export function Dashboard() {
   const [showAddService, setShowAddService] = useState(false);
   const [showAddProject, setShowAddProject] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [focusClientId, setFocusClientId] = useState<string | undefined>();
 
   useEffect(() => {
     supabase.from('user_settings').select('logo_url').maybeSingle()
@@ -297,8 +298,8 @@ export function Dashboard() {
               </div>
             )}
 
-            {/* Operational Status Overview */}
-            {services.filter(s => s.status === 'Active').length > 0 && (
+            {/* Operational Status Overview — only when there's something worth flagging */}
+            {services.some(s => s.status === 'Active' && (s.operational_status === 'Degraded' || s.operational_status === 'Down' || s.operational_status === 'Maintenance')) && (
               <OperationalStatusPanel services={services} clients={clients} />
             )}
 
@@ -316,7 +317,7 @@ export function Dashboard() {
                 {clients.slice(0, 5).map(client => (
                   <button
                     key={client.id}
-                    onClick={() => setActiveTab('clients')}
+                    onClick={() => { setFocusClientId(client.id); setActiveTab('clients'); }}
                     className="w-full flex items-center justify-between py-3 border-b border-gray-100 last:border-0 hover:bg-gray-50 -mx-2 px-2 rounded transition-colors text-left"
                   >
                     <div>
@@ -448,7 +449,7 @@ export function Dashboard() {
                 Add Client
               </button>
             </div>
-            <ClientList clients={clients} services={services} onUpdate={fetchData} />
+            <ClientList clients={clients} services={services} onUpdate={fetchData} focusClientId={focusClientId} />
           </div>
         )}
 

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Mail, Phone, Building2, Share2, Search, MoreHorizontal, Pencil, Trash2, Server, ExternalLink, AppWindow, FileText, AlertTriangle, Check, Newspaper, MapPin } from 'lucide-react';
 import { Client, Service, supabase } from '../lib/supabase';
 import { EditClientModal } from './EditClientModal';
@@ -11,6 +11,7 @@ type Props = {
   clients: Client[];
   services: Service[];
   onUpdate: () => void;
+  focusClientId?: string;
 };
 
 const RISK_CATEGORIES: { label: string; flags: { id: string; label: string }[] }[] = [
@@ -128,7 +129,7 @@ function RiskFlagsPanel({
   );
 }
 
-export function ClientList({ clients, services, onUpdate }: Props) {
+export function ClientList({ clients, services, onUpdate, focusClientId }: Props) {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [sharingClient, setSharingClient] = useState<Client | null>(null);
   const [digestPreview, setDigestPreview] = useState<{ html: string; name: string } | null>(null);
@@ -142,6 +143,17 @@ export function ClientList({ clients, services, onUpdate }: Props) {
   const [expandedSites, setExpandedSites] = useState<string | null>(null);
   const [briefClient, setBriefClient] = useState<Client | null>(null);
   const [clientRiskFlags, setClientRiskFlags] = useState<Record<string, string[]>>({});
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  useEffect(() => {
+    if (!focusClientId) return;
+    const el = rowRefs.current[focusClientId];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-2', 'ring-blue-400', 'ring-inset');
+      setTimeout(() => el.classList.remove('ring-2', 'ring-blue-400', 'ring-inset'), 2000);
+    }
+  }, [focusClientId]);
 
   async function previewDigest(client: Client) {
     setLoadingDigest(client.id);
@@ -274,7 +286,7 @@ export function ClientList({ clients, services, onUpdate }: Props) {
             const isSitesOpen = expandedSites === client.id;
 
             return (
-              <div key={client.id} className="divide-y divide-gray-100">
+              <div key={client.id} ref={el => { rowRefs.current[client.id] = el; }} className="divide-y divide-gray-100 rounded-lg transition-all">
                 {/* Row */}
                 <div className="px-5 py-4 flex items-center gap-4 hover:bg-slate-50/60 transition-colors group">
                   {/* Avatar */}
