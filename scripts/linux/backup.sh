@@ -40,7 +40,7 @@ RETENTION_DAYS="${RETENTION_DAYS:-7}"
 DEST_TYPE="${DEST_TYPE:-local}"        # local | rsync | rclone
 RSYNC_DEST="${RSYNC_DEST:-}"
 RSYNC_SSH_KEY="${RSYNC_SSH_KEY:-}"
-SCRIPT_VERSION="1.2.4"
+SCRIPT_VERSION="1.2.5"
 RCLONE_REMOTE="${RCLONE_REMOTE:-}"
 PG_CONTAINERS="${PG_CONTAINERS:-}"
 KUMA_PUSH_URL="${KUMA_PUSH_URL_BACKUP:-${KUMA_PUSH_URL:-}}"
@@ -335,3 +335,30 @@ Duración: ${ELAPSED}s
 Destino: ${DEST_TYPE}
 Fecha: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "Backup completado OK en ${ELAPSED}s"
+
+# ---------- Re-intento automático si hubo archivos abiertos ----------
+# Si tar detectó archivos modificados durante la compresión (exit 1),
+# lanzamos un proceso en background que:
+#   1. Espera 15 min y lee el log para confirmar la advertencia
+#   2. Si se confirma, espera otros 45 min (1 hora en total desde ahora) y re-corre el script
+RETRY_DELAY_CHECK=900      # 15 minutos
+RETRY_DELAY_REMAINING=2700 # 45 minutos adicionales (total ~1 hora)
+if [[ "${TAR_WARNING:-0}" == "1" ]]; then
+  SCRIPT_SELF="$(realpath -- "${BASH_SOURCE[0]}")"
+  ENV_FILE_ABS="$(realpath -- "$ENV_FILE")"
+  RETRY_LOG="$LOG_DIR/backup-retry-$(date '+%Y%m%d-%H%M%S').log"
+  echo "Re-intento programado: leyendo log en ${RETRY_DELAY_CHECK}s, re-corriendo en $((RETRY_DELAY_CHECK + RETRY_DELAY_REMAINING))s si la advertencia se confirma"
+  (
+    sleep "$RETRY_DELAY_CHECK"
+    _ts() { date '+%Y-%m-%d %H:%M:%S'; }
+    if grep -q "archivos modificados durante compresión" "$LOG_FILE" 2>/dev/null; then
+      echo "$(_ts) [retry] Advertencia confirmada en $LOG_FILE. Esperando ${RETRY_DELAY_REMAINING}s más antes de re-correr..." >> "$RETRY_LOG"
+      sleep "$RETRY_DELAY_REMAINING"
+      echo "$(_ts) [retry] Lanzando $SCRIPT_SELF $ENV_FILE_ABS" >> "$RETRY_LOG"
+      bash "$SCRIPT_SELF" "$ENV_FILE_ABS" >> "$RETRY_LOG" 2>&1
+    else
+      echo "$(_ts) [retry] No se encontró advertencia en el log ($LOG_FILE). No se re-corre." >> "$RETRY_LOG"
+    fi
+  ) &
+  disown
+fi
