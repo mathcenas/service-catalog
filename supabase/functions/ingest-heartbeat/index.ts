@@ -49,7 +49,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: service, error: svcErr } = await supabaseAdmin
       .from("services")
-      .select("user_id, ingest_secret, ip_public, ip_internal")
+      .select("user_id, ingest_secret, ip_public, ip_internal, specs")
       .eq("id", service_id)
       .maybeSingle();
 
@@ -81,16 +81,37 @@ Deno.serve(async (req: Request) => {
         message: message || null,
       });
 
-    // Auto-update ip_public / ip_internal on the service if the heartbeat
-    // reports IPs that differ from what's stored (or fields are empty).
+    // Auto-update service fields from system-health heartbeats.
     if (source === "system-health" && payload) {
-      const ipUpdate: Record<string, string> = {};
+      const svcUpdate: Record<string, unknown> = {};
+
+      // IPs
       const reportedPublic   = typeof payload.public_ip === "string" ? payload.public_ip.trim() : null;
       const reportedInternal = typeof payload.local_ip  === "string" ? payload.local_ip.trim()  : null;
-      if (reportedPublic   && reportedPublic   !== service.ip_public)   ipUpdate.ip_public   = reportedPublic;
-      if (reportedInternal && reportedInternal !== service.ip_internal) ipUpdate.ip_internal = reportedInternal;
-      if (Object.keys(ipUpdate).length > 0) {
-        await supabaseAdmin.from("services").update(ipUpdate).eq("id", service_id);
+      if (reportedPublic   && reportedPublic   !== service.ip_public)   svcUpdate.ip_public   = reportedPublic;
+      if (reportedInternal && reportedInternal !== service.ip_internal) svcUpdate.ip_internal = reportedInternal;
+
+      // Hardware specs — merge into existing specs JSONB, only overwrite when value is present
+      const specsUpdate: Record<string, unknown> = {};
+      const cpuModel   = typeof payload.cpu_model   === "string" ? payload.cpu_model.trim()   : null;
+      const cpuName    = typeof payload.cpu_name    === "string" ? payload.cpu_name.trim()    : null;   // Windows
+      const cpuCores   = typeof payload.cpu_cores   === "number" ? payload.cpu_cores           : null;
+      const ramGB      = typeof payload.ram_total_gb === "number" ? payload.ram_total_gb        : null;
+      const osName     = typeof payload.os_name     === "string" ? payload.os_name.trim()     : null;
+      const osCaption  = typeof payload.os_caption  === "string" ? payload.os_caption.trim()  : null;  // Windows
+
+      if (cpuModel || cpuName)  specsUpdate.cpu = cpuModel || cpuName;
+      if (cpuCores)             specsUpdate.cpu_cores = cpuCores;
+      if (ramGB)                specsUpdate.ram = `${ramGB} GB`;
+      if (osName || osCaption)  specsUpdate.os  = osName || osCaption;
+
+      if (Object.keys(specsUpdate).length > 0) {
+        const existingSpecs = (service.specs && typeof service.specs === "object") ? service.specs as Record<string, unknown> : {};
+        svcUpdate.specs = { ...existingSpecs, ...specsUpdate };
+      }
+
+      if (Object.keys(svcUpdate).length > 0) {
+        await supabaseAdmin.from("services").update(svcUpdate).eq("id", service_id);
       }
     }
 

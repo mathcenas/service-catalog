@@ -12,7 +12,7 @@
 # Version: 1.6.0
 # =============================================================
 
-SCRIPT_VERSION="1.7.0"
+SCRIPT_VERSION="1.8.0"
 
 # ---------- Verificación de dependencias ----------
 if ! command -v jq >/dev/null 2>&1; then
@@ -91,6 +91,13 @@ find "$LOG_DIR" -maxdepth 1 -name "system-health-????-??-??.log" -mtime +"$LOG_R
 
 # Forzar locale C para que los decimales usen punto
 export LC_ALL=C LANG=C
+
+# ---------- Hardware info (static) ----------
+CPU_MODEL=$(grep -m1 "model name" /proc/cpuinfo 2>/dev/null | awk -F': ' '{print $2}' | xargs)
+CPU_CORES=$(nproc --all 2>/dev/null || nproc)
+RAM_TOTAL_B=$(awk '/^MemTotal:/ {print $2 * 1024}' /proc/meminfo 2>/dev/null)
+RAM_TOTAL_GB=$(awk -v r="${RAM_TOTAL_B:-0}" 'BEGIN { printf "%.1f", r / 1073741824 }')
+OS_NAME=$(. /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-}" || lsb_release -d 2>/dev/null | awk -F': ' '{print $2}' | xargs || echo "")
 
 # ---------- CPU ----------
 CORES=$(nproc)
@@ -497,6 +504,10 @@ PAYLOAD=$(jq -n \
   --argjson smart "$DISK_SMART_JSON" \
   --arg public_ip "$PUBLIC_IP" \
   --arg local_ip "$LOCAL_IP" \
+  --arg cpu_model "$CPU_MODEL" \
+  --argjson cpu_cores "$CPU_CORES" \
+  --argjson ram_total_gb "$RAM_TOTAL_GB" \
+  --arg os_name "$OS_NAME" \
   --arg script_version "$SCRIPT_VERSION" \
   '{
     service_id: $service_id,
@@ -520,6 +531,10 @@ PAYLOAD=$(jq -n \
       disk_smart: $smart,
       public_ip: (if $public_ip == "" then null else $public_ip end),
       local_ip: (if $local_ip == "" then null else $local_ip end),
+      cpu_model: (if $cpu_model == "" then null else $cpu_model end),
+      cpu_cores: $cpu_cores,
+      ram_total_gb: $ram_total_gb,
+      os_name: (if $os_name == "" then null else $os_name end),
       script_version: $script_version
     }
   }')
