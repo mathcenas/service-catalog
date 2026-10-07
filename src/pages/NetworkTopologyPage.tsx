@@ -46,6 +46,7 @@ function serviceToNode(svc: ServiceRow, pos: { x: number; y: number }): Node {
       ip:       svc.server_ip ?? '',
       model:    isMikrotik ? (svc.provider ?? typeName ?? '') : undefined,
       type:     isMikrotik ? undefined : 'server',
+      typeName: typeName,
       status:   svc.status === 'Active' ? 'online' : 'offline',
     },
   };

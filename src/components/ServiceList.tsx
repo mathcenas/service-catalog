@@ -3,6 +3,7 @@ import { Server, CreditCard as Edit2, Trash2, Calendar, DollarSign, ExternalLink
 import { Service, Client, ServiceType, Project, supabase } from '../lib/supabase';
 import { EditServiceModal } from './EditServiceModal';
 import { ServiceChangesModal } from './ServiceChangesModal';
+import { getServiceTypeIcon, getServiceTypeColors } from '../lib/serviceTypeIcon';
 
 type Props = {
   services: Service[];
@@ -154,12 +155,16 @@ export function ServiceList({ services, clients, projects, onUpdate }: Props) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredServices.map(service => (
+              {filteredServices.map(service => {
+                const typeName = getServiceTypeName(service.service_type_id);
+                const TypeIcon = getServiceTypeIcon(typeName);
+                const typeColors = getServiceTypeColors(typeName);
+                return (
                 <tr key={service.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="bg-blue-100 p-2 rounded-lg">
-                        <Server className="w-4 h-4 text-blue-600" />
+                      <div className={`p-2 rounded-lg ${typeColors}`}>
+                        <TypeIcon className="w-4 h-4" />
                       </div>
                       <div>
                         <div className="font-medium text-gray-900">{service.name}</div>
@@ -256,7 +261,7 @@ export function ServiceList({ services, clients, projects, onUpdate }: Props) {
                     </div>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>
@@ -312,12 +317,16 @@ function ServiceTable({ services, getClientName, getProjectName, getServiceTypeN
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200">
-          {services.map(service => (
+          {services.map(service => {
+            const typeName = getServiceTypeName(service.service_type_id);
+            const TypeIcon = getServiceTypeIcon(typeName);
+            const typeColors = getServiceTypeColors(typeName);
+            return (
             <tr key={service.id} className="hover:bg-gray-50">
               <td className="px-6 py-4">
                 <div className="flex items-center gap-3">
-                  <div className="bg-blue-100 p-2 rounded-lg">
-                    <Server className="w-4 h-4 text-blue-600" />
+                  <div className={`p-2 rounded-lg ${typeColors}`}>
+                    <TypeIcon className="w-4 h-4" />
                   </div>
                   <div>
                     <div className="font-medium text-gray-900">{service.name}</div>
@@ -385,7 +394,7 @@ function ServiceTable({ services, getClientName, getProjectName, getServiceTypeN
                 </div>
               </td>
             </tr>
-          ))}
+          )})}
         </tbody>
       </table>
     </div>

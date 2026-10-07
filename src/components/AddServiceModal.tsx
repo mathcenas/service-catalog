@@ -35,6 +35,7 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
     business_description: '',
     sla_level: '',
     operational_status: 'Operational' as OperationalStatus,
+    infrastructure_type: '' as '' | 'Cloud' | 'Physical' | 'Managed Service',
     includes: '',
     excludes: '',
     client_responsibilities: '',
@@ -129,6 +130,7 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
       business_description: formData.business_description || null,
       sla_level: formData.sla_level || null,
       operational_status: formData.operational_status,
+      infrastructure_type: formData.infrastructure_type || null,
       includes: splitLines(formData.includes),
       excludes: splitLines(formData.excludes),
       client_responsibilities: splitLines(formData.client_responsibilities),
@@ -278,6 +280,16 @@ export function AddServiceModal({ onClose, onSuccess, clients, projects }: Props
                 <select value={formData.operational_status} onChange={e => set('operational_status', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
                   {OPERATIONAL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Infrastructure Type</label>
+                <select value={formData.infrastructure_type} onChange={e => set('infrastructure_type', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+                  <option value="">— Not set —</option>
+                  <option value="Cloud">Cloud</option>
+                  <option value="Physical">Physical</option>
+                  <option value="Managed Service">Managed Service</option>
                 </select>
               </div>
               <div>
