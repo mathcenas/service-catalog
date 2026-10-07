@@ -112,10 +112,10 @@ export default function NetworkTopologyPage() {
       svcQuery,
       siteId
         ? supabase.from('net_layout_overrides').select('service_id, x, y').eq('site_id', siteId)
-        : Promise.resolve({ data: [] }),
+        : supabase.from('net_layout_overrides').select('service_id, x, y').eq('client_id', clientId).is('site_id', null),
       siteId
         ? supabase.from('net_edges').select('id, source_id, target_id, label, edge_style').eq('site_id', siteId)
-        : Promise.resolve({ data: [] }),
+        : supabase.from('net_edges').select('id, source_id, target_id, label, edge_style').eq('client_id', clientId).is('site_id', null),
     ]);
 
     const overrides: Record<string, { x: number; y: number }> = {};
@@ -213,6 +213,7 @@ export default function NetworkTopologyPage() {
             siteName={selectedSite?.name ?? 'Todos'}
             onRefresh={() => setRefreshKey(k => k + 1)}
           />
+
         )}
       </div>
     </div>
