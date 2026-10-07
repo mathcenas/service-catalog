@@ -1,0 +1,20 @@
+[Unit]
+Description=Cenas IT - MikroTik syslog receiver
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/mk-syslog /srv/network-monitor/mk-monitor.conf
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mk-syslog
+
+# Reiniciar el servicio a las 3am para rotar logs y limpiar estado de contadores
+# (opcional, descomentar si se desea)
+# RuntimeMaxSec=86400
+
+[Install]
+WantedBy=multi-user.target
