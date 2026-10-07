@@ -49,6 +49,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
     payment_card_last4: service.payment_card_last4 || '',
     notification_email: service.notification_email || '',
     provider_email: service.provider_email || '',
+    infrastructure_type: (service.infrastructure_type || '') as '' | 'Cloud' | 'Physical' | 'Managed Service',
   });
 
   const buildInitialTypeValues = (): Record<string, any> => {
@@ -184,6 +185,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
         payment_card_last4: formData.payment_card_last4 ? formData.payment_card_last4.slice(-4) : null,
         notification_email: formData.notification_email || null,
         provider_email: formData.provider_email || null,
+        infrastructure_type: formData.infrastructure_type || null,
         site_id: siteId || null,
       })
       .eq('id', service.id);
@@ -278,6 +280,16 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
                 <select value={formData.operational_status} onChange={e => set('operational_status', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
                   {OPERATIONAL_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Infrastructure Type</label>
+                <select value={formData.infrastructure_type} onChange={e => set('infrastructure_type', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+                  <option value="">— Not set —</option>
+                  <option value="Cloud">Cloud</option>
+                  <option value="Physical">Physical</option>
+                  <option value="Managed Service">Managed Service</option>
                 </select>
               </div>
               <div>
