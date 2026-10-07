@@ -166,13 +166,20 @@ export function TopologyCanvas({ initialNodes, initialEdges, clientId, siteId, s
 
   const onNodeDragStop = useCallback(async (_: React.MouseEvent, node: Node) => {
     setSaving(true);
-    if (!siteId) { setSaving(false); return; }
-    await supabase.from('net_layout_overrides').upsert(
-      { site_id: siteId, service_id: node.id, x: node.position.x, y: node.position.y },
-      { onConflict: 'service_id,site_id' }
-    );
+    if (siteId) {
+      await supabase.from('net_layout_overrides').upsert(
+        { site_id: siteId, device_id: node.id, x: node.position.x, y: node.position.y },
+        { onConflict: 'device_id,site_id' }
+      );
+    } else {
+      // Partial-index conflict — delete then insert for client-scoped rows
+      await supabase.from('net_layout_overrides')
+        .delete().eq('device_id', node.id).eq('client_id', clientId).is('site_id', null);
+      await supabase.from('net_layout_overrides')
+        .insert({ client_id: clientId, site_id: null, device_id: node.id, x: node.position.x, y: node.position.y });
+    }
     setSaving(false);
-  }, [siteId]);
+  }, [siteId, clientId]);
 
   // Show edge-type picker when user connects two handles
   const onConnect = useCallback((conn: Connection) => {
@@ -181,7 +188,7 @@ export function TopologyCanvas({ initialNodes, initialEdges, clientId, siteId, s
   }, [editMode]);
 
   const onEdgeTypeSelect = useCallback(async (et: typeof EDGE_TYPES[0], label: string) => {
-    if (!pendingConn || !siteId) { setPendingConn(null); return; }
+    if (!pendingConn) { setPendingConn(null); return; }
     const newEdge: Edge = {
       ...addEdge({ ...pendingConn, type: 'smoothstep', label: label || undefined, style: et.style, labelStyle: et.labelStyle, labelBgStyle: { fill: '#0B192C' } }, edges)[edges.length],
       id: crypto.randomUUID(),
@@ -194,25 +201,20 @@ export function TopologyCanvas({ initialNodes, initialEdges, clientId, siteId, s
       labelBgStyle: { fill: '#0B192C' },
     };
     setSaving(true);
-    const { error } = await supabase.from('net_edges').insert({
-      id:         newEdge.id,
-      site_id:    siteId,
-      source_id:  newEdge.source,
-      target_id:  newEdge.target,
-      label:      label || null,
-      edge_style: { type: et.id, style: et.style, labelStyle: et.labelStyle },
-    });
+    const record = siteId
+      ? { id: newEdge.id, site_id: siteId, client_id: null,     source_id: newEdge.source, target_id: newEdge.target, label: label || null, edge_style: { type: et.id, style: et.style, labelStyle: et.labelStyle } }
+      : { id: newEdge.id, site_id: null,   client_id: clientId, source_id: newEdge.source, target_id: newEdge.target, label: label || null, edge_style: { type: et.id, style: et.style, labelStyle: et.labelStyle } };
+    const { error } = await supabase.from('net_edges').insert(record);
     if (!error) setEdges(eds => [...eds, newEdge]);
     setSaving(false);
     setPendingConn(null);
-  }, [pendingConn, siteId, edges]);
+  }, [pendingConn, siteId, clientId, edges]);
 
   // Delete selected edges with Backspace/Delete
   const onEdgesDelete = useCallback(async (deleted: Edge[]) => {
-    if (!siteId) return;
     const ids = deleted.map(e => e.id);
     await supabase.from('net_edges').delete().in('id', ids);
-  }, [siteId]);
+  }, []);
 
   const onNodeContextMenu = useCallback((e: React.MouseEvent, node: Node) => {
     e.preventDefault();
@@ -226,23 +228,32 @@ export function TopologyCanvas({ initialNodes, initialEdges, clientId, siteId, s
       return { ...n, type: isCritical ? 'critical_asset' : (n.data._origType as string ?? 'endpoint'), data: { ...n.data, critical: isCritical, _origType: n.type } };
     }));
     // Persist critical flag in layout overrides extra field
-    if (!siteId) return;
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return;
-    await supabase.from('net_layout_overrides').upsert(
-      { site_id: siteId, service_id: nodeId, x: node.position.x, y: node.position.y, critical: !node.data.critical },
-      { onConflict: 'service_id,site_id' }
-    );
-  }, [nodes, siteId]);
+    if (siteId) {
+      await supabase.from('net_layout_overrides').upsert(
+        { site_id: siteId, device_id: nodeId, x: node.position.x, y: node.position.y, critical: !node.data.critical },
+        { onConflict: 'device_id,site_id' }
+      );
+    } else {
+      await supabase.from('net_layout_overrides')
+        .delete().eq('device_id', nodeId).eq('client_id', clientId).is('site_id', null);
+      await supabase.from('net_layout_overrides')
+        .insert({ client_id: clientId, site_id: null, device_id: nodeId, x: node.position.x, y: node.position.y, critical: !node.data.critical });
+    }
+  }, [nodes, siteId, clientId]);
 
   const deleteNode = useCallback(async (nodeId: string) => {
     setNodes(nds => nds.filter(n => n.id !== nodeId));
-    // Remove associated edges visually
     setEdges(eds => eds.filter(e => e.source !== nodeId && e.target !== nodeId));
-    if (!siteId) return;
-    await supabase.from('net_layout_overrides').delete().eq('service_id', nodeId).eq('site_id', siteId);
-    await supabase.from('net_edges').delete().or(`source_id.eq.${nodeId},target_id.eq.${nodeId}`).eq('site_id', siteId);
-  }, [siteId]);
+    if (siteId) {
+      await supabase.from('net_layout_overrides').delete().eq('device_id', nodeId).eq('site_id', siteId);
+      await supabase.from('net_edges').delete().or(`source_id.eq.${nodeId},target_id.eq.${nodeId}`).eq('site_id', siteId);
+    } else {
+      await supabase.from('net_layout_overrides').delete().eq('device_id', nodeId).eq('client_id', clientId).is('site_id', null);
+      await supabase.from('net_edges').delete().or(`source_id.eq.${nodeId},target_id.eq.${nodeId}`).eq('client_id', clientId).is('site_id', null);
+    }
+  }, [siteId, clientId]);
 
   const contextNode = contextMenu ? nodes.find(n => n.id === contextMenu.nodeId) : null;
 

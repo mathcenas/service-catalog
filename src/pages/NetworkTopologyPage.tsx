@@ -16,7 +16,7 @@ type ServiceRow = {
   service_types: { name: string } | null;
 };
 
-type LayoutOverride = { service_id: string; x: number; y: number };
+type LayoutOverride = { device_id: string; x: number; y: number };
 type NetEdge = {
   id: string;
   source_id: string;
@@ -111,16 +111,16 @@ export default function NetworkTopologyPage() {
     const [{ data: svcs }, { data: layoutRows }, { data: edgeRows }] = await Promise.all([
       svcQuery,
       siteId
-        ? supabase.from('net_layout_overrides').select('service_id, x, y').eq('site_id', siteId)
-        : Promise.resolve({ data: [] }),
+        ? supabase.from('net_layout_overrides').select('device_id, x, y').eq('site_id', siteId)
+        : supabase.from('net_layout_overrides').select('device_id, x, y').eq('client_id', clientId).is('site_id', null),
       siteId
         ? supabase.from('net_edges').select('id, source_id, target_id, label, edge_style').eq('site_id', siteId)
-        : Promise.resolve({ data: [] }),
+        : supabase.from('net_edges').select('id, source_id, target_id, label, edge_style').eq('client_id', clientId).is('site_id', null),
     ]);
 
     const overrides: Record<string, { x: number; y: number }> = {};
     for (const r of (layoutRows ?? []) as LayoutOverride[]) {
-      overrides[r.service_id] = { x: r.x, y: r.y };
+      overrides[r.device_id] = { x: r.x, y: r.y };
     }
 
     const builtNodes: Node[] = ((svcs ?? []) as ServiceRow[]).map((svc, i) =>
@@ -213,6 +213,7 @@ export default function NetworkTopologyPage() {
             siteName={selectedSite?.name ?? 'Todos'}
             onRefresh={() => setRefreshKey(k => k + 1)}
           />
+
         )}
       </div>
     </div>
