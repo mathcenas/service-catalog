@@ -168,15 +168,15 @@ export function TopologyCanvas({ initialNodes, initialEdges, clientId, siteId, s
     setSaving(true);
     if (siteId) {
       await supabase.from('net_layout_overrides').upsert(
-        { site_id: siteId, service_id: node.id, x: node.position.x, y: node.position.y },
-        { onConflict: 'service_id,site_id' }
+        { site_id: siteId, device_id: node.id, x: node.position.x, y: node.position.y },
+        { onConflict: 'device_id,site_id' }
       );
     } else {
       // Partial-index conflict — delete then insert for client-scoped rows
       await supabase.from('net_layout_overrides')
-        .delete().eq('service_id', node.id).eq('client_id', clientId).is('site_id', null);
+        .delete().eq('device_id', node.id).eq('client_id', clientId).is('site_id', null);
       await supabase.from('net_layout_overrides')
-        .insert({ client_id: clientId, site_id: null, service_id: node.id, x: node.position.x, y: node.position.y });
+        .insert({ client_id: clientId, site_id: null, device_id: node.id, x: node.position.x, y: node.position.y });
     }
     setSaving(false);
   }, [siteId, clientId]);
@@ -232,14 +232,14 @@ export function TopologyCanvas({ initialNodes, initialEdges, clientId, siteId, s
     if (!node) return;
     if (siteId) {
       await supabase.from('net_layout_overrides').upsert(
-        { site_id: siteId, service_id: nodeId, x: node.position.x, y: node.position.y, critical: !node.data.critical },
-        { onConflict: 'service_id,site_id' }
+        { site_id: siteId, device_id: nodeId, x: node.position.x, y: node.position.y, critical: !node.data.critical },
+        { onConflict: 'device_id,site_id' }
       );
     } else {
       await supabase.from('net_layout_overrides')
-        .delete().eq('service_id', nodeId).eq('client_id', clientId).is('site_id', null);
+        .delete().eq('device_id', nodeId).eq('client_id', clientId).is('site_id', null);
       await supabase.from('net_layout_overrides')
-        .insert({ client_id: clientId, site_id: null, service_id: nodeId, x: node.position.x, y: node.position.y, critical: !node.data.critical });
+        .insert({ client_id: clientId, site_id: null, device_id: nodeId, x: node.position.x, y: node.position.y, critical: !node.data.critical });
     }
   }, [nodes, siteId, clientId]);
 
@@ -247,10 +247,10 @@ export function TopologyCanvas({ initialNodes, initialEdges, clientId, siteId, s
     setNodes(nds => nds.filter(n => n.id !== nodeId));
     setEdges(eds => eds.filter(e => e.source !== nodeId && e.target !== nodeId));
     if (siteId) {
-      await supabase.from('net_layout_overrides').delete().eq('service_id', nodeId).eq('site_id', siteId);
+      await supabase.from('net_layout_overrides').delete().eq('device_id', nodeId).eq('site_id', siteId);
       await supabase.from('net_edges').delete().or(`source_id.eq.${nodeId},target_id.eq.${nodeId}`).eq('site_id', siteId);
     } else {
-      await supabase.from('net_layout_overrides').delete().eq('service_id', nodeId).eq('client_id', clientId).is('site_id', null);
+      await supabase.from('net_layout_overrides').delete().eq('device_id', nodeId).eq('client_id', clientId).is('site_id', null);
       await supabase.from('net_edges').delete().or(`source_id.eq.${nodeId},target_id.eq.${nodeId}`).eq('client_id', clientId).is('site_id', null);
     }
   }, [siteId, clientId]);
