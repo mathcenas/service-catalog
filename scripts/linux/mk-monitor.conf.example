@@ -1,0 +1,35 @@
+# =============================================================
+# mk-monitor.conf — Configuración de mk-monitor.sh
+# Copiar como mk-monitor.conf y completar valores reales.
+# NUNCA commitear este archivo con valores reales.
+# =============================================================
+
+SUPABASE_URL="https://aguxbtvwljaonagannuz.supabase.co"
+ANON_KEY="REEMPLAZAR_CON_SUPABASE_ANON_KEY"
+
+# Directorio de logs y estado
+LOG_DIR="/srv/network-monitor/logs"
+STATE_DIR="/srv/network-monitor/state"
+
+# Un bloque por router. Copiar y renombrar el sufijo (_1, _2, ...) por cada sitio.
+# SERVICE_ID: UUID del servicio MikroTik en el service catalog
+# INGEST_SECRET: secret del servicio (Settings → Ingest Secret)
+# ROUTER_IP: IP local o pública del router (REST API)
+# ROUTER_USER / ROUTER_PASS: usuario de solo lectura creado en setup.rsc
+# RDP_TARGET: IP interna a pingear (dejar vacío para desactivar el check)
+# KNOWN_IPS: IPs separadas por coma desde las que se permite login (sin espacios)
+
+SITE_COUNT=1
+
+SITE_1_NAME="RegionalSur"
+SITE_1_SERVICE_ID="550e8400-e29b-41d4-a716-446655440000"
+SITE_1_INGEST_SECRET="sk_ingest_REEMPLAZAR"
+SITE_1_ROUTER_IP="192.168.88.1"
+SITE_1_ROUTER_USER="monitor"
+SITE_1_ROUTER_PASS="REEMPLAZAR"
+SITE_1_RDP_TARGET="192.168.88.150"
+SITE_1_KNOWN_IPS="192.168.88.0/24,10.0.0.1,1.2.3.4"
+
+# SITE_2_NAME="RegionalNorte"
+# SITE_2_SERVICE_ID="..."
+# ...
