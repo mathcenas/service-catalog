@@ -549,6 +549,10 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
             <DbMonitoringPanel service={service} typeValues={typeValues} />
           )}
 
+          {(currentTypeName === 'Router / Switch' || currentTypeName === 'Router / Firewall') && (
+            <MikroTikSetupPanel service={service} />
+          )}
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
               Email de notificación
@@ -654,6 +658,98 @@ function DbMonitoringPanel({ service, typeValues }: { service: Service; typeValu
       <p className="text-xs text-gray-400 mt-2">
         Si tenés más de una DB, usá <code className="bg-gray-100 px-1 rounded">DB_2_*</code>, <code className="bg-gray-100 px-1 rounded">DB_3_*</code>, etc.
         El heartbeat aparecerá en el portal del cliente bajo este servicio.
+      </p>
+    </div>
+  );
+}
+
+function MikroTikSetupPanel({ service }: { service: Service }) {
+  const [copiedConf, setCopiedConf] = useState(false);
+  const [copiedRsc,  setCopiedRsc]  = useState(false);
+
+  const secret    = service.ingest_secret || '';
+  const serviceId = service.id;
+  const siteName  = service.business_name || service.name || 'MiSitio';
+  const supabaseUrl = 'https://aguxbtvwljaonagannuz.supabase.co';
+
+  if (!secret) {
+    return (
+      <div className="border border-amber-200 bg-amber-50 rounded-lg p-4 text-sm text-amber-700">
+        Generá un Ingest Secret primero para activar el monitoreo en este router.
+      </div>
+    );
+  }
+
+  const confSnippet = [
+    `# ${service.name} — agregar en mk-monitor.conf`,
+    ``,
+    `SUPABASE_URL="${supabaseUrl}"`,
+    `ANON_KEY="<tu-anon-key>"`,
+    `SITE_COUNT=1`,
+    ``,
+    `SITE_1_NAME="${siteName}"`,
+    `SITE_1_SERVICE_ID="${serviceId}"`,
+    `SITE_1_INGEST_SECRET="${secret}"`,
+    `SITE_1_ROUTER_IP="192.168.88.1"   # IP del router`,
+    `SITE_1_ROUTER_USER="monitor"`,
+    `SITE_1_ROUTER_PASS="<contraseña>"`,
+    `SITE_1_RDP_TARGET=""              # ej: 192.168.88.150 (dejar vacío si no aplica)`,
+    `SITE_1_KNOWN_IPS="192.168.88.0/24,<IP_VPS>"`,
+  ].join('\n');
+
+  const rscSnippet = [
+    `/user/group add name=cenas-monitor policy=read,api,rest-api,!write,!policy,!test,!winbox,!password,!web,!ftp,!reboot,!ssh,!telnet,!sensitive`,
+    `/user add name=monitor group=cenas-monitor password="<cambiar>" address=<IP_VPS>`,
+    `/system/logging/action add name=cenas-syslog target=remote remote=<IP_VPS> remote-port=5140 bsd-syslog=yes`,
+    `/system/logging add topics=account action=cenas-syslog`,
+    `/system/logging add topics=ppp,error action=cenas-syslog`,
+  ].join('\n');
+
+  const copy = (text: string, which: 'conf' | 'rsc') => {
+    navigator.clipboard.writeText(text).catch(() => {});
+    if (which === 'conf') { setCopiedConf(true); setTimeout(() => setCopiedConf(false), 2000); }
+    else                  { setCopiedRsc(true);  setTimeout(() => setCopiedRsc(false),  2000); }
+  };
+
+  return (
+    <div className="border border-gray-200 rounded-lg p-4 space-y-4">
+      <div>
+        <label className="text-sm font-medium text-gray-700">Setup monitoreo MikroTik</label>
+        <p className="text-xs text-gray-400 mt-0.5">
+          Corré <code className="bg-gray-100 px-1 rounded">mk-monitor.sh</code> (cron cada 5 min) y{' '}
+          <code className="bg-gray-100 px-1 rounded">mk-syslog.sh</code> (daemon) en el VPS que tiene acceso al router.
+        </p>
+      </div>
+
+      {/* Config snippet */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs font-medium text-gray-600">1. Variables para mk-monitor.conf</span>
+          <button type="button" onClick={() => copy(confSnippet, 'conf')}
+            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700">
+            {copiedConf ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
+            {copiedConf ? 'Copiado' : 'Copiar'}
+          </button>
+        </div>
+        <pre className="bg-gray-50 rounded-md px-3 py-2 text-xs font-mono text-gray-600 whitespace-pre overflow-x-auto">{confSnippet}</pre>
+      </div>
+
+      {/* RouterOS commands */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs font-medium text-gray-600">2. Comandos en el router (RouterOS Terminal)</span>
+          <button type="button" onClick={() => copy(rscSnippet, 'rsc')}
+            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700">
+            {copiedRsc ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
+            {copiedRsc ? 'Copiado' : 'Copiar'}
+          </button>
+        </div>
+        <pre className="bg-gray-50 rounded-md px-3 py-2 text-xs font-mono text-gray-600 whitespace-pre overflow-x-auto">{rscSnippet}</pre>
+      </div>
+
+      <p className="text-xs text-gray-400">
+        El script corre en el VPS del cliente — solo necesita acceso LAN al router y salida HTTPS a Supabase.
+        Guía completa en <code className="bg-gray-100 px-1 rounded">scripts/mikrotik/setup.rsc</code>.
       </p>
     </div>
   );
