@@ -43,7 +43,7 @@ STATUS="success"
 
 SIZE_BYTES=0
 if [ -n "$SNAPSHOT_DIR" ] && [ -d "$SNAPSHOT_DIR" ]; then
-  RAW=$(timeout 60 du -sb "$SNAPSHOT_DIR" 2>/dev/null | awk '{print $1}')
+  RAW=$(timeout 60 du -sbl "$SNAPSHOT_DIR" 2>/dev/null | awk '{print $1}')
   SIZE_BYTES=${RAW:-0}
 fi
 
