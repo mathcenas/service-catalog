@@ -55,7 +55,7 @@ Deno.serve(async (req: Request) => {
 
     // Buscar share token activo del cliente para incluir en el email
     const { data: shareToken } = await supabase
-      .from("share_tokens")
+      .from("client_share_tokens")
       .select("token")
       .eq("client_id", contact.client_id)
       .or("expires_at.is.null,expires_at.gt." + new Date().toISOString())
