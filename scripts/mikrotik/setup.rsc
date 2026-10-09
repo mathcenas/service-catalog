@@ -35,7 +35,7 @@ add name=cenassyslog \
     target=remote \
     remote=$IP_VPS \
     remote-port=$SYSLOG_PORT \
-    remote-log-format=bsd \
+    remote-log-format=syslog \
     src-address=0.0.0.0 \
     comment="Cenas IT - eventos de seguridad"
 

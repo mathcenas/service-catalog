@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/mk-syslog /srv/network-monitor/mk-monitor.conf
+ExecStart=/srv/scripts/mk-syslog.sh /srv/scripts/mk-monitor.conf
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
