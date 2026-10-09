@@ -1,41 +1,84 @@
 #!/bin/bash
 # =============================================================
-# mikrotik-heartbeat.sh — Lee logs de Mikrotik y envía métricas
-# al Service Catalog como heartbeat (source: mikrotik)
+# mikrotik-heartbeat.sh — Lee logs de MikroTik y envía última
+# métrica al Service Catalog como heartbeat (source: mikrotik).
 #
-# ACTUALIZAR (Linux):
-#   curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/linux/mikrotik-heartbeat.sh \
-#     -o /srv/network-monitor/mikrotik-heartbeat.sh && chmod +x /srv/network-monitor/mikrotik-heartbeat.sh
+# Usar junto con ingest-telemetry.py para la serie histórica.
 #
-# CRON (crontab -e):
-#   * * * * * /srv/network-monitor/mikrotik-heartbeat.sh >> /var/log/mikrotik-heartbeat.log 2>&1
+# Búsqueda de config (en orden):
+#   1. Arg CLI  2. /etc/mikrotik-ingest.env  3. $SCRIPT_DIR/.env
+#
+# Cron (cada minuto):
+#   * * * * * /srv/scripts/mikrotik/mikrotik-heartbeat.sh
 # =============================================================
-SCRIPT_VERSION="1.0.1"
 
-# ---------- Config global ----------
-SUPABASE_URL="https://REEMPLAZAR.supabase.co"
-SUPABASE_ANON_KEY="REEMPLAZAR_CON_ANON_KEY"
-INGEST_SECRET="REEMPLAZAR_CON_INGEST_SECRET"
-HEARTBEAT_URL="${SUPABASE_URL}/functions/v1/ingest-heartbeat"
+set -euo pipefail
 
-LOG_DIR="/srv/network-monitor/network-monitor/historial"
-STATE_DIR="/srv/network-monitor/state"
-LOG_LOCAL="/srv/network-monitor/mikrotik-heartbeat.log"
+SCRIPT_VERSION="1.0.0"
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+
+if [[ -n "${1:-}" && -f "$1" ]]; then
+  ENV_FILE="$1"
+elif [[ -f /etc/mikrotik-ingest.env ]]; then
+  ENV_FILE=/etc/mikrotik-ingest.env
+elif [[ -f "$SCRIPT_DIR/.env" ]]; then
+  ENV_FILE="$SCRIPT_DIR/.env"
+else
+  echo "ERROR: no se encontró archivo de configuración" >&2
+  exit 1
+fi
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+
+_BASE_URL="${SUPABASE_URL%%/functions/v1*}"
+HEARTBEAT_URL="${_BASE_URL}/functions/v1/ingest-heartbeat"
+
+: "${SUPABASE_ANON_KEY:?}" "${INGEST_SECRET:?}"
+
+LOG_DIR="${MIKROTIK_LOG_DIR:-/srv/network-monitor/network-monitor/historial}"
+STATE_DIR="${MIKROTIK_STATE_DIR:-$SCRIPT_DIR/state}"
+LOG_LOCAL="${LOG_FILE:-/var/log/mikrotik-heartbeat.log}"
 
 mkdir -p "$STATE_DIR"
 
-# ---------- Mapeo nombre_archivo → SERVICE_ID ----------
-# Agregar una línea por cada cliente / router
-declare -A SERVICE_MAP
-SERVICE_MAP["RegionalSur"]="UUID-DEL-SERVICIO-REGIONAL-SUR"
-SERVICE_MAP["RegionalNorte"]="UUID-DEL-SERVICIO-REGIONAL-NORTE"
-# SERVICE_MAP["NombreArchivo"]="UUID-DEL-SERVICIO"
+# ---------- Mapeo desde archivo externo ----------
+# Formato de /etc/mikrotik-map.env (o MIKROTIK_MAP_FILE):
+#   RegionalSur=uuid-del-service-id
+#   RegionalNorte=uuid-del-service-id
+#   # Kuma opcional:
+#   RegionalSur_kuma=https://kuma.midominio.com/api/push/AbCdEfGhIj
+MAP_FILE="${MIKROTIK_MAP_FILE:-/etc/mikrotik-map.env}"
+[ -f "$SCRIPT_DIR/map.env" ] && MAP_FILE="$SCRIPT_DIR/map.env"
 
-# ---------- Mapeo nombre_archivo → KUMA_PUSH_URL (opcional) ----------
-# Si no se configura para un cliente, no se pinga Kuma. Sin errores.
+declare -A SERVICE_MAP
 declare -A KUMA_MAP
-# KUMA_MAP["RegionalSur"]="https://kuma.midominio.com/api/push/AbCdEfGhIj"
-# KUMA_MAP["RegionalNorte"]="https://kuma.midominio.com/api/push/KlMnOpQrSt"
+
+if [[ -f "$MAP_FILE" ]]; then
+  while IFS='=' read -r key val; do
+    [[ "$key" =~ ^#|^[[:space:]]*$ ]] && continue
+    key=$(echo "$key" | xargs)
+    val=$(echo "$val" | xargs)
+    if [[ "$key" == *_kuma ]]; then
+      KUMA_MAP["${key%_kuma}"]="$val"
+    else
+      SERVICE_MAP["$key"]="$val"
+    fi
+  done < "$MAP_FILE"
+else
+  log "WARN: no se encontró map file ($MAP_FILE) — ningún router configurado"
+fi
+
+# ---------- Thresholds ----------
+WARN_CPU=80;  ERROR_CPU=95
+WARN_RAM=85;  ERROR_RAM=92
+
+log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOG_LOCAL"; }
+
+# Rotar log local si pasa de 5 MB
+if [ -f "$LOG_LOCAL" ] && [ "$(stat -c%s "$LOG_LOCAL" 2>/dev/null || echo 0)" -gt 5242880 ]; then
+  mv "$LOG_LOCAL" "${LOG_LOCAL%.log}-$(date '+%Y%m').log"
+fi
 
 notify_kuma() {
   local push_url="$1" status="$2" msg="$3"
@@ -48,46 +91,28 @@ notify_kuma() {
     >/dev/null 2>&1 || true
 }
 
-# ---------- Thresholds ----------
-WARN_CPU=80;  ERROR_CPU=95
-WARN_RAM=85;  ERROR_RAM=92
-WARN_WAN=0    # Mbps mínimo esperado (0 = no chequear)
-
-# ---------- Logger ----------
-log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOG_LOCAL"; }
-
-# Rotar log local si pasa de 5MB
-if [ -f "$LOG_LOCAL" ] && [ "$(stat -c%s "$LOG_LOCAL" 2>/dev/null || echo 0)" -gt 5242880 ]; then
-  mv "$LOG_LOCAL" "${LOG_LOCAL%.log}-$(date '+%Y%m').log"
-fi
-
-# ---------- Procesar cada log ----------
 for LOG_FILE in "$LOG_DIR"/*.log; do
   [ -f "$LOG_FILE" ] || continue
 
   CLIENT_NAME=$(basename "$LOG_FILE" .log)
-  SERVICE_ID="${SERVICE_MAP[$CLIENT_NAME]}"
+  SERVICE_ID="${SERVICE_MAP[$CLIENT_NAME]:-}"
 
-  if [ -z "$SERVICE_ID" ] || [ "$SERVICE_ID" = "UUID-DEL-SERVICIO-"* ]; then
+  if [[ -z "$SERVICE_ID" || "$SERVICE_ID" == uuid-del-* ]]; then
     log "SKIP $CLIENT_NAME — sin SERVICE_ID configurado"
     continue
   fi
 
-  # Última línea METRICAS
   LAST_LINE=$(grep "METRICAS" "$LOG_FILE" | tail -1)
   [ -z "$LAST_LINE" ] && continue
 
-  # Timestamp de la línea
   LINE_TS=$(echo "$LAST_LINE" | grep -oP '\[\K[^\]]+')
 
-  # Evitar reenviar la misma línea
-  STATE_FILE="$STATE_DIR/${CLIENT_NAME}.last"
+  STATE_FILE="$STATE_DIR/${CLIENT_NAME}.heartbeat"
   LAST_SENT=$(cat "$STATE_FILE" 2>/dev/null || echo "")
   if [ "$LINE_TS" = "$LAST_SENT" ]; then
     continue
   fi
 
-  # ---------- Parsear métricas ----------
   CPU=$(echo "$LAST_LINE"   | grep -oP 'CPU: \K[0-9.]+')
   RAM=$(echo "$LAST_LINE"   | grep -oP 'RAM: \K[0-9.]+')
   WAN=$(echo "$LAST_LINE"   | grep -oP 'WAN In: \K[0-9.]+')
@@ -95,33 +120,19 @@ for LOG_FILE in "$LOG_DIR"/*.log; do
 
   CPU=${CPU:-0}; RAM=${RAM:-0}; WAN=${WAN:-0}; IPSEC=${IPSEC:-UNKNOWN}
 
-  # ---------- Status ----------
   STATUS="success"
   ISSUES=""
 
-  if (( $(echo "$CPU > $ERROR_CPU" | bc -l) )); then
-    STATUS="failed"; ISSUES="CPU alta (${CPU}%) "
-  elif (( $(echo "$CPU > $WARN_CPU" | bc -l) )); then
-    [ "$STATUS" = "success" ] && STATUS="warning"; ISSUES="CPU alta (${CPU}%) "
-  fi
+  (( $(echo "$CPU > $ERROR_CPU" | bc -l) )) && { STATUS="failed";  ISSUES="CPU alta (${CPU}%) "; }
+  (( $(echo "$CPU > $WARN_CPU"  | bc -l) )) && [[ "$STATUS" = "success" ]] && { STATUS="warning"; ISSUES="CPU alta (${CPU}%) "; }
+  (( $(echo "$RAM > $ERROR_RAM" | bc -l) )) && { STATUS="failed";  ISSUES="${ISSUES}RAM alta (${RAM}%) "; }
+  (( $(echo "$RAM > $WARN_RAM"  | bc -l) )) && [[ "$STATUS" = "success" ]] && { STATUS="warning"; ISSUES="${ISSUES}RAM alta (${RAM}%) "; }
+  [[ "$IPSEC" = "OFFLINE" ]] && [[ "$STATUS" = "success" ]] && { STATUS="warning"; ISSUES="${ISSUES}IPsec OFFLINE "; }
 
-  if (( $(echo "$RAM > $ERROR_RAM" | bc -l) )); then
-    STATUS="failed"; ISSUES="${ISSUES}RAM alta (${RAM}%) "
-  elif (( $(echo "$RAM > $WARN_RAM" | bc -l) )); then
-    [ "$STATUS" = "success" ] && STATUS="warning"; ISSUES="${ISSUES}RAM alta (${RAM}%) "
-  fi
-
-  if [ "$IPSEC" = "OFFLINE" ]; then
-    [ "$STATUS" = "success" ] && STATUS="warning"
-    ISSUES="${ISSUES}IPsec OFFLINE "
-  fi
-
-  ISSUES=$(echo "$ISSUES" | xargs)  # trim
+  ISSUES=$(echo "$ISSUES" | xargs)
   [ -z "$ISSUES" ] && ISSUES="Normal"
-
   MESSAGE="CPU: ${CPU}% | RAM: ${RAM}% | WAN: ${WAN} Mbps | IPsec: ${IPSEC}"
 
-  # ---------- Payload JSON ----------
   PAYLOAD=$(cat <<EOF
 {
   "service_id": "$SERVICE_ID",
@@ -135,15 +146,14 @@ for LOG_FILE in "$LOG_DIR"/*.log; do
     "wan_in_mbps": $WAN,
     "ipsec_status": "$IPSEC",
     "client": "$CLIENT_NAME",
-    "issues": "$ISSUES"
+    "issues": "$ISSUES",
+    "script_version": "$SCRIPT_VERSION"
   }
 }
 EOF
 )
 
-  # ---------- Enviar ----------
   HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-    --retry 3 --retry-delay 3 --retry-connrefused \
     -X POST "$HEARTBEAT_URL" \
     -H "Content-Type: application/json" \
     -H "apikey: $SUPABASE_ANON_KEY" \
