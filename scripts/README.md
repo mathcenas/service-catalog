@@ -70,11 +70,11 @@ Pegar en Terminal de Winbox o SSH — o usar el archivo `mikrotik/setup.rsc`:
 
 /user add name=monitor group=cenas-monitor password="<PASSWORD>" address=<IP_VPS>
 
-/system/logging/action add name=cenas-syslog target=remote \
-    remote=<IP_VPS> remote-port=5140 bsd-syslog=yes
+/system/logging/action add name=cenassyslog target=remote \
+    remote=<IP_VPS> remote-port=5140 remote-log-format=bsd
 
-/system/logging add topics=account action=cenas-syslog
-/system/logging add topics=ppp,error action=cenas-syslog
+/system/logging add topics=account action=cenassyslog
+/system/logging add topics=ppp,error action=cenassyslog
 ```
 
 Verificar que la REST API esté habilitada: **IP → Services → api-ssl** debe estar activo.

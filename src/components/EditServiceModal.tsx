@@ -700,9 +700,9 @@ function MikroTikSetupPanel({ service }: { service: Service }) {
   const rscSnippet = [
     `/user/group add name=cenas-monitor policy=read,api,rest-api,!write,!policy,!test,!winbox,!password,!web,!ftp,!reboot,!ssh,!telnet,!sensitive`,
     `/user add name=monitor group=cenas-monitor password="<cambiar>" address=<IP_VPS>`,
-    `/system/logging/action add name=cenas-syslog target=remote remote=<IP_VPS> remote-port=5140 bsd-syslog=yes`,
-    `/system/logging add topics=account action=cenas-syslog`,
-    `/system/logging add topics=ppp,error action=cenas-syslog`,
+    `/system/logging/action add name=cenassyslog target=remote remote=<IP_VPS> remote-port=5140 remote-log-format=bsd`,
+    `/system/logging add topics=account action=cenassyslog`,
+    `/system/logging add topics=ppp,error action=cenassyslog`,
   ].join('\n');
 
   const copy = (text: string, which: 'conf' | 'rsc') => {
