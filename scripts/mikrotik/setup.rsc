@@ -31,18 +31,18 @@ add name=monitor \
 
 # 3. Acción de syslog remoto (solo hacia el VPS)
 /system/logging/action
-add name=cenas-syslog \
+add name=cenassyslog \
     target=remote \
     remote=$IP_VPS \
     remote-port=$SYSLOG_PORT \
+    remote-log-format=syslog \
     src-address=0.0.0.0 \
-    bsd-syslog=yes \
     comment="Cenas IT - eventos de seguridad"
 
 # 4. Reglas de syslog: solo eventos de seguridad relevantes
 /system/logging
-add topics=account action=cenas-syslog comment="Logins (exitosos y fallidos)"
-add topics=ppp,error action=cenas-syslog comment="Errores PPP"
+add topics=account action=cenassyslog comment="Logins (exitosos y fallidos)"
+add topics=ppp,error action=cenassyslog comment="Errores PPP"
 
 # 5. Verificación
 :put "=== Usuario monitor ==="
@@ -52,9 +52,9 @@ add topics=ppp,error action=cenas-syslog comment="Errores PPP"
 /user/group print where name=cenas-monitor
 
 :put "=== Syslog action ==="
-/system/logging/action print where name=cenas-syslog
+/system/logging/action print where name=cenassyslog
 
 :put "=== Logging rules ==="
-/system/logging print where action=cenas-syslog
+/system/logging print where action=cenassyslog
 
 :put "OK - Setup completo. Probá: curl -k https://<IP_ROUTER>/rest/system/resource -u monitor:<pass>"

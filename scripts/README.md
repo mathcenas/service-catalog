@@ -70,11 +70,11 @@ Pegar en Terminal de Winbox o SSH — o usar el archivo `mikrotik/setup.rsc`:
 
 /user add name=monitor group=cenas-monitor password="<PASSWORD>" address=<IP_VPS>
 
-/system/logging/action add name=cenas-syslog target=remote \
-    remote=<IP_VPS> remote-port=5140 bsd-syslog=yes
+/system/logging/action add name=cenassyslog target=remote \
+    remote=<IP_VPS> remote-port=5140 remote-log-format=syslog
 
-/system/logging add topics=account action=cenas-syslog
-/system/logging add topics=ppp,error action=cenas-syslog
+/system/logging add topics=account action=cenassyslog
+/system/logging add topics=ppp,error action=cenassyslog
 ```
 
 Verificar que la REST API esté habilitada: **IP → Services → api-ssl** debe estar activo.
@@ -85,17 +85,19 @@ Verificar que la REST API esté habilitada: **IP → Services → api-ssl** debe
 # Dependencias
 apt install -y socat jq
 
+mkdir -p /srv/scripts
+
 # Descargar scripts
 curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/linux/mk-monitor.sh \
-  -o /usr/local/bin/mk-monitor && chmod +x /usr/local/bin/mk-monitor
+  -o /srv/scripts/mk-monitor.sh && chmod +x /srv/scripts/mk-monitor.sh
 
 curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/linux/mk-syslog.sh \
-  -o /usr/local/bin/mk-syslog && chmod +x /usr/local/bin/mk-syslog
+  -o /srv/scripts/mk-syslog.sh && chmod +x /srv/scripts/mk-syslog.sh
 
 # Configuración (completar con datos reales)
 curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/linux/mk-monitor.conf.example \
-  -o /srv/network-monitor/mk-monitor.conf
-# → editar /srv/network-monitor/mk-monitor.conf
+  -o /srv/scripts/mk-monitor.conf
+# → editar /srv/scripts/mk-monitor.conf
 ```
 
 ### 3. Configurar mk-monitor.conf
@@ -123,13 +125,12 @@ SITE_1_KNOWN_IPS="192.168.88.0/24,1.2.3.4"  # IPs desde las que se permite login
 
 ```bash
 # mk-monitor: cron cada 5 minutos
-(crontab -l 2>/dev/null; echo "*/5 * * * * /usr/local/bin/mk-monitor /srv/network-monitor/mk-monitor.conf >> /srv/network-monitor/logs/mk-monitor.log 2>&1") | crontab -
+(crontab -l 2>/dev/null; echo "*/5 * * * * /srv/scripts/mk-monitor.sh /srv/scripts/mk-monitor.conf >> /srv/scripts/logs/mk-monitor.log 2>&1") | crontab -
 
 # mk-syslog: servicio systemd persistente
 curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/linux/mk-syslog.service \
   -o /etc/systemd/system/mk-syslog.service
 
-# Editar ExecStart para apuntar a la conf correcta si es necesario
 systemctl daemon-reload
 systemctl enable --now mk-syslog
 systemctl status mk-syslog
