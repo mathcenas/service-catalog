@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Mail, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Plus, Trash2, Send, Monitor, FileText } from 'lucide-react';
+import { Mail, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Plus, Trash2, Send, Monitor, FileText, Eye, Clock } from 'lucide-react';
 import { supabase, Client } from '../lib/supabase';
 import { BRAND, pdfHeader, pdfSection, openPrintWindow } from '../lib/pdfBrand';
 
@@ -33,11 +33,27 @@ type EmailSend = {
   tracking_id: string;
   client_email: string;
   client_id: string | null;
+  contact_id: string | null;
   email_type: string | null;
   subject: string | null;
   open_count: number;
   opened_at: string | null;
+  sent_at: string | null;
   created_at: string;
+};
+
+const EMAIL_TYPE_LABELS: Record<string, string> = {
+  welcome: 'Bienvenida',
+  backup_success: 'Backup OK',
+  backup_failed: 'Backup FAIL',
+  digest: 'Digest',
+};
+
+const EMAIL_TYPE_COLORS: Record<string, string> = {
+  welcome: 'bg-blue-50 text-blue-700',
+  backup_success: 'bg-green-50 text-green-700',
+  backup_failed: 'bg-red-50 text-red-700',
+  digest: 'bg-violet-50 text-violet-700',
 };
 
 type Props = { clients: Client[] };
@@ -48,6 +64,7 @@ export function EmailAuditAdminView({ clients }: Props) {
   const [emailSends, setEmailSends] = useState<EmailSend[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [showSends, setShowSends] = useState(false);
+  const [sendsTypeFilter, setSendsTypeFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -87,8 +104,9 @@ export function EmailAuditAdminView({ clients }: Props) {
         .from('email_opens')
         .select('*')
         .not('email_type', 'eq', 'page_view')
+        .order('sent_at', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
-        .limit(100),
+        .limit(200),
       supabase
         .from('email_opens')
         .select('*')
@@ -489,54 +507,89 @@ export function EmailAuditAdminView({ clients }: Props) {
 
       {/* Email sends section */}
       <div className="border border-gray-200 rounded-xl overflow-hidden">
-        <button
-          onClick={() => setShowSends(v => !v)}
-          className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
-        >
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
+          <button
+            onClick={() => setShowSends(v => !v)}
+            className="flex items-center gap-2 flex-1"
+          >
             <Send className="w-4 h-4 text-gray-500" />
             <span className="font-medium text-sm text-gray-700">Emails enviados</span>
             <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600">{emailSends.length}</span>
-          </div>
-          {showSends ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-        </button>
+            {showSends ? <ChevronUp className="w-4 h-4 text-gray-400 ml-auto" /> : <ChevronDown className="w-4 h-4 text-gray-400 ml-auto" />}
+          </button>
+        </div>
         {showSends && (
-          emailSends.length === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-gray-400">No hay emails registrados todavía.</div>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {emailSends.map(s => {
-                const clientName = clients.find(c => c.id === s.client_id)?.company_name;
+          <div>
+            {/* Type filter chips */}
+            <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-gray-100 flex-wrap">
+              {(['all', 'welcome', 'backup_success', 'backup_failed', 'digest'] as const).map(type => {
+                const count = type === 'all'
+                  ? emailSends.length
+                  : emailSends.filter(s => s.email_type === type).length;
+                const active = sendsTypeFilter === type;
                 return (
-                  <div key={s.id} className="flex items-center gap-3 px-4 py-2.5">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm text-gray-800 truncate">{s.client_email}</span>
-                        {clientName && <span className="text-xs text-gray-400">({clientName})</span>}
-                        {s.email_type && (
-                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">{s.email_type}</span>
-                        )}
-                      </div>
-                      {s.subject && <p className="text-xs text-gray-400 truncate mt-0.5">{s.subject}</p>}
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0 text-xs text-gray-400">
-                      <span>{new Date(s.created_at).toLocaleDateString('es-UY')}</span>
-                      {s.open_count > 0 ? (
-                        <span
-                          className="px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600"
-                          title={s.opened_at ? `Primer apertura: ${new Date(s.opened_at).toLocaleString('es-UY')}` : ''}
-                        >
-                          👁 {s.open_count}
-                        </span>
-                      ) : (
-                        <span className="text-gray-300">no abierto</span>
-                      )}
-                    </div>
-                  </div>
+                  <button
+                    key={type}
+                    onClick={() => setSendsTypeFilter(type)}
+                    className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
+                      active
+                        ? type === 'all'
+                          ? 'bg-gray-700 text-white'
+                          : EMAIL_TYPE_COLORS[type] + ' ring-1 ring-offset-1 ring-current'
+                        : 'bg-white border border-gray-200 text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    {type === 'all' ? 'Todos' : EMAIL_TYPE_LABELS[type]} {count > 0 && `(${count})`}
+                  </button>
                 );
               })}
             </div>
-          )
+            {emailSends.filter(s => sendsTypeFilter === 'all' || s.email_type === sendsTypeFilter).length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-gray-400">No hay emails registrados todavía.</div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {emailSends
+                  .filter(s => sendsTypeFilter === 'all' || s.email_type === sendsTypeFilter)
+                  .map(s => {
+                    const clientName = clients.find(c => c.id === s.client_id)?.company_name;
+                    const sentDate = s.sent_at || s.created_at;
+                    const typeColor = s.email_type ? (EMAIL_TYPE_COLORS[s.email_type] ?? 'bg-gray-100 text-gray-500') : 'bg-gray-100 text-gray-500';
+                    const typeLabel = s.email_type ? (EMAIL_TYPE_LABELS[s.email_type] ?? s.email_type) : '—';
+                    return (
+                      <div key={s.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm text-gray-800 font-medium truncate">{s.client_email}</span>
+                            {clientName && <span className="text-xs text-gray-400">· {clientName}</span>}
+                            <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${typeColor}`}>{typeLabel}</span>
+                          </div>
+                          {s.subject && <p className="text-xs text-gray-400 truncate mt-0.5">{s.subject}</p>}
+                        </div>
+                        <div className="flex items-center gap-2.5 shrink-0 text-xs text-gray-400">
+                          <span title={new Date(sentDate).toLocaleString('es-UY')}>
+                            {new Date(sentDate).toLocaleDateString('es-UY', { day: '2-digit', month: 'short' })}
+                          </span>
+                          {s.opened_at ? (
+                            <span
+                              className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-50 text-green-700"
+                              title={`Abierto: ${new Date(s.opened_at).toLocaleString('es-UY')}`}
+                            >
+                              <Eye className="w-3 h-3" />
+                              Abierto
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-gray-300">
+                              <Clock className="w-3 h-3" />
+                              Sin abrir
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
