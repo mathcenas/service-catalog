@@ -67,6 +67,15 @@ Deno.serve(async (req: Request) => {
       ? `${portalUrl}/share/${shareToken.token}`
       : null;
 
+    console.log("[send-welcome] debug", {
+      contact_id,
+      client_id: contact.client_id,
+      portalUrl,
+      shareTokenFound: !!shareToken,
+      shareToken: shareToken?.token ?? null,
+      shareUrl,
+    });
+
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     if (!RESEND_API_KEY) {
       console.log("[send-welcome] RESEND_API_KEY no configurado");
