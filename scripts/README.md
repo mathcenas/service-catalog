@@ -23,18 +23,17 @@ scripts/
 │   ├── report-backup.sh              # Reporte individual de snapshot rsnapshot/rsync
 │   ├── system-health.sh              # CPU / RAM / Disco / Uptime de VPS → ingest-heartbeat
 │   ├── system-health.env.example     # Plantilla de configuración para system-health.sh
-│   ├── mikrotik-heartbeat.sh         # Lee logs de Mikrotik por cliente → ingest-heartbeat
-│   ├── mk-ingest.sh                  # Envía telemetría y eventos MikroTik (JSON files) → Supabase
-│   ├── mk-ingest.conf.example        # Plantilla de configuración para mk-ingest.sh
-│   ├── mk-monitor.sh                 # Chequeos activos vía REST API (ping RDP, CPU, sesiones)
-│   ├── mk-monitor.conf.example       # Plantilla de configuración para mk-monitor.sh y mk-syslog.sh
-│   ├── mk-syslog.sh                  # Daemon receptor syslog UDP — logins, brute-force → ingest-events
+│   ├── mk-monitor.sh                 # Chequeos activos MikroTik vía REST API → ingest-events
+│   ├── mk-syslog.sh                  # Daemon syslog UDP — logins, brute-force → ingest-events
+│   ├── mk-monitor.conf.example       # Conf compartida para mk-monitor.sh y mk-syslog.sh
 │   └── mk-syslog.service             # Unidad systemd para mk-syslog.sh
 ├── mikrotik/
-│   └── setup.rsc                     # Comandos RouterOS: usuario monitor + syslog remoto
-└── nas/
-    ├── backup-ingest.env             # Configuración NAS OpenMediaVault
-    └── report-all-backups.sh         # Reporte de todos los snapshots del NAS/OMV al panel
+│   ├── setup.rsc                     # RouterOS: usuario monitor + acción syslog remoto
+│   └── net-topology-report.rsc       # RouterOS: exporta topología de red al portal
+├── nas/
+│   ├── report-all-backups.sh         # Reporte de todos los snapshots del NAS/OMV al panel
+│   └── backfill-snapshots.sh         # Backfill histórico de snapshots existentes
+└── legacy/mikrotik/                  # Pipeline viejo (reemplazado por mk-monitor + mk-syslog)
 ```
 
 ---
@@ -102,23 +101,30 @@ curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scri
 
 ### 3. Configurar mk-monitor.conf
 
-El `SERVICE_ID` e `INGEST_SECRET` se generan en el Service Catalog:
+El `SERVICE_ID` e `INGEST_SECRET` se obtienen en el Service Catalog:
 **Servicios → [servicio Router/Switch] → Editar → Setup monitoreo MikroTik** — los bloques
-para copiar ya están pre-rellenados con los valores del servicio.
+ya están pre-rellenados con los valores del servicio, listos para copiar.
 
 ```bash
-SUPABASE_URL="https://aguxbtvwljaonagannuz.supabase.co"
-ANON_KEY="<supabase-anon-key>"
+SUPABASE_URL="https://PROYECTO.supabase.co"
+SUPABASE_ANON_KEY="<supabase-anon-key>"   # Supabase → Project Settings → API → anon key
+
+# Cantidad de routers/sitios en este VPS
 SITE_COUNT=1
 
+# Un bloque por sitio (duplicar con _2, _3, ... para más routers)
 SITE_1_NAME="RegionalSur"
-SITE_1_SERVICE_ID="<uuid-del-servicio>"
-SITE_1_INGEST_SECRET="<ingest-secret>"
-SITE_1_ROUTER_IP="192.168.88.1"
-SITE_1_ROUTER_USER="monitor"
+SITE_1_SERVICE_ID="<uuid-del-servicio>"       # desde el portal
+SITE_1_INGEST_SECRET="<ingest-secret>"        # desde el portal
+SITE_1_ROUTER_IP="192.168.88.1"               # IP del router (accesible desde este VPS)
+SITE_1_ROUTER_USER="monitor"                  # usuario creado en setup.rsc
 SITE_1_ROUTER_PASS="<contraseña>"
-SITE_1_RDP_TARGET="192.168.88.150"        # dejar vacío si no aplica
-SITE_1_KNOWN_IPS="192.168.88.0/24,1.2.3.4"  # IPs desde las que se permite login
+SITE_1_RDP_TARGET="192.168.88.150"            # IP a pingear (dejar vacío si no aplica)
+SITE_1_KNOWN_IPS="192.168.88.0/24,1.2.3.4"   # IPs autorizadas para login (CIDR o exacta)
+
+# Opcional: rutas de logs y estado (default: /srv/scripts/logs y /srv/scripts/state)
+# LOG_DIR="/srv/scripts/logs"
+# STATE_DIR="/srv/scripts/state"
 ```
 
 ### 4. Activar cron y daemon

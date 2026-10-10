@@ -222,6 +222,11 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // Marcar welcome_sent_at en el contacto
+    await supabase.from("client_contacts")
+      .update({ welcome_sent_at: new Date().toISOString() })
+      .eq("id", contact_id);
+
     // Guardar en email_opens para correlacionar tracking
     await supabase.from("email_opens").insert({
       user_id:        userId,

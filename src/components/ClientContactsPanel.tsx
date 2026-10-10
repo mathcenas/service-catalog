@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Mail } from 'lucide-react';
+import { Plus, Trash2, Mail, Send, Check, Clock } from 'lucide-react';
 import { ClientContact, supabase } from '../lib/supabase';
 
 const FREQ_LABELS: Record<string, string> = {
@@ -23,6 +23,8 @@ export function ClientContactsPanel({ clientId, userId }: Props) {
   const [form, setForm] = useState({ name: '', email: '', role: '', digest_frequency: 'none' as ClientContact['digest_frequency'] });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [sendingWelcome, setSendingWelcome] = useState<string | null>(null);
+  const [sentOk, setSentOk] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -66,6 +68,30 @@ export function ClientContactsPanel({ clientId, userId }: Props) {
     setContacts(cs => cs.filter(c => c.id !== id));
   };
 
+  const sendWelcome = async (contact: ClientContact) => {
+    setSendingWelcome(contact.id);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-welcome`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ contact_id: contact.id }),
+      });
+      if (res.ok) {
+        const now = new Date().toISOString();
+        setContacts(cs => cs.map(c => c.id === contact.id ? { ...c, welcome_sent_at: now } : c));
+        setSentOk(contact.id);
+        setTimeout(() => setSentOk(null), 3000);
+      }
+    } finally {
+      setSendingWelcome(null);
+    }
+  };
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -90,31 +116,72 @@ export function ClientContactsPanel({ clientId, userId }: Props) {
       ) : (
         <div className="space-y-2">
           {contacts.map(c => (
-            <div key={c.id} className="flex items-center gap-2 p-2.5 bg-gray-50 rounded-lg border border-gray-200">
-              <Mail className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-medium text-gray-800 truncate">{c.name}</span>
-                  {c.role && <span className="text-xs text-gray-400">· {c.role}</span>}
+            <div key={c.id} className="p-2.5 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex items-center gap-2">
+                <Mail className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-medium text-gray-800 truncate">{c.name}</span>
+                    {c.role && <span className="text-xs text-gray-400">· {c.role}</span>}
+                  </div>
+                  <span className="text-xs text-gray-500 truncate block">{c.email}</span>
                 </div>
-                <span className="text-xs text-gray-500 truncate block">{c.email}</span>
+                <select
+                  value={c.digest_frequency}
+                  onChange={e => handleFreqChange(c.id, e.target.value as ClientContact['digest_frequency'])}
+                  className={`text-xs px-2 py-1 rounded border-0 font-medium cursor-pointer outline-none ${FREQ_COLORS[c.digest_frequency]}`}
+                >
+                  {Object.entries(FREQ_LABELS).map(([v, l]) => (
+                    <option key={v} value={v}>{l}</option>
+                  ))}
+                </select>
+                {/* Botón welcome */}
+                <button
+                  type="button"
+                  onClick={() => sendWelcome(c)}
+                  disabled={sendingWelcome === c.id}
+                  title={c.welcome_sent_at ? `Reenviar bienvenida (enviado ${new Date(c.welcome_sent_at).toLocaleDateString('es-UY')})` : 'Enviar bienvenida'}
+                  className={`p-1 rounded transition-colors ${
+                    sentOk === c.id
+                      ? 'text-green-500'
+                      : sendingWelcome === c.id
+                      ? 'text-gray-300'
+                      : c.welcome_sent_at
+                      ? 'text-blue-400 hover:text-blue-600 hover:bg-blue-50'
+                      : 'text-amber-400 hover:text-amber-600 hover:bg-amber-50'
+                  }`}
+                >
+                  {sentOk === c.id
+                    ? <Check className="w-3.5 h-3.5" />
+                    : sendingWelcome === c.id
+                    ? <Send className="w-3.5 h-3.5 animate-pulse" />
+                    : c.welcome_sent_at
+                    ? <Send className="w-3.5 h-3.5" />
+                    : <Clock className="w-3.5 h-3.5" />
+                  }
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(c.id)}
+                  className="p-1 hover:bg-red-50 rounded text-gray-300 hover:text-red-500 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
-              <select
-                value={c.digest_frequency}
-                onChange={e => handleFreqChange(c.id, e.target.value as ClientContact['digest_frequency'])}
-                className={`text-xs px-2 py-1 rounded border-0 font-medium cursor-pointer outline-none ${FREQ_COLORS[c.digest_frequency]}`}
-              >
-                {Object.entries(FREQ_LABELS).map(([v, l]) => (
-                  <option key={v} value={v}>{l}</option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => handleDelete(c.id)}
-                className="p-1 hover:bg-red-50 rounded text-gray-300 hover:text-red-500 transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              {/* Badge de estado welcome */}
+              <div className="mt-1.5 ml-5">
+                {c.welcome_sent_at ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-blue-600">
+                    <Check className="w-3 h-3" />
+                    Bienvenida enviada · {new Date(c.welcome_sent_at).toLocaleDateString('es-UY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-xs text-amber-500">
+                    <Clock className="w-3 h-3" />
+                    Pendiente de bienvenida
+                  </span>
+                )}
+              </div>
             </div>
           ))}
         </div>

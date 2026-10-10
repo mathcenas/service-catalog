@@ -35,7 +35,8 @@ fi
 source "$CONF_FILE"
 
 : "${SUPABASE_URL:?SUPABASE_URL no configurado}"
-: "${ANON_KEY:?ANON_KEY no configurado}"
+SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY:-$ANON_KEY}"
+: "${SUPABASE_ANON_KEY:?SUPABASE_ANON_KEY (o ANON_KEY) no configurado}"
 : "${SITE_COUNT:?SITE_COUNT no configurado}"
 
 LOG_DIR="${LOG_DIR:-${SCRIPT_DIR}/logs}"
@@ -95,8 +96,8 @@ send_event() {
     --max-time 10 \
     -X POST "$EVENTS_URL" \
     -H "Content-Type: application/json" \
-    -H "apikey: $ANON_KEY" \
-    -H "Authorization: Bearer $ANON_KEY" \
+    -H "apikey: $SUPABASE_ANON_KEY" \
+    -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
     -H "X-Ingest-Secret: $ingest_secret" \
     -d "$payload"
 }
