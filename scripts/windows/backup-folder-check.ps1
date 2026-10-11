@@ -14,7 +14,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.1.2"
+$SCRIPT_VERSION = "1.1.3"
 
 # Invoke-Kuma puede no estar definida en todos los config.ps1
 if (-not (Get-Command Invoke-Kuma -ErrorAction SilentlyContinue)) {
@@ -89,8 +89,21 @@ if (-not (Test-Path $BACKUP_PATH)) {
 }
 
 # ---------- Buscar carpeta más reciente ----------
+# Intenta parsear fecha desde el nombre (ej: "Compartida 2026-10-11 14;36;21")
+# Si no puede, cae en CreationTime de la carpeta.
+function Get-FolderDate($folder) {
+    if ($folder.Name -match '(\d{4}-\d{2}-\d{2})\s+(\d{2})[;:](\d{2})[;:](\d{2})') {
+        $dateStr = "$($Matches[1]) $($Matches[2]):$($Matches[3]):$($Matches[4])"
+        try { return [datetime]::ParseExact($dateStr, 'yyyy-MM-dd HH:mm:ss', $null) } catch {}
+    }
+    # fallback: el más reciente entre CreationTime y LastWriteTime
+    if ($folder.CreationTime -gt $folder.LastWriteTime) { return $folder.CreationTime }
+    return $folder.LastWriteTime
+}
+
 $folders = Get-ChildItem -Path $BACKUP_PATH -Directory |
-    Sort-Object LastWriteTime -Descending
+    Select-Object *, @{N='FolderDate'; E={ Get-FolderDate $_ }} |
+    Sort-Object FolderDate -Descending
 
 if (-not $folders) {
     Write-Log "ERROR: no hay carpetas en $BACKUP_PATH"
@@ -99,7 +112,7 @@ if (-not $folders) {
 }
 
 $latest      = $folders[0]
-$latestDate  = if ($latest.CreationTime -gt $latest.LastWriteTime) { $latest.CreationTime } else { $latest.LastWriteTime }
+$latestDate  = $latest.FolderDate
 $ageHours    = [math]::Round(((Get-Date) - $latestDate).TotalHours, 1)
 $latestName  = $latest.Name
 
