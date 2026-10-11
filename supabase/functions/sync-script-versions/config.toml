@@ -1,0 +1,2 @@
+[functions.sync-script-versions]
+schedule = "0 6 * * *"
