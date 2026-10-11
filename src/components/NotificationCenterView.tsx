@@ -61,6 +61,17 @@ type ShortLinkStat = {
   clicks_7d: number;
 };
 
+type ShareToken = {
+  id: string;
+  client_id: string;
+  token: string;
+  label: string;
+  created_at: string;
+  expires_at: string | null;
+  open_count: number;
+  first_opened_at: string | null;
+};
+
 type Props = { clients: Client[] };
 
 const FREQ_LABEL: Record<string, string> = {
@@ -106,6 +117,7 @@ export function NotificationCenterView({ clients }: Props) {
   const [expandedClient, setExpandedClient] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [shortLinks, setShortLinks] = useState<ShortLinkStat[]>([]);
+  const [shareTokens, setShareTokens] = useState<ShareToken[]>([]);
   const [creatingLink, setCreatingLink] = useState<string | null>(null);
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
 
@@ -117,7 +129,7 @@ export function NotificationCenterView({ clients }: Props) {
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const [{ data: ctcs }, { data: opens }, { data: lockRows }, { data: events }, { data: links }] = await Promise.all([
+    const [{ data: ctcs }, { data: opens }, { data: lockRows }, { data: events }, { data: links }, { data: stoks }] = await Promise.all([
       supabase
         .from('client_contacts')
         .select('id, name, email, role, digest_frequency, client_id, subscription_confirmed, welcome_sent_at, last_email_at')
@@ -137,12 +149,17 @@ export function NotificationCenterView({ clients }: Props) {
         .from('short_link_stats')
         .select('id, slug, client_id, label, target_url, created_at, expires_at, total_clicks, last_clicked_at, clicks_7d')
         .order('created_at', { ascending: false }),
+      supabase
+        .from('client_share_tokens')
+        .select('id, client_id, token, label, created_at, expires_at, open_count, first_opened_at')
+        .order('created_at', { ascending: false }),
     ]);
     setContacts((ctcs ?? []) as Contact[]);
     setEmailOpens((opens ?? []) as EmailOpen[]);
     setLocks((lockRows ?? []) as NotificationLock[]);
     setLockEvents((events ?? []) as LockEvent[]);
     setShortLinks((links ?? []) as ShortLinkStat[]);
+    setShareTokens((stoks ?? []) as ShareToken[]);
     setLoading(false);
   }, [user]);
 
@@ -249,11 +266,13 @@ export function NotificationCenterView({ clients }: Props) {
     locked:    activeLocks.length,
   };
 
+  const totalLinks = shortLinks.length + shareTokens.length;
+
   const tabs: { id: Tab; label: string; badge?: number }[] = [
     { id: 'contacts', label: 'Contactos' },
     { id: 'history',  label: 'Historial de envíos', badge: allEmails.length },
     { id: 'locks',    label: 'Cooldowns activos',   badge: activeLocks.length },
-    { id: 'links',    label: 'Links',               badge: shortLinks.length || undefined },
+    { id: 'links',    label: 'Links',               badge: totalLinks || undefined },
   ];
 
   return (
@@ -566,7 +585,7 @@ export function NotificationCenterView({ clients }: Props) {
       {/* Links tab */}
       {tab === 'links' && !loading && (
         <>
-          {shortLinks.length === 0 ? (
+          {totalLinks === 0 ? (
             <div className="text-center py-12 text-gray-400">
               <Link className="w-8 h-8 mx-auto mb-3 opacity-30" />
               <p>No hay links creados aún.</p>
@@ -575,74 +594,121 @@ export function NotificationCenterView({ clients }: Props) {
           ) : (
             <div className="space-y-4">
               {clients.map(cl => {
-                const clLinks = shortLinks.filter(l => l.client_id === cl.id);
-                if (clLinks.length === 0) return null;
+                const clLinks  = shortLinks.filter(l => l.client_id === cl.id);
+                const clTokens = shareTokens.filter(t => t.client_id === cl.id);
+                if (clLinks.length === 0 && clTokens.length === 0) return null;
                 const supabaseUrl = (supabase as any).supabaseUrl ?? import.meta.env.VITE_SUPABASE_URL;
+                const portalBase  = import.meta.env.VITE_PORTAL_URL ?? window.location.origin;
                 return (
                   <div key={cl.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
                     <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
-                      <span className="font-semibold text-sm text-gray-800">{cl.name}</span>
+                      <span className="font-semibold text-sm text-gray-800">{cl.company_name}</span>
                       <button
-                        onClick={() => generateLink(cl.id, `${window.location.origin}/portal/${cl.id}`, `Portal ${new Date().toLocaleDateString('es-UY', { month: 'short', year: 'numeric' })}`)}
+                        onClick={() => generateLink(cl.id, `${portalBase}/share/${clTokens[0]?.token ?? cl.id}`, `Portal ${new Date().toLocaleDateString('es-UY', { month: 'short', year: 'numeric' })}`)}
                         disabled={creatingLink === cl.id}
                         className="flex items-center gap-1.5 text-xs bg-blue-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {creatingLink === cl.id
                           ? <RefreshCw className="w-3 h-3 animate-spin" />
                           : <Plus className="w-3 h-3" />}
-                        Nuevo link
+                        Nuevo short link
                       </button>
                     </div>
-                    <div className="divide-y divide-gray-100">
-                      {clLinks.map(link => {
-                        const shortUrl = `${supabaseUrl}/functions/v1/r/${link.slug}`;
-                        const isExpired = link.expires_at && new Date(link.expires_at) < new Date();
-                        return (
-                          <div key={link.id} className="px-4 py-3 flex items-start gap-3">
-                            <div className="shrink-0 mt-0.5 w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center">
-                              <Link className="w-3.5 h-3.5 text-blue-600" />
+
+                    {/* Short links (links.cenas...) */}
+                    {clLinks.length > 0 && (
+                      <div className="divide-y divide-gray-100">
+                        {clLinks.map(link => {
+                          const shortUrl = `${supabaseUrl}/functions/v1/r/${link.slug}`;
+                          const isExpired = link.expires_at && new Date(link.expires_at) < new Date();
+                          return (
+                            <div key={link.id} className="px-4 py-3 flex items-start gap-3">
+                              <div className="shrink-0 mt-0.5 w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center">
+                                <Link className="w-3.5 h-3.5 text-blue-600" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-medium">short link</span>
+                                  <span className="font-mono text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
+                                    /{link.slug}
+                                  </span>
+                                  {link.label && <span className="text-xs text-gray-500">{link.label}</span>}
+                                  {isExpired && <span className="text-xs bg-red-50 text-red-500 px-1.5 py-0.5 rounded">Expirado</span>}
+                                </div>
+                                <div className="mt-1 text-xs text-gray-400 truncate max-w-xs" title={link.target_url}>
+                                  → {link.target_url}
+                                </div>
+                                <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-500">
+                                  <span className="flex items-center gap-1">
+                                    <ExternalLink className="w-3 h-3" />
+                                    {link.total_clicks} clicks totales
+                                  </span>
+                                  <span>{link.clicks_7d} en 7d</span>
+                                  {link.last_clicked_at && <span>último: {fmtRelative(link.last_clicked_at)}</span>}
+                                  <span className="text-gray-300">creado {fmtRelative(link.created_at)}</span>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => copyShortUrl(shortUrl, link.slug)}
+                                className="shrink-0 flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-50"
+                                title="Copiar URL corta"
+                              >
+                                {copiedSlug === link.slug
+                                  ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                  : <Copy className="w-3.5 h-3.5" />}
+                                {copiedSlug === link.slug ? 'Copiado' : 'Copiar'}
+                              </button>
                             </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-mono text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
-                                  /{link.slug}
-                                </span>
-                                {link.label && (
-                                  <span className="text-xs text-gray-500">{link.label}</span>
-                                )}
-                                {isExpired && (
-                                  <span className="text-xs bg-red-50 text-red-500 px-1.5 py-0.5 rounded">Expirado</span>
-                                )}
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Share tokens (portal clásico) */}
+                    {clTokens.length > 0 && (
+                      <div className="divide-y divide-gray-100 border-t border-gray-100">
+                        {clTokens.map(tok => {
+                          const portalUrl = `${portalBase}/share/${tok.token}`;
+                          const isExpired = tok.expires_at && new Date(tok.expires_at) < new Date();
+                          return (
+                            <div key={tok.id} className="px-4 py-3 flex items-start gap-3">
+                              <div className="shrink-0 mt-0.5 w-6 h-6 rounded-full bg-violet-50 flex items-center justify-center">
+                                <ExternalLink className="w-3.5 h-3.5 text-violet-600" />
                               </div>
-                              <div className="mt-1 text-xs text-gray-400 truncate max-w-xs" title={link.target_url}>
-                                → {link.target_url}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs bg-violet-50 text-violet-700 px-1.5 py-0.5 rounded font-medium">portal</span>
+                                  {tok.label && <span className="text-xs text-gray-600 font-medium">{tok.label}</span>}
+                                  {isExpired
+                                    ? <span className="text-xs bg-red-50 text-red-500 px-1.5 py-0.5 rounded">Expirado</span>
+                                    : <span className="text-xs bg-green-50 text-green-700 px-1.5 py-0.5 rounded">Activo</span>
+                                  }
+                                </div>
+                                <div className="mt-1 text-xs text-gray-400 font-mono truncate max-w-xs">{portalUrl}</div>
+                                <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-500">
+                                  <span className="flex items-center gap-1">
+                                    <ExternalLink className="w-3 h-3" />
+                                    {tok.open_count} aperturas
+                                  </span>
+                                  {tok.first_opened_at && <span>primera: {fmtRelative(tok.first_opened_at)}</span>}
+                                  <span className="text-gray-300">creado {fmtRelative(tok.created_at)}</span>
+                                </div>
                               </div>
-                              <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-500">
-                                <span className="flex items-center gap-1">
-                                  <ExternalLink className="w-3 h-3" />
-                                  {link.total_clicks} clicks totales
-                                </span>
-                                <span>{link.clicks_7d} en 7d</span>
-                                {link.last_clicked_at && (
-                                  <span>último: {fmtRelative(link.last_clicked_at)}</span>
-                                )}
-                                <span className="text-gray-300">creado {fmtRelative(link.created_at)}</span>
-                              </div>
+                              <button
+                                onClick={() => copyShortUrl(portalUrl, tok.token)}
+                                className="shrink-0 flex items-center gap-1 text-xs text-gray-500 hover:text-violet-600 px-2 py-1 rounded hover:bg-violet-50"
+                                title="Copiar URL del portal"
+                              >
+                                {copiedSlug === tok.token
+                                  ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                  : <Copy className="w-3.5 h-3.5" />}
+                                {copiedSlug === tok.token ? 'Copiado' : 'Copiar'}
+                              </button>
                             </div>
-                            <button
-                              onClick={() => copyShortUrl(shortUrl, link.slug)}
-                              className="shrink-0 flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-50"
-                              title="Copiar URL corta"
-                            >
-                              {copiedSlug === link.slug
-                                ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                : <Copy className="w-3.5 h-3.5" />}
-                              {copiedSlug === link.slug ? 'Copiado' : 'Copiar'}
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })}
