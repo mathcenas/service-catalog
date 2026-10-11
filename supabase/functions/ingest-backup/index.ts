@@ -111,9 +111,9 @@ Deno.serve(async (req: Request) => {
     }
     if (!suppress_email) {
       // Rate limiting: un email por (service_id, event_type) por día para success,
-      // 15 min para warning/failed para no suprimir alertas reales.
+      // 60 min para warning/failed para no suprimir alertas reales.
       const eventType = `backup_${normalizedStatus}`;
-      const cooldown  = normalizedStatus === "success" ? 23 * 60 : 15;
+      const cooldown  = normalizedStatus === "success" ? 23 * 60 : 60;
       const allowed   = await canSendNotification(supabaseAdmin, service_id, eventType, cooldown);
       if (!allowed) {
         return new Response(
