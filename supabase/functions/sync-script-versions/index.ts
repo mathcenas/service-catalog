@@ -3,15 +3,25 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const GITHUB_RAW = "https://raw.githubusercontent.com/mathcenas/service-catalog/main/";
 
-const SCRIPT_SOURCE_FILES: Record<string, { windows: string; windowsServer?: string; linux?: string }> = {
-  "system-health":   { windows: "scripts/windows/system-health.ps1", windowsServer: "scripts/windows/system-health-server.ps1", linux: "scripts/linux/system-health.sh" },
-  "rdp":             { windows: "scripts/windows/system-health.ps1", windowsServer: "scripts/windows/system-health-server.ps1" },
-  "network":         { windows: "scripts/windows/system-health.ps1", windowsServer: "scripts/windows/system-health-server.ps1" },
-  "speedtest":       { windows: "scripts/windows/system-health.ps1" },
-  "mikrotik":        { linux: "scripts/linux/mikrotik-heartbeat.sh" },
-  "smb-check":       { windows: "scripts/windows/smb-check.ps1" },
-  "kopia":           { windows: "scripts/windows/kopia-report.ps1" },
-  "veeam":           { windows: "scripts/windows/veeam-report.ps1" },
+const SCRIPT_SOURCE_FILES: Record<string, { windows?: string; windowsServer?: string; linux?: string }> = {
+  // Heartbeat / telemetría de sistema
+  "system-health":      { windows: "scripts/windows/system-health.ps1", windowsServer: "scripts/windows/system-health-server.ps1", linux: "scripts/linux/system-health.sh" },
+  "rdp":                { windows: "scripts/windows/system-health.ps1", windowsServer: "scripts/windows/system-health-server.ps1" },
+  "network":            { windows: "scripts/windows/system-health.ps1", windowsServer: "scripts/windows/system-health-server.ps1" },
+  "speedtest":          { windows: "scripts/windows/system-health.ps1" },
+  "server-snapshot":    { windows: "scripts/windows/server-snapshot.ps1" },
+  // Backups
+  "kopia":              { windows: "scripts/windows/kopia-report.ps1" },
+  "veeam":              { windows: "scripts/windows/veeam-report.ps1" },
+  "veeam-agent":        { windows: "scripts/windows/veeam-agent-report.ps1" },
+  "cristar":            { windows: "scripts/windows/cristar-backup-report.ps1" },
+  "backup":             { linux:  "scripts/linux/backup.sh" },
+  "veeam-restore-test": { windows: "scripts/windows/veeam-restore-test-report.ps1" },
+  // SMB / ACL
+  "smb-check":          { windows: "scripts/windows/smb-check.ps1" },
+  // Otros
+  "ad-backup":          { windows: "scripts/windows/ad-backup.ps1" },
+  "backup-folder-check":{ windows: "scripts/windows/backup-folder-check.ps1" },
 };
 
 async function fetchVersion(path: string): Promise<string | null> {
