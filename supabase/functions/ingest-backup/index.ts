@@ -144,7 +144,7 @@ Deno.serve(async (req: Request) => {
             .from("client_contacts")
             .select("id, email")
             .eq("client_id", clientId)
-            .eq("digest_frequency", "daily");
+            .neq("digest_frequency", "none");
           for (const c of (contacts || []) as { id: string; email: string }[]) {
             if (c.email) {
               recipients.add(c.email);
@@ -298,18 +298,16 @@ Deno.serve(async (req: Request) => {
         const userId = (svcRow as any)?.clients?.user_id ?? null;
         for (const email of recipients) {
           const contactId = contactMap.get(email) ?? null;
-          if (contactId) {
-            const { error: openErr } = await supabaseAdmin.from("email_opens").insert({
-              user_id:         userId,
-              client_id:       clientId ?? null,
-              contact_id:      contactId,
-              client_email:    email,
-              resend_email_id: resendEmailId,
-              email_type:      `backup_${normalizedStatus}`,
-              sent_at:         now,
-            });
-            if (openErr) console.error("[ingest-backup] email_opens insert error:", openErr.message);
-          }
+          const { error: openErr } = await supabaseAdmin.from("email_opens").insert({
+            user_id:         userId,
+            client_id:       clientId ?? null,
+            contact_id:      contactId,
+            client_email:    email,
+            resend_email_id: resendEmailId,
+            email_type:      `backup_${normalizedStatus}`,
+            sent_at:         now,
+          });
+          if (openErr) console.error("[ingest-backup] email_opens insert error:", openErr.message);
         }
         } // end recipients.size > 0
       } // end else RESEND_API_KEY
