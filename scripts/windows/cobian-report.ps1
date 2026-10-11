@@ -35,9 +35,7 @@ function Write-Log($msg) {
     Add-Content -Path $LogFile -Value $line
     Write-Host $line
 }
-Get-ChildItem "$LogDir\cobian-report-*.log" |
-    Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) } |
-    Remove-Item -Force
+Get-ChildItem "$LogDir\cobian-report-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) } | Remove-Item -Force
 
 $headers = @{
     "Content-Type"    = "application/json"
