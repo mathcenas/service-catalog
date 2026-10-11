@@ -303,7 +303,18 @@ export function SharePage({ token }: Props) {
                   </div>
                 )}
                 {statusPageUrl ? (
-                  <a href={statusPageUrl} target="_blank" rel="noopener noreferrer">{badge}</a>
+                  <>
+                    <a href={statusPageUrl} target="_blank" rel="noopener noreferrer">{badge}</a>
+                    <a
+                      href={statusPageUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white/10 hover:bg-white/20 text-white border border-white/15 transition-colors"
+                    >
+                      <Wifi className="w-3 h-3" />
+                      Status Page
+                    </a>
+                  </>
                 ) : badge}
               </div>
             </div>
