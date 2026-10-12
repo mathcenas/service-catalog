@@ -109,9 +109,21 @@ export function AccessPage() {
           </div>
         </div>
 
-        <div className="relative z-10 pt-6 border-t border-slate-800 flex justify-between items-center text-xs text-slate-500">
-          <span>Cenas IT Solutions</span>
-          <span className="font-mono text-slate-400">ISO/IEC 20000</span>
+        <div className="relative z-10 pt-6 border-t border-slate-800 space-y-3">
+          <div className="flex gap-3">
+            <a href="https://cenas-support.com" target="_blank" rel="noopener noreferrer"
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-[#1E293B] border border-slate-700/60 rounded-lg text-xs text-slate-300 hover:text-white hover:border-slate-600 transition-colors">
+              🌐 cenas-support.com
+            </a>
+            <a href="https://clientes.cenas-support.com/onboarding" target="_blank" rel="noopener noreferrer"
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-[#1E293B] border border-slate-700/60 rounded-lg text-xs text-slate-300 hover:text-white hover:border-slate-600 transition-colors">
+              👤 Onboarding
+            </a>
+          </div>
+          <div className="flex justify-between items-center text-xs text-slate-500">
+            <span>Cenas IT Solutions</span>
+            <span className="font-mono text-slate-400">ISO/IEC 20000</span>
+          </div>
         </div>
       </div>
 
