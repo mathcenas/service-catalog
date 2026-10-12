@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Bell, Mail, CheckCircle2, Clock, AlertCircle, Send, RefreshCw,
+import { Bell, BellOff, Mail, CheckCircle2, Clock, AlertCircle, Send, RefreshCw,
          ChevronDown, ChevronUp, Users, Lock, Unlock, History, ShieldAlert, Link, Copy, ExternalLink, Plus } from 'lucide-react';
 import { supabase, Client } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -24,6 +24,7 @@ type EmailOpen = {
   delivered_at?: string;
   opened_at?: string;
   resend_email_id?: string;
+  metadata?: { prev_frequency?: string; new_frequency?: string } | null;
 };
 
 type NotificationLock = {
@@ -78,6 +79,30 @@ const FREQ_LABEL: Record<string, string> = {
   daily:  'Diarias',
   weekly: 'Semanales',
   none:   'Desactivadas',
+};
+
+const EMAIL_TYPE_LABEL: Record<string, string> = {
+  welcome:           'Bienvenida',
+  backup_success:    'Backup OK',
+  backup_failed:     'Backup fallido',
+  backup_warning:    'Backup warning',
+  digest:            'Digest',
+  unsubscribe:       'Desuscripción',
+  preference_change: 'Cambio preferencia',
+};
+
+const EMAIL_TYPE_COLOR: Record<string, string> = {
+  welcome:           'bg-blue-50 text-blue-700',
+  backup_success:    'bg-green-50 text-green-700',
+  backup_failed:     'bg-red-50 text-red-700',
+  backup_warning:    'bg-yellow-50 text-yellow-700',
+  digest:            'bg-violet-50 text-violet-700',
+  unsubscribe:       'bg-orange-50 text-orange-700',
+  preference_change: 'bg-amber-50 text-amber-700',
+};
+
+const FREQ_SHORT: Record<string, string> = {
+  daily: 'Diario', weekly: 'Semanal', none: 'Desactivado',
 };
 
 const EVENT_LABEL: Record<string, string> = {
@@ -136,7 +161,7 @@ export function NotificationCenterView({ clients }: Props) {
         .order('name'),
       supabase
         .from('email_opens')
-        .select('id, contact_id, email_type, sent_at, delivered_at, opened_at, resend_email_id')
+        .select('id, contact_id, email_type, sent_at, delivered_at, opened_at, resend_email_id, metadata')
         .order('sent_at', { ascending: false })
         .limit(300),
       supabase.rpc('get_my_notification_locks'),
@@ -259,11 +284,14 @@ export function NotificationCenterView({ clients }: Props) {
 
   const allEmails = emailOpens.filter(o => o.sent_at).slice(0, 100);
 
+  const unsubs = emailOpens.filter(o => o.email_type === 'unsubscribe').length;
+
   const stats = {
     total:     contacts.length,
     withEmail: contacts.filter(c => c.digest_frequency !== 'none').length,
     welcomed:  contacts.filter(c => c.welcome_sent_at).length,
     locked:    activeLocks.length,
+    unsubs,
   };
 
   const totalLinks = shortLinks.length + shareTokens.length;
@@ -294,12 +322,13 @@ export function NotificationCenterView({ clients }: Props) {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
-          { label: 'Contactos',     value: stats.total,     icon: Users,       color: 'blue' },
-          { label: 'Con alertas',   value: stats.withEmail, icon: Bell,        color: 'indigo' },
-          { label: 'Welcome enviado', value: stats.welcomed, icon: Send,       color: 'emerald' },
-          { label: 'Cooldowns activos', value: stats.locked, icon: ShieldAlert, color: stats.locked > 0 ? 'amber' : 'gray' },
+          { label: 'Contactos',         value: stats.total,     icon: Users,        color: 'blue' },
+          { label: 'Con alertas',       value: stats.withEmail, icon: Bell,         color: 'indigo' },
+          { label: 'Welcome enviado',   value: stats.welcomed,  icon: Send,         color: 'emerald' },
+          { label: 'Desuscriptos',      value: stats.unsubs,    icon: BellOff,      color: stats.unsubs > 0 ? 'orange' : 'gray' },
+          { label: 'Cooldowns activos', value: stats.locked,    icon: ShieldAlert,  color: stats.locked > 0 ? 'amber' : 'gray' },
         ].map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="bg-white border border-gray-200 rounded-xl p-4">
             <div className={`inline-flex p-2 rounded-lg bg-${color}-50 mb-2`}>
@@ -422,47 +451,103 @@ export function NotificationCenterView({ clients }: Props) {
 
           {/* ── HISTORIAL ── */}
           {tab === 'history' && (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-              {allEmails.length === 0 ? (
-                <div className="text-center py-12 text-gray-400">No hay emails registrados aún.</div>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wide">
-                      <th className="text-left px-4 py-2">Tipo</th>
-                      <th className="text-left px-4 py-2">Email</th>
-                      <th className="text-left px-4 py-2">Enviado</th>
-                      <th className="text-left px-4 py-2">Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {allEmails.map(o => {
-                      const contact = contacts.find(c => c.id === o.contact_id);
-                      const status = o.opened_at ? 'Abierto' : o.delivered_at ? 'Entregado' : 'Enviado';
-                      const statusColor = o.opened_at ? 'text-blue-600' : o.delivered_at ? 'text-emerald-600' : 'text-gray-400';
-                      return (
-                        <tr key={o.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-2.5">
-                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-medium">
-                              {o.email_type ?? '—'}
+            <div className="space-y-3">
+              {/* Highlight de eventos de preferencias */}
+              {(() => {
+                const prefEvents = allEmails.filter(o =>
+                  o.email_type === 'unsubscribe' || o.email_type === 'preference_change'
+                );
+                if (prefEvents.length === 0) return null;
+                return (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                    <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">
+                      Cambios de preferencias recientes
+                    </p>
+                    <div className="space-y-1.5">
+                      {prefEvents.slice(0, 5).map(o => {
+                        const contact = contacts.find(c => c.id === o.contact_id);
+                        const m = o.metadata;
+                        return (
+                          <div key={o.id} className="flex items-center gap-2 text-sm">
+                            <span className={`text-xs px-2 py-0.5 rounded font-semibold ${EMAIL_TYPE_COLOR[o.email_type!] ?? 'bg-gray-100 text-gray-600'}`}>
+                              {EMAIL_TYPE_LABEL[o.email_type!] ?? o.email_type}
                             </span>
-                          </td>
-                          <td className="px-4 py-2.5 text-gray-700">
-                            {contact?.email ?? '—'}
-                            {contact?.name && <span className="text-gray-400 ml-1">· {contact.name}</span>}
-                          </td>
-                          <td className="px-4 py-2.5 text-gray-400 text-xs">
-                            {o.sent_at ? fmtTime(o.sent_at) : '—'}
-                          </td>
-                          <td className={`px-4 py-2.5 text-xs font-medium ${statusColor}`}>
-                            {status}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
+                            <span className="text-gray-700">{contact?.name ?? contact?.email ?? '—'}</span>
+                            {m?.prev_frequency && m?.new_frequency && (
+                              <span className="text-xs text-gray-400">
+                                {FREQ_SHORT[m.prev_frequency] ?? m.prev_frequency}
+                                {' → '}
+                                <span className={m.new_frequency === 'none' ? 'text-red-500 font-semibold' : 'text-emerald-600 font-semibold'}>
+                                  {FREQ_SHORT[m.new_frequency] ?? m.new_frequency}
+                                </span>
+                              </span>
+                            )}
+                            <span className="text-xs text-gray-400 ml-auto">{o.sent_at ? fmtRelative(o.sent_at) : ''}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                {allEmails.length === 0 ? (
+                  <div className="text-center py-12 text-gray-400">No hay emails registrados aún.</div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wide">
+                        <th className="text-left px-4 py-2">Tipo</th>
+                        <th className="text-left px-4 py-2">Contacto</th>
+                        <th className="text-left px-4 py-2">Detalle</th>
+                        <th className="text-left px-4 py-2">Enviado</th>
+                        <th className="text-left px-4 py-2">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {allEmails.map(o => {
+                        const contact = contacts.find(c => c.id === o.contact_id);
+                        const isPref = o.email_type === 'unsubscribe' || o.email_type === 'preference_change';
+                        const status = isPref ? null : (o.opened_at ? 'Abierto' : o.delivered_at ? 'Entregado' : 'Enviado');
+                        const statusColor = o.opened_at ? 'text-blue-600' : o.delivered_at ? 'text-emerald-600' : 'text-gray-400';
+                        const typeColor = EMAIL_TYPE_COLOR[o.email_type ?? ''] ?? 'bg-gray-100 text-gray-600';
+                        const m = o.metadata;
+                        return (
+                          <tr key={o.id} className={`hover:bg-gray-50 ${isPref ? 'bg-amber-50/40' : ''}`}>
+                            <td className="px-4 py-2.5">
+                              <span className={`text-xs px-2 py-0.5 rounded font-medium ${typeColor}`}>
+                                {EMAIL_TYPE_LABEL[o.email_type ?? ''] ?? o.email_type ?? '—'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-gray-700">
+                              <span className="font-medium">{contact?.name ?? '—'}</span>
+                              {contact?.email && <span className="text-gray-400 block text-xs">{contact.email}</span>}
+                            </td>
+                            <td className="px-4 py-2.5 text-xs text-gray-400">
+                              {m?.prev_frequency && m?.new_frequency ? (
+                                <span>
+                                  {FREQ_SHORT[m.prev_frequency] ?? m.prev_frequency}
+                                  {' → '}
+                                  <span className={m.new_frequency === 'none' ? 'text-red-500 font-semibold' : 'text-emerald-600 font-semibold'}>
+                                    {FREQ_SHORT[m.new_frequency] ?? m.new_frequency}
+                                  </span>
+                                </span>
+                              ) : '—'}
+                            </td>
+                            <td className="px-4 py-2.5 text-gray-400 text-xs">
+                              {o.sent_at ? fmtTime(o.sent_at) : '—'}
+                            </td>
+                            <td className={`px-4 py-2.5 text-xs font-medium ${statusColor}`}>
+                              {status ?? '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </div>
           )}
 
