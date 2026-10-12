@@ -355,6 +355,10 @@ export function SharePage({ token }: Props) {
             <p className="text-xs text-gray-400 dark:text-gray-600">
               Procesos alineados a estándar <strong className="text-gray-500 dark:text-gray-500">ISO/IEC 20000</strong> para continuidad operativa y seguridad.
             </p>
+            <p className="text-xs text-gray-500 dark:text-gray-700 pt-1">
+              ¿Perdiste tu link?{' '}
+              <a href="/acceso" className="text-brand-accent hover:underline font-medium">Solicitá uno nuevo →</a>
+            </p>
           </div>
         </footer>
       </div>
