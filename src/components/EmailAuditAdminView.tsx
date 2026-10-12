@@ -47,6 +47,8 @@ const EMAIL_TYPE_LABELS: Record<string, string> = {
   backup_success: 'Backup OK',
   backup_failed: 'Backup FAIL',
   digest: 'Digest',
+  unsubscribe: 'Desuscripción',
+  preference_change: 'Cambio preferencia',
 };
 
 const EMAIL_TYPE_COLORS: Record<string, string> = {
@@ -54,6 +56,8 @@ const EMAIL_TYPE_COLORS: Record<string, string> = {
   backup_success: 'bg-green-50 text-green-700',
   backup_failed: 'bg-red-50 text-red-700',
   digest: 'bg-violet-50 text-violet-700',
+  unsubscribe: 'bg-orange-50 text-orange-700',
+  preference_change: 'bg-amber-50 text-amber-700',
 };
 
 type Props = { clients: Client[] };

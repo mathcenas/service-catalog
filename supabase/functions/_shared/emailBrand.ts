@@ -152,3 +152,14 @@ export function emailMeta(companyName: string): string {
 export function emailFooter(): string {
   return emailMeta("Cenas IT Solutions");
 }
+
+/** Unsubscribe/preferences footer — pass a signed token to personalize the link */
+export function emailUnsubscribeFooter(prefsToken?: string | null): string {
+  const portalUrl = (typeof Deno !== "undefined" && Deno.env.get("PORTAL_URL")) || "https://clientes.cenas-support.com";
+  const prefsUrl = prefsToken
+    ? `${portalUrl}/preferencias?token=${encodeURIComponent(prefsToken)}`
+    : `${portalUrl}/acceso`;
+  return `<p style="color:${B.textSoft};font-size:10px;text-align:center;margin-top:8px;line-height:1.6;">
+    <a href="${prefsUrl}" style="color:${B.textSoft};text-decoration:underline;">Cambiar frecuencia de notificaciones o desuscribirse</a>
+  </p>`;
+}
