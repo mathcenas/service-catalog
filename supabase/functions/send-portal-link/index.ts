@@ -5,7 +5,7 @@ import { B, EMAIL_FONT, LOGO_URL } from "../_shared/emailBrand.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey, x-client-info",
 };
 
 Deno.serve(async (req: Request) => {
