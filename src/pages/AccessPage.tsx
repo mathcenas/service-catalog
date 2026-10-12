@@ -32,7 +32,11 @@ export function AccessPage() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/send-portal-link`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON },
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON,
+          'Authorization': `Bearer ${SUPABASE_ANON}`,
+        },
         body: JSON.stringify({ email: email.trim().toLowerCase() }),
       });
       if (!res.ok) throw new Error();
@@ -266,7 +270,7 @@ export function AccessPage() {
           <div className="pt-4 text-center border-t border-slate-200/60">
             <p className="text-xs text-slate-500">
               ¿Problemas para acceder?{' '}
-              <a href="mailto:info@cenas.uy" className="text-[#06B6D4] font-bold hover:underline">Contactar a Mesa de Ayuda</a>
+              <a href="/contacto" className="text-[#06B6D4] font-bold hover:underline">Contactar a Mesa de Ayuda</a>
             </p>
           </div>
 
