@@ -268,7 +268,8 @@ Deno.serve(async (req: Request) => {
     <td style="padding:16px 24px 24px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid ${B.border};">
         <tr><td style="padding-top:12px;text-align:center;">
-          <span style="color:${B.textSoft};font-size:11px;">Cenas IT Solutions &mdash; Procesos bajo norma ISO/IEC 20000</span>
+          <span style="color:${B.textSoft};font-size:11px;">Cenas IT Solutions &mdash; ISO/IEC 20000</span><br>
+          <a href="${Deno.env.get("PORTAL_URL") || "https://clientes.cenas-support.com"}/preferencias" style="color:${B.textSoft};font-size:10px;">Cambiar frecuencia o desuscribirse</a>
         </td></tr>
       </table>
     </td>
