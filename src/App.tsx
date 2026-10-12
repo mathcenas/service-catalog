@@ -4,6 +4,7 @@ import { Dashboard } from './components/Dashboard';
 import { SharePage } from './pages/SharePage';
 import { AclReviewPage } from './pages/AclReviewPage';
 import { EmailAuditPage } from './pages/EmailAuditPage';
+import { AccessPage } from './pages/AccessPage';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -12,6 +13,11 @@ function AppContent() {
   const shareMatch      = path.match(/^\/share\/([a-z0-9-]+)$/i);
   const aclReviewMatch  = path.match(/^\/acl-review\/([a-z0-9]+)$/i);
   const emailAuditMatch = path.match(/^\/email-audit\/([a-z0-9]+)$/i);
+  const isAccessPage    = path === '/acceso';
+
+  if (isAccessPage) {
+    return <AccessPage />;
+  }
 
   if (shareMatch) {
     return <SharePage token={shareMatch[1]} />;
@@ -26,7 +32,7 @@ function AppContent() {
   }
 
   // Unknown public paths (not a known route pattern) → branded 404
-  const isKnownPath = path === '/' || shareMatch || aclReviewMatch || emailAuditMatch;
+  const isKnownPath = path === '/' || shareMatch || aclReviewMatch || emailAuditMatch || isAccessPage;
   if (!isKnownPath && !loading && !user) {
     return (
       <div className="min-h-screen bg-[#0B192C] flex flex-col items-center justify-center px-4 text-center">
