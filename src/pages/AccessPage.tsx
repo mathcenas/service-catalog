@@ -32,7 +32,11 @@ export function AccessPage() {
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/send-portal-link`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON },
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON,
+          'Authorization': `Bearer ${SUPABASE_ANON}`,
+        },
         body: JSON.stringify({ email: email.trim().toLowerCase() }),
       });
       if (!res.ok) throw new Error();
