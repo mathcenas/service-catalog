@@ -1,5 +1,4 @@
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { Auth } from './components/Auth';
 import { Dashboard } from './components/Dashboard';
 import { SharePage } from './pages/SharePage';
 import { AclReviewPage } from './pages/AclReviewPage';
@@ -57,7 +56,7 @@ function AppContent() {
     );
   }
 
-  return user ? <Dashboard /> : <Auth />;
+  return user ? <Dashboard /> : <AccessPage />;
 }
 
 function App() {
