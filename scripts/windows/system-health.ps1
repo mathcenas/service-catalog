@@ -353,28 +353,39 @@ if ($CHECK_SPEEDTEST) {
 $CHECK_RDP = if (Get-Variable 'CHECK_RDP' -ErrorAction SilentlyContinue) { $CHECK_RDP } else { $true }
 
 if ($CHECK_RDP) {
-    # AnyDesk — leer ID (soporta v6 registry, v7 service.conf, system.conf, ad_anynet.cfg)
+    # AnyDesk — leer ID (v6 registry, v7 ProgramData, instalación por usuario en todos los perfiles)
     $anydeskId = $null
     try { $anydeskId = (Get-ItemProperty -Path "HKLM:\SOFTWARE\AnyDesk" -Name "ad_id" -ErrorAction Stop).ad_id } catch {}
     if (-not $anydeskId) {
-        $adConfCandidates = @(
+        # Rutas fijas (instalación de sistema)
+        $adFixed = @(
             "$env:ProgramData\AnyDesk\service.conf",
             "$env:ProgramData\AnyDesk\system.conf",
-            "$env:AppData\AnyDesk\service.conf",
-            "$env:AppData\AnyDesk\system.conf"
+            "$env:ProgramData\AnyDesk\ad_anynet.cfg"
         )
-        foreach ($c in $adConfCandidates) {
+        foreach ($c in $adFixed) {
             if (Test-Path $c) {
-                $adLine = Get-Content $c -ErrorAction SilentlyContinue | Where-Object { $_ -match '^ad\.anynet\.id=' }
-                if ($adLine) { $anydeskId = ($adLine -replace '^ad\.anynet\.id=', '').Trim(); break }
+                $adLine = Get-Content $c -ErrorAction SilentlyContinue | Where-Object { $_ -match '^(ad\.anynet\.id|id)=' }
+                if ($adLine) { $anydeskId = ($adLine[0] -replace '^(ad\.anynet\.id|id)=', '').Trim(); break }
             }
         }
     }
     if (-not $anydeskId) {
-        $cfgPath = "$env:ProgramData\AnyDesk\ad_anynet.cfg"
-        if (Test-Path $cfgPath) {
-            $adLine = Get-Content $cfgPath -ErrorAction SilentlyContinue | Where-Object { $_ -match '^id=' }
-            if ($adLine) { $anydeskId = ($adLine -replace '^id=', '').Trim() }
+        # Instalación por usuario — escanear todos los perfiles en C:\Users
+        $usersRoot = "$env:SystemDrive\Users"
+        Get-ChildItem $usersRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            if ($anydeskId) { return }
+            $candidates = @(
+                "$($_.FullName)\AppData\Roaming\AnyDesk\service.conf",
+                "$($_.FullName)\AppData\Roaming\AnyDesk\system.conf",
+                "$($_.FullName)\AppData\Roaming\AnyDesk\ad_anynet.cfg"
+            )
+            foreach ($c in $candidates) {
+                if (Test-Path $c) {
+                    $adLine = Get-Content $c -ErrorAction SilentlyContinue | Where-Object { $_ -match '^(ad\.anynet\.id|id)=' }
+                    if ($adLine) { $anydeskId = ($adLine[0] -replace '^(ad\.anynet\.id|id)=', '').Trim(); break }
+                }
+            }
         }
     }
 
