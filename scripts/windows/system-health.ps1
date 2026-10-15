@@ -220,6 +220,7 @@ $hwBody = @{
     status     = $hwStatus
     message    = "CPU: $cpuUsage% | RAM: $ramUsePct% | Disk C: $diskUsePct%"
     payload    = @{
+        hostname       = $env:COMPUTERNAME
         cpu_pct        = $cpuUsage
         cpu_name       = $cpuName
         cpu_cores      = $cpuCores
