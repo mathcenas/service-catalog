@@ -49,7 +49,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: service, error: svcErr } = await supabaseAdmin
       .from("services")
-      .select("user_id, ingest_secret, ip_public, ip_internal, specs")
+      .select("user_id, ingest_secret, ip_public, ip_internal, specs, name")
       .eq("id", service_id)
       .maybeSingle();
 
@@ -93,17 +93,27 @@ Deno.serve(async (req: Request) => {
 
       // Hardware specs — merge into existing specs JSONB, only overwrite when value is present
       const specsUpdate: Record<string, unknown> = {};
-      const cpuModel   = typeof payload.cpu_model   === "string" ? payload.cpu_model.trim()   : null;
-      const cpuName    = typeof payload.cpu_name    === "string" ? payload.cpu_name.trim()    : null;   // Windows
-      const cpuCores   = typeof payload.cpu_cores   === "number" ? payload.cpu_cores           : null;
-      const ramGB      = typeof payload.ram_total_gb === "number" ? payload.ram_total_gb        : null;
-      const osName     = typeof payload.os_name     === "string" ? payload.os_name.trim()     : null;
-      const osCaption  = typeof payload.os_caption  === "string" ? payload.os_caption.trim()  : null;  // Windows
+      const cpuModel   = typeof payload.cpu_model    === "string" ? payload.cpu_model.trim()    : null;
+      const cpuName    = typeof payload.cpu_name     === "string" ? payload.cpu_name.trim()     : null;
+      const cpuCores   = typeof payload.cpu_cores    === "number" ? payload.cpu_cores            : null;
+      const cpuThreads = typeof payload.cpu_threads  === "number" ? payload.cpu_threads          : null;
+      const ramGB      = typeof payload.ram_total_gb === "number" ? payload.ram_total_gb         : null;
+      const osName     = typeof payload.os_name      === "string" ? payload.os_name.trim()      : null;
+      const osCaption  = typeof payload.os_caption   === "string" ? payload.os_caption.trim()   : null;
+      const hostname   = typeof payload.hostname     === "string" ? payload.hostname.trim()     : null;
+      const diskPct    = typeof payload.disk_pct     === "number" ? payload.disk_pct             : null;
+      const diskFreeGB = typeof payload.disk_free_gb === "number" ? payload.disk_free_gb         : null;
+      const diskTotalGB= typeof payload.disk_total_gb=== "number" ? payload.disk_total_gb        : null;
 
-      if (cpuModel || cpuName)  specsUpdate.cpu = cpuModel || cpuName;
-      if (cpuCores)             specsUpdate.cpu_cores = cpuCores;
-      if (ramGB)                specsUpdate.ram = `${ramGB} GB`;
-      if (osName || osCaption)  specsUpdate.os  = osName || osCaption;
+      if (cpuModel || cpuName)  specsUpdate.cpu        = cpuModel || cpuName;
+      if (cpuCores)             specsUpdate.cpu_cores  = cpuCores;
+      if (cpuThreads)           specsUpdate.cpu_threads= cpuThreads;
+      if (ramGB)                specsUpdate.ram        = `${ramGB} GB`;
+      if (osName || osCaption)  specsUpdate.os         = osName || osCaption;
+      if (hostname)             specsUpdate.hostname   = hostname;
+      if (diskPct != null)      specsUpdate.disk_used_pct = diskPct;
+      if (diskFreeGB != null)   specsUpdate.disk_free_gb  = diskFreeGB;
+      if (diskTotalGB != null)  specsUpdate.disk_total_gb = diskTotalGB;
 
       if (Object.keys(specsUpdate).length > 0) {
         const existingSpecs = (service.specs && typeof service.specs === "object") ? service.specs as Record<string, unknown> : {};
@@ -112,6 +122,19 @@ Deno.serve(async (req: Request) => {
 
       if (Object.keys(svcUpdate).length > 0) {
         await supabaseAdmin.from("services").update(svcUpdate).eq("id", service_id);
+      }
+    }
+
+    // source = "rdp" — persistir anydesk_id en specs
+    if (source === "rdp" && payload) {
+      const anydeskId = typeof payload.anydesk_id === "string" ? payload.anydesk_id.trim() : null;
+      if (anydeskId) {
+        const existingSpecs = (service.specs && typeof service.specs === "object") ? service.specs as Record<string, unknown> : {};
+        if (existingSpecs.anydesk_id !== anydeskId) {
+          await supabaseAdmin.from("services").update({
+            specs: { ...existingSpecs, anydesk_id: anydeskId },
+          }).eq("id", service_id);
+        }
       }
     }
 

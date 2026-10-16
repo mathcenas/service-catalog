@@ -148,6 +148,7 @@ $hwBody = @{
     status     = $hwStatus
     message    = "CPU: $cpuUsage% | RAM: $ramUsePct% | Disk C: $diskUsePct%"
     payload    = @{
+        hostname       = $env:COMPUTERNAME
         cpu_pct        = $cpuUsage
         cpu_name       = $cpuName
         cpu_cores      = $cpuCores
@@ -234,15 +235,37 @@ $CHECK_RDP = if (Get-Variable 'CHECK_RDP' -ErrorAction SilentlyContinue) { $CHEC
 
 if ($CHECK_RDP -ne $false) {
 
-# AnyDesk — leer ID
+# AnyDesk — leer ID (v6 registry, v7 ProgramData, instalación por usuario en todos los perfiles)
 $anydeskId = $null
-try {
-    $anydeskId = (Get-ItemProperty -Path "HKLM:\SOFTWARE\AnyDesk" -Name "ad_id" -ErrorAction Stop).ad_id
-} catch {
-    $confPath = "$env:ProgramData\AnyDesk\service.conf"
-    if (Test-Path $confPath) {
-        $adLine = Get-Content $confPath | Where-Object { $_ -match '^ad\.anynet\.id=' }
-        if ($adLine) { $anydeskId = ($adLine -replace '^ad\.anynet\.id=', '').Trim() }
+try { $anydeskId = (Get-ItemProperty -Path "HKLM:\SOFTWARE\AnyDesk" -Name "ad_id" -ErrorAction Stop).ad_id } catch {}
+if (-not $anydeskId) {
+    $adFixed = @(
+        "$env:ProgramData\AnyDesk\service.conf",
+        "$env:ProgramData\AnyDesk\system.conf",
+        "$env:ProgramData\AnyDesk\ad_anynet.cfg"
+    )
+    foreach ($c in $adFixed) {
+        if (Test-Path $c) {
+            $adLine = Get-Content $c -ErrorAction SilentlyContinue | Where-Object { $_ -match '^(ad\.anynet\.id|id)=' }
+            if ($adLine) { $anydeskId = ($adLine[0] -replace '^(ad\.anynet\.id|id)=', '').Trim(); break }
+        }
+    }
+}
+if (-not $anydeskId) {
+    $usersRoot = "$env:SystemDrive\Users"
+    Get-ChildItem $usersRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+        if ($anydeskId) { return }
+        $candidates = @(
+            "$($_.FullName)\AppData\Roaming\AnyDesk\service.conf",
+            "$($_.FullName)\AppData\Roaming\AnyDesk\system.conf",
+            "$($_.FullName)\AppData\Roaming\AnyDesk\ad_anynet.cfg"
+        )
+        foreach ($c in $candidates) {
+            if (Test-Path $c) {
+                $adLine = Get-Content $c -ErrorAction SilentlyContinue | Where-Object { $_ -match '^(ad\.anynet\.id|id)=' }
+                if ($adLine) { $anydeskId = ($adLine[0] -replace '^(ad\.anynet\.id|id)=', '').Trim(); break }
+            }
+        }
     }
 }
 

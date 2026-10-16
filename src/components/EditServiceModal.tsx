@@ -538,6 +538,34 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
             </div>
           </div>
 
+          {/* Specs detectadas por el agente */}
+          {service.specifications && Object.keys(service.specifications).length > 0 && (() => {
+            const sp = service.specifications as Record<string, unknown>;
+            const items: { label: string; value: string }[] = [];
+            if (sp.hostname)      items.push({ label: 'Hostname',   value: String(sp.hostname) });
+            if (sp.os)            items.push({ label: 'SO',          value: String(sp.os) });
+            if (sp.cpu)           items.push({ label: 'CPU',         value: String(sp.cpu) + (sp.cpu_cores ? ` (${sp.cpu_cores}c${sp.cpu_threads ? `/${sp.cpu_threads}t` : ''})` : '') });
+            if (sp.ram)           items.push({ label: 'RAM',         value: String(sp.ram) });
+            if (sp.disk_total_gb) items.push({ label: 'Disco',       value: `${sp.disk_total_gb} GB total · ${sp.disk_used_pct ?? '?'}% usado` });
+            if (sp.anydesk_id)    items.push({ label: 'AnyDesk ID',  value: String(sp.anydesk_id) });
+            if (items.length === 0) return null;
+            return (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
+                  Detectado por el agente
+                </p>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
+                  {items.map(({ label, value }) => (
+                    <div key={label} className="flex items-baseline gap-2">
+                      <span className="text-xs text-slate-400 shrink-0 w-20">{label}</span>
+                      <span className="text-xs font-mono text-slate-700 truncate">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Description / Notes</label>
             <textarea value={formData.description} onChange={e => set('description', e.target.value)}
