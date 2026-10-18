@@ -49,7 +49,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: service, error: svcErr } = await supabaseAdmin
       .from("services")
-      .select("user_id, ingest_secret, ip_public, ip_internal, specs, name")
+      .select("user_id, ingest_secret, ip_public, ip_internal, specifications, name")
       .eq("id", service_id)
       .maybeSingle();
 
@@ -116,8 +116,8 @@ Deno.serve(async (req: Request) => {
       if (diskTotalGB != null)  specsUpdate.disk_total_gb = diskTotalGB;
 
       if (Object.keys(specsUpdate).length > 0) {
-        const existingSpecs = (service.specs && typeof service.specs === "object") ? service.specs as Record<string, unknown> : {};
-        svcUpdate.specs = { ...existingSpecs, ...specsUpdate };
+        const existingSpecs = (service.specifications && typeof service.specifications === "object") ? service.specifications as Record<string, unknown> : {};
+        svcUpdate.specifications = { ...existingSpecs, ...specsUpdate };
       }
 
       if (Object.keys(svcUpdate).length > 0) {
@@ -125,14 +125,14 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // source = "rdp" — persistir anydesk_id en specs
+    // source = "rdp" — persistir anydesk_id en specifications
     if (source === "rdp" && payload) {
       const anydeskId = typeof payload.anydesk_id === "string" ? payload.anydesk_id.trim() : null;
       if (anydeskId) {
-        const existingSpecs = (service.specs && typeof service.specs === "object") ? service.specs as Record<string, unknown> : {};
+        const existingSpecs = (service.specifications && typeof service.specifications === "object") ? service.specifications as Record<string, unknown> : {};
         if (existingSpecs.anydesk_id !== anydeskId) {
           await supabaseAdmin.from("services").update({
-            specs: { ...existingSpecs, anydesk_id: anydeskId },
+            specifications: { ...existingSpecs, anydesk_id: anydeskId },
           }).eq("id", service_id);
         }
       }
