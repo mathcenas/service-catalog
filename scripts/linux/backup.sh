@@ -40,7 +40,7 @@ RETENTION_DAYS="${RETENTION_DAYS:-7}"
 DEST_TYPE="${DEST_TYPE:-local}"        # local | rsync | rclone
 RSYNC_DEST="${RSYNC_DEST:-}"
 RSYNC_SSH_KEY="${RSYNC_SSH_KEY:-}"
-SCRIPT_VERSION="1.2.5"
+SCRIPT_VERSION="1.3.0"
 RCLONE_REMOTE="${RCLONE_REMOTE:-}"
 PG_CONTAINERS="${PG_CONTAINERS:-}"
 KUMA_PUSH_URL="${KUMA_PUSH_URL_BACKUP:-${KUMA_PUSH_URL:-}}"
@@ -109,10 +109,10 @@ notify_kuma() {
 
 # ---------- Reporte a Supabase ingest ----------
 report_ingest() {
-  local status="$1"     # success | failed
+  local status="$1"     # success | failed | warning
   local size_bytes="$2"
   local duration="$3"
-  local details="$4"
+  local dest_type="$4"
 
   if [[ -z "$INGEST_URL" || -z "$SERVICE_ID" || -z "$INGEST_SECRET" ]]; then
     return 0
@@ -121,6 +121,18 @@ report_ingest() {
   local backed_up_at
   backed_up_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
+  # Tamaño en GB con 2 decimales para la tabla del mail
+  local size_gb="0"
+  if [[ "$size_bytes" -gt 0 ]]; then
+    size_gb="$(awk "BEGIN{printf \"%.2f\", $size_bytes/1073741824}")"
+  fi
+  local dur_min
+  dur_min="$(awk "BEGIN{printf \"%.1f\", $duration/60}")"
+
+  # details como JSON array (mismo formato que Veeam) → el email renderiza tabla
+  local job_label="${HOST_TAG} → ${dest_type}"
+  local details_json="[{\"job\":\"${job_label}\",\"status\":\"${status}\",\"size\":${size_gb},\"dur\":${dur_min}}]"
+
   curl -fsS --max-time 15 --retry 3 --retry-delay 5 --retry-all-errors -X POST "$INGEST_URL" \
     -H "Content-Type: application/json" \
     -H "apikey: ${SUPABASE_ANON_KEY}" \
@@ -128,12 +140,12 @@ report_ingest() {
     -H "X-Ingest-Secret: ${INGEST_SECRET}" \
     -d "{
       \"service_id\": \"${SERVICE_ID}\",
-      \"job_name\": \"${HOST_TAG} backup\",
+      \"job_name\": \"Resumen diario (1 job)\",
       \"status\": \"${status}\",
       \"size_bytes\": ${size_bytes},
       \"duration_seconds\": ${duration},
       \"backed_up_at\": \"${backed_up_at}\",
-      \"details\": \"${details}\",
+      \"details\": $(printf '%s' "$details_json" | jq -Rs . 2>/dev/null || printf '"%s"' "$(printf '%s' "$details_json" | sed 's/"/\\"/g')"),
       \"script_version\": \"${SCRIPT_VERSION}\"
     }" >/dev/null \
     || echo "WARN: no se pudo reportar al ingest de Supabase" >&2
@@ -212,7 +224,7 @@ on_error() {
   local msg="Fallo en línea ${line} (exit ${exit_code}) en ${HOST_TAG}"
   echo "ERROR: $msg" >&2
   notify_kuma "down" "$msg"
-  report_ingest "failed" "0" "$elapsed" "error at line ${line} exit_code=${exit_code}"
+  report_ingest "failed" "0" "$elapsed" "${DEST_TYPE:-local}"
   send_email "down" "❌ Backup FALLÓ - ${HOST_TAG}" \
     "El backup de ${HOST_TAG} falló.
 Línea: ${line}
@@ -320,13 +332,11 @@ find "$BACKUP_ROOT" -maxdepth 1 -name "${HOST_TAG}_*.tar.gz" -mtime "+${RETENTIO
 # ---------- Notificación de éxito ----------
 ELAPSED=$(( $(date +%s) - START_TS ))
 FINAL_STATUS="success"
-FINAL_DETAILS="Destino: ${DEST_TYPE} | Carpetas: ${SRC_DIRS} | Archivo: ${ARCHIVE_NAME}"
 if [[ "${TAR_WARNING:-0}" == "1" ]]; then
   FINAL_STATUS="warning"
-  FINAL_DETAILS="${FINAL_DETAILS} | Advertencia: archivos modificados durante compresión"
 fi
 notify_kuma "up" "${FINAL_STATUS^^} ${HOST_TAG}: ${ARCHIVE_SIZE} en ${ELAPSED}s (dest=${DEST_TYPE})"
-report_ingest "$FINAL_STATUS" "$ARCHIVE_SIZE_BYTES" "$ELAPSED" "$FINAL_DETAILS"
+report_ingest "$FINAL_STATUS" "$ARCHIVE_SIZE_BYTES" "$ELAPSED" "$DEST_TYPE"
 send_email "up" "✅ Backup OK - ${HOST_TAG}" \
   "Backup de ${HOST_TAG} completado correctamente.
 Archivo: ${ARCHIVE_NAME}
