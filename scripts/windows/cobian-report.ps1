@@ -13,7 +13,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.1.0"
+$SCRIPT_VERSION = "1.2.0"
 
 if (-not (Get-Command Invoke-Kuma -ErrorAction SilentlyContinue)) {
     function Invoke-Kuma { param([string]$Status, [string]$Msg) }
@@ -47,20 +47,30 @@ $headers = @{
     "X-Ingest-Secret" = $SMB_INGEST_SECRET
 }
 
-function Send-BackupReport($status, $jobName, $sizeBytes, $durationSeconds, $details, $backedUpAt) {
+function Send-BackupReport($status, $jobName, $tasks, $totalBytes, $totalSeconds, $backedUpAt) {
+    # $tasks = array de PSCustomObject con campos job, status, size (GB), dur (min)
+    $detailsJson = $tasks | ForEach-Object {
+        @{
+            job    = $_.job
+            status = $_.status
+            size   = [math]::Round($_.sizeBytes / 1GB, 2)
+            dur    = [math]::Round($_.durationSeconds / 60, 1)
+        }
+    } | ConvertTo-Json -Compress -Depth 3 -AsArray
+
     $body = @{
-        service_id        = $SMB_SERVICE_ID
-        job_name          = $jobName
-        status            = $status
-        size_bytes        = $sizeBytes
-        duration_seconds  = $durationSeconds
-        details           = $details
-        backed_up_at      = $backedUpAt
-        script_version    = $SCRIPT_VERSION
+        service_id       = $SMB_SERVICE_ID
+        job_name         = $jobName
+        status           = $status
+        size_bytes       = $totalBytes
+        duration_seconds = $totalSeconds
+        details          = $detailsJson
+        backed_up_at     = $backedUpAt
+        script_version   = $SCRIPT_VERSION
     } | ConvertTo-Json -Compress -Depth 5
     try {
         Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body -ErrorAction Stop | Out-Null
-        Write-Log "  ✅ Reportado: [$status] $jobName"
+        Write-Log "  ✅ Reportado: [$status] $jobName ($($tasks.Count) tarea(s))"
     } catch {
         Write-Log "  ❌ ERROR al reportar: $_"
     }
@@ -141,7 +151,8 @@ $logPath = Join-Path $COBIAN_LOG_DIR "Cobian Reflector $today.txt"
 
 if (-not (Test-Path $logPath)) {
     Write-Log "No se encontró log de hoy: $logPath"
-    Send-BackupReport "failed" "Cobian" 0 0 "Log no encontrado: $logPath" (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $fallbackTask = @([PSCustomObject]@{ job = "Cobian Reflector"; status = "failed"; sizeBytes = 0; durationSeconds = 0 })
+    Send-BackupReport "failed" "Cobian Reflector — Resumen diario (1 job)" $fallbackTask 0 0 (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     exit 1
 }
 
@@ -152,7 +163,8 @@ $blocks = [regex]::Matches($content, '(?s)(?=\*\* Backup for the task).*?(?=\*\*
 
 if ($blocks.Count -eq 0) {
     Write-Log "No se encontraron bloques de tarea en el log"
-    Send-BackupReport "failed" "Cobian" 0 0 "Sin bloques de tarea en log" (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $fallbackTask = @([PSCustomObject]@{ job = "Cobian Reflector"; status = "failed"; sizeBytes = 0; durationSeconds = 0 })
+    Send-BackupReport "failed" "Cobian Reflector — Resumen diario (1 job)" $fallbackTask 0 0 (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     exit 1
 }
 
@@ -176,9 +188,31 @@ if (-not $toReport) {
     exit 0
 }
 
+# Armar array de tasks para el JSON (formato tabla del email)
+$taskRows = @($toReport | ForEach-Object {
+    [PSCustomObject]@{
+        job             = $_.TaskName
+        status          = $_.Status
+        sizeBytes       = $_.SizeBytes
+        durationSeconds = $_.DurationSeconds
+    }
+})
+
+# Status global: failed si alguna falló, warning si alguna tuvo warning, success si todas OK
+$globalStatus = if ($taskRows | Where-Object { $_.status -eq 'failed' }) { 'failed' }
+               elseif ($taskRows | Where-Object { $_.status -eq 'warning' }) { 'warning' }
+               else { 'success' }
+
+$totalBytes   = ($taskRows | Measure-Object -Property sizeBytes -Sum).Sum
+$totalSeconds = ($taskRows | Measure-Object -Property durationSeconds -Sum).Sum
+$backedUpAt   = ($toReport | Sort-Object BackedUpAt | Select-Object -Last 1).BackedUpAt
+$jobCount     = $taskRows.Count
+$jobLabel     = "Cobian Reflector — Resumen diario ($jobCount job$(if ($jobCount -ne 1) {'s'}))"
+
 foreach ($t in $toReport) {
     Write-Log "Task: $($t.TaskName) | $($t.Status) | $($t.Details)"
-    Send-BackupReport $t.Status "Cobian — $($t.TaskName)" $t.SizeBytes $t.DurationSeconds $t.Details $t.BackedUpAt
 }
 
-Write-Log "Listo — $($toReport.Count) tarea(s) reportada(s)"
+Send-BackupReport $globalStatus $jobLabel $taskRows $totalBytes $totalSeconds $backedUpAt
+
+Write-Log "Listo — $($toReport.Count) tarea(s) consolidadas en un solo reporte [$globalStatus]"
