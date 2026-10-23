@@ -4,40 +4,54 @@ Backup nocturno de VMs hacia destino UNC. Una copia por día, retención configu
 
 ## Instalación
 
-1. Copiar la carpeta `vmware-backup\` a `C:\Scripts\` en el host cliente.
-2. Editar `backup-config.json` con los paths y VMs del cliente.
-3. Configurar las variables de entorno de la máquina (no del usuario):
+1. Copiar la carpeta `vmware-backup\` dentro de `C:\Scripts\` (al lado del `config.ps1` existente).
+2. Editar `C:\Scripts\config.ps1` y completar las variables `VM_*`:
    ```powershell
-   [System.Environment]::SetEnvironmentVariable("CENAS_VM_SERVICE_ID",    "<id>",     "Machine")
-   [System.Environment]::SetEnvironmentVariable("CENAS_VM_INGEST_SECRET", "<secret>", "Machine")
-   [System.Environment]::SetEnvironmentVariable("CENAS_SUPABASE_ANON_KEY","<key>",    "Machine")
-   # Si hay VMs encriptadas:
-   [System.Environment]::SetEnvironmentVariable("VMPASS_SRV_VENTAS",      "<pass>",   "Machine")
+   $VM_DEST_ROOT   = "\\NAS\backups-vms"   # destino UNC o local — obligatorio
+   $VM_ROOT_DIR    = "D:\VMs"              # carpeta raíz de las VMs (recomendado)
+   $VM_RETENTION   = 3
+   $VM_MIN_FREE_GB = 20
    ```
-4. Registrar la tarea del Programador (como Administrador):
+   Las variables de telemetría (`$INGEST_URL`, `$INGEST_SECRET`, `$SERVICE_ID`, `$ANON_KEY`)
+   ya están en `config.ps1` — el script las usa automáticamente.
+3. Registrar la tarea del Programador (como Administrador):
    ```powershell
    .\Register-BackupTask.ps1
    ```
 
 ## Usuario de la tarea — importante
 
-**No usar SYSTEM.** `vmrun` necesita correr bajo la cuenta que registró/abrió las VMs originalmente (normalmente el usuario que tiene AutoStart configurado). Usar esa cuenta local o de dominio.
+**No usar SYSTEM.** `vmrun` necesita correr bajo la cuenta que registró/abrió las VMs (la que tiene AutoStart configurado). Usar esa cuenta local o de dominio.
 
-Si la cuenta es local y no tiene acceso al UNC destino, agregar credenciales persistentes:
+Si esa cuenta no tiene acceso al UNC destino, agregar credenciales persistentes:
 ```powershell
 cmdkey /add:NAS /user:DOMINIO\usuario /pass:contrasena
 ```
 
-## Configuración (`backup-config.json`)
+El inventario de VMs (`inventory.vmls`) también es por usuario, por eso el mismo usuario que corre la tarea tiene que ser quien usa VMware Workstation.
 
-| Campo | Descripción |
-|-------|-------------|
-| `client` | Código del cliente (aparece en el email y en el path de destino) |
-| `destinationRoot` | UNC o ruta local donde se guardan las carpetas de backup |
-| `retentionCopies` | Cuántas copias diarias mantener por VM (default 3) |
-| `minFreeSpaceMarginGB` | Margen mínimo de espacio libre que debe quedar en destino |
-| `suspendTimeoutSec` | Segundos máximos esperando que la VM suspenda (default 600) |
-| `vms[].encryptionPasswordEnv` | Nombre de variable de entorno con la clave de la VM encriptada. `null` si no tiene cifrado |
+## Configuración (`config.ps1`)
+
+Variables VMware en el `config.ps1` compartido con los demás scripts del cliente:
+
+| Variable | Descripción | Default |
+|----------|-------------|---------|
+| `$VM_DEST_ROOT` | Destino UNC o local para los backups | — (obligatorio) |
+| `$VM_ROOT_DIR` | Carpeta raíz de las VMs para auto-descubrir | inventario VMware |
+| `$VM_RETENTION` | Copias diarias a conservar por VM | 3 |
+| `$VM_MIN_FREE_GB` | Espacio mínimo libre en destino (GB) | 20 |
+| `$VM_SUSPEND_TIMEOUT` | Timeout esperando suspend (segundos) | 600 |
+| `$VM_VMRUN_PATH` | Path a vmrun.exe si no está en el default | auto |
+| `$VM_LOG_DIR` | Carpeta de logs | `vmware-backup\logs` |
+
+### Descubrimiento de VMs
+
+El script encuentra las VMs automáticamente, sin lista manual:
+
+1. **Si `$VM_ROOT_DIR` está configurado**: escanea `*.vmx` hasta 2 niveles adentro.
+2. **Si no**: lee `%APPDATA%\VMware\inventory.vmls` (todas las VMs registradas en Workstation).
+
+Esto incluye VMs apagadas al momento del backup.
 
 ## Qué hace el script
 
@@ -84,9 +98,9 @@ Get-Content "C:\Scripts\vmware-backup\logs\backup-*.log" -Tail 20 -Wait
 
 ```
 \\NAS\backups-vms\
-  RBUY\
+  SERVER-CARRAL\            ← nombre del host ($env:COMPUTERNAME)
     SRV-CONTA\
-      2026-10-23_0330\   ← copia más nueva
+      2026-10-23_0330\      ← copia más nueva
       2026-10-22_0330\
       2026-10-21_0330\
     SRV-VENTAS\

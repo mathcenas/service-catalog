@@ -1,29 +1,3 @@
 {
-  "client": "RBUY",
-  "host": "server-carral",
-  "vmrunPath": "C:\\Program Files (x86)\\VMware\\VMware Workstation\\vmrun.exe",
-  "destinationRoot": "\\\\NAS\\backups-vms",
-  "retentionCopies": 3,
-  "minFreeSpaceMarginGB": 20,
-  "suspendTimeoutSec": 600,
-  "logPath": "C:\\Scripts\\vmware-backup\\logs",
-  "vms": [
-    {
-      "name": "SRV-CONTA",
-      "vmx": "D:\\VMs\\SRV-CONTA\\SRV-CONTA.vmx",
-      "encryptionPasswordEnv": null
-    },
-    {
-      "name": "SRV-VENTAS",
-      "vmx": "D:\\VMs\\SRV-VENTAS\\SRV-VENTAS.vmx",
-      "encryptionPasswordEnv": "VMPASS_SRV_VENTAS"
-    }
-  ],
-  "telemetry": {
-    "enabled": true,
-    "ingestUrl": "https://SUPABASE_PROJECT.supabase.co/functions/v1/ingest-backup",
-    "serviceIdEnv": "CENAS_VM_SERVICE_ID",
-    "secretEnv": "CENAS_VM_INGEST_SECRET",
-    "anonKeyEnv": "CENAS_SUPABASE_ANON_KEY"
-  }
+  "_comment": "Este archivo ya no es necesario. Toda la configuración está en config.ps1 (un nivel arriba). Ver variables VM_* en config.ps1."
 }

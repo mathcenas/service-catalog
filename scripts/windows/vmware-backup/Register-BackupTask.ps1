@@ -7,7 +7,6 @@
 param(
     [string]$TaskName   = "VMware Workstation Backup - Nocturno",
     [string]$ScriptPath = "$PSScriptRoot\Backup-WorkstationVMs.ps1",
-    [string]$ConfigPath = "$PSScriptRoot\backup-config.json",
     [string]$RunAsUser  = "",        # Dejar vacio = pedir interactivo
     [string]$StartTime  = "03:30"
 )
@@ -32,7 +31,7 @@ $plainPwd = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
 )
 
 $psExe = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
-$args  = "-NonInteractive -ExecutionPolicy Bypass -File `"$ScriptPath`" -Config `"$ConfigPath`""
+$args  = "-NonInteractive -ExecutionPolicy Bypass -File `"$ScriptPath`""
 
 $action  = New-ScheduledTaskAction -Execute $psExe -Argument $args -WorkingDirectory (Split-Path $ScriptPath)
 $trigger = New-ScheduledTaskTrigger -Daily -At $StartTime
