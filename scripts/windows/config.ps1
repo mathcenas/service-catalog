@@ -91,6 +91,11 @@ $VM_FINISH_BY      = "06:30"
 # Gigabit LAN a NAS = ~80-110 MB/s. SSD local = ~300+. Ajustar con datos reales.
 $VM_THROUGHPUT_MBPS = 100
 
+# URL de la función de notificaciones de mantenimiento VM.
+# Si se deja vacío, no se envían notificaciones de suspend/start.
+# Los SERVICE_ID, INGEST_SECRET y ANON_KEY de arriba se reusan.
+$VM_EVENT_URL      = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-vm-event"
+
 # ---------- Re-intento automático de backup ----------
 # Llama a esto al final de un script si hubo warning/error.
 # Escribe un script temporal, lo lanza detached (WindowStyle Hidden) y sale.

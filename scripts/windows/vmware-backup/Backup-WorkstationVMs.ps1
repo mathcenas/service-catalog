@@ -221,6 +221,24 @@ if (-not (Test-Path $destRoot)) {
 # ---------- Procesar cada VM ----------
 $allResults = @()
 
+# ---------- Notificación: backup iniciado ----------
+if (-not $globalAbort -and $VM_EVENT_URL -and $INGEST_SECRET -and $SERVICE_ID -and $ANON_KEY) {
+    $vmNamesJson = '[' + (($vmList | ForEach-Object { """$($_.name)""" }) -join ',') + ']'
+    $startBody = "{""service_id"":""$SERVICE_ID"",""event_type"":""vm_maintenance_start"",""host"":""$env:COMPUTERNAME"",""vms"":$vmNamesJson}"
+    $notifHeaders = @{
+        "Content-Type"    = "application/json; charset=utf-8"
+        "apikey"          = $ANON_KEY
+        "Authorization"   = "Bearer $ANON_KEY"
+        "X-Ingest-Secret" = $INGEST_SECRET
+    }
+    try {
+        Invoke-RestMethod -Uri $VM_EVENT_URL -Method POST -Headers $notifHeaders -Body ([System.Text.Encoding]::UTF8.GetBytes($startBody)) -ErrorAction Stop | Out-Null
+        Write-Log "Notificación enviada: backup iniciado ($($vmList.Count) VM(s))"
+    } catch {
+        Write-Log "WARN: notificación fallida: $_" 'WARN'
+    }
+}
+
 if (-not $globalAbort) {
     foreach ($vm in $vmList) {
         $vmName = $vm.name

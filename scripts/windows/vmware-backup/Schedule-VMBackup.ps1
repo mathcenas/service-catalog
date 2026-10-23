@@ -139,4 +139,23 @@ try {
     exit 1
 }
 
+# ---------- Notificación: aviso anticipado ----------
+if ($VM_EVENT_URL -and $INGEST_SECRET -and $SERVICE_ID -and $ANON_KEY) {
+    $body = "{""service_id"":""$SERVICE_ID"",""event_type"":""vm_maintenance_scheduled"",""host"":""$env:COMPUTERNAME"",""start_time"":""$startStr"",""finish_by"":""$finishByStr"",""estimated_min"":$estimatedMin,""vm_count"":$($vmList.Count),""total_gb"":$totalGB}"
+    $headers = @{
+        "Content-Type"    = "application/json; charset=utf-8"
+        "apikey"          = $ANON_KEY
+        "Authorization"   = "Bearer $ANON_KEY"
+        "X-Ingest-Secret" = $INGEST_SECRET
+    }
+    try {
+        Invoke-RestMethod -Uri $VM_EVENT_URL -Method POST -Headers $headers -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -ErrorAction Stop | Out-Null
+        Write-Log "Notificación enviada: backup programado a las $startStr"
+    } catch {
+        Write-Log "WARN: notificación fallida: $_" 'WARN'
+    }
+} else {
+    Write-Log "Notificaciones omitidas: VM_EVENT_URL o credenciales no configurados" 'WARN'
+}
+
 Write-Log "=== Listo ==="
