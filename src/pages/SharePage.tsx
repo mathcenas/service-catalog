@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Server, Globe, Calendar, Clock, Shield, CheckCircle2,
   HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X,
-  Sparkles, Rocket, DollarSign, Send, Loader2, HelpCircle, ShieldCheck,
+  Sparkles, Rocket, DollarSign, Send, Loader2, HelpCircle, ShieldCheck, Lock,
 } from 'lucide-react';
 import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapItemUpdate, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat, ClientApp } from '../lib/supabase';
 import { BackupMetricsModal } from '../components/BackupMetricsModal';
@@ -783,11 +783,18 @@ function backupIcon(jobName: string): string {
   return '💾';
 }
 
+function isOfflineBackup(jobName: string | null): boolean {
+  return !!(jobName && jobName.startsWith('Copia física'));
+}
+
 function BackupStatus({ services, backups }: { services: Service[]; backups: ServiceBackup[] }) {
   const withBackup = services.filter(s => s.last_backup_at || backups.some(b => b.service_id === s.id));
   if (withBackup.length === 0) return null;
 
   const [historyModal, setHistoryModal] = useState<{ serviceId: string; name: string } | null>(null);
+
+  // All offline copies across all services, most recent first
+  const offlineCopies = backups.filter(b => isOfflineBackup(b.job_name)).slice(0, 3);
 
   function jobDotColor(status: string, hoursOld: number) {
     if (status === 'failed') return 'bg-red-500';
@@ -814,15 +821,18 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
           const svcBackups = backups.filter(b => b.service_id === s.id);
 
           // Group by job_name, preserving order (most recent first per group)
+          // Offline copies are shown separately in the custody panel below
           const byJob = new Map<string, ServiceBackup[]>();
           for (const b of svcBackups) {
+            if (isOfflineBackup(b.job_name)) continue;
             const key = b.job_name || '';
             if (!byJob.has(key)) byJob.set(key, []);
             byJob.get(key)!.push(b);
           }
 
-          // Fallback: no history entries, use service.last_backup_at
+          // Fallback: no non-offline history entries, use service.last_backup_at
           if (byJob.size === 0) {
+            if (!s.last_backup_at) return null;
             const hoursOld = (Date.now() - new Date(s.last_backup_at!).getTime()) / 3600000;
             return (
               <div key={s.id} className="px-4 py-3 flex items-center gap-3">
@@ -912,6 +922,34 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
           );
         })}
       </div>
+      {offlineCopies.length > 0 && (
+        <div className="mt-3 rounded-xl border border-slate-600/40 bg-slate-800/60 px-4 py-3.5 flex gap-3">
+          <div className="shrink-0 mt-0.5">
+            <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center">
+              <Lock className="w-3.5 h-3.5 text-slate-300" />
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-slate-200 mb-0.5">
+              Copia física bajo custodia del cliente
+            </p>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Esta copia permite reactivar toda la operativa de la empresa ante una pérdida total de hardware. Almacenada bajo llave en la caja fuerte del cliente.
+            </p>
+            <div className="mt-2 space-y-1">
+              {offlineCopies.map(b => (
+                <div key={b.id} className="flex items-center gap-2 text-[11px] text-slate-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                  <span>
+                    {new Date(b.backed_up_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+                    {' — '}{services.find(s => s.id === b.service_id)?.business_name || services.find(s => s.id === b.service_id)?.name || ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       {historyModal && (
         <BackupMetricsModal
           serviceId={historyModal.serviceId}

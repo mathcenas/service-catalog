@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, Fragment } from 'react';
-import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, Trash2, HardDrive, Wifi, Monitor, Server, LayoutGrid, List, Users, Download, ChevronRight, ChevronDown, TrendingUp, Globe, Network, MonitorSmartphone } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Clock, RefreshCw, Search, Trash2, HardDrive, Wifi, Monitor, Server, LayoutGrid, List, Users, Download, ChevronRight, ChevronDown, TrendingUp, Globe, Network, MonitorSmartphone, Lock, X, Loader2 } from 'lucide-react';
 import { supabase, Service, Client, ServiceHeartbeat } from '../lib/supabase';
 import { ServiceMetricsModal } from './ServiceMetricsModal';
 import { BackupMetricsModal } from './BackupMetricsModal';
@@ -349,6 +349,11 @@ export function TelemetryDashboard({ services, clients }: Props) {
   const [latestVersions, setLatestVersions] = useState<Record<string, { windows?: string; windowsServer?: string; linux?: string }>>({});
   const [metricsModal, setMetricsModal]       = useState<{ serviceId: string; name: string } | null>(null);
   const [backupModal, setBackupModal]         = useState<{ serviceId: string; name: string } | null>(null);
+  const [offlineBackupModal, setOfflineBackupModal] = useState(false);
+  const [offlineBackupServiceId, setOfflineBackupServiceId] = useState('');
+  const [offlineBackupNote, setOfflineBackupNote] = useState('Copia física almacenada bajo llave en la caja fuerte del cliente. Esta copia permite reactivar toda la operativa de la empresa ante pérdida total de hardware.');
+  const [offlineBackupSubmitting, setOfflineBackupSubmitting] = useState(false);
+  const [offlineBackupResult, setOfflineBackupResult] = useState<'ok' | 'err' | null>(null);
   const [yesterdayOutdated, setYesterdayOutdated] = useState<number | null>(null);
 
   const load = async () => {
@@ -1039,7 +1044,7 @@ export function TelemetryDashboard({ services, clients }: Props) {
               <p className="text-sm text-gray-600 mt-0.5">All backup reports received from your scripts.</p>
             </div>
           </div>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap items-center">
             <select value={backupClientFilter} onChange={e => setBackupClientFilter(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
               <option value="all">All clients</option>
@@ -1051,6 +1056,12 @@ export function TelemetryDashboard({ services, clients }: Props) {
                 placeholder="Search service, job..."
                 className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-56" />
             </div>
+            <button
+              onClick={() => { setOfflineBackupModal(true); setOfflineBackupResult(null); }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              <Lock className="w-3.5 h-3.5" /> Registrar copia física
+            </button>
           </div>
         </div>
 
@@ -1313,6 +1324,95 @@ export function TelemetryDashboard({ services, clients }: Props) {
         serviceName={backupModal.name}
         onClose={() => setBackupModal(null)}
       />
+    )}
+    {offlineBackupModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <Lock className="w-4 h-4 text-slate-600" />
+              <h2 className="font-semibold text-gray-900">Registrar copia física</h2>
+            </div>
+            <button onClick={() => setOfflineBackupModal(false)} className="text-gray-400 hover:text-gray-600">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="px-6 py-5 space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Servicio</label>
+              <select
+                value={offlineBackupServiceId}
+                onChange={e => setOfflineBackupServiceId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+              >
+                <option value="">Seleccionar servicio…</option>
+                {services.map(s => <option key={s.id} value={s.id}>{s.business_name || s.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Nota de custodia</label>
+              <textarea
+                rows={4}
+                value={offlineBackupNote}
+                onChange={e => setOfflineBackupNote(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+              />
+            </div>
+            {offlineBackupResult === 'ok' && (
+              <p className="text-sm text-emerald-600 font-medium">✓ Copia física registrada correctamente.</p>
+            )}
+            {offlineBackupResult === 'err' && (
+              <p className="text-sm text-red-600 font-medium">Error al registrar. Verificar servicio e ingest secret.</p>
+            )}
+          </div>
+          <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+            <button onClick={() => setOfflineBackupModal(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Cancelar</button>
+            <button
+              disabled={!offlineBackupServiceId || offlineBackupSubmitting}
+              onClick={async () => {
+                if (!offlineBackupServiceId) return;
+                setOfflineBackupSubmitting(true);
+                setOfflineBackupResult(null);
+                try {
+                  const { data: svc } = await supabase.from('services').select('ingest_secret').eq('id', offlineBackupServiceId).single();
+                  if (!svc?.ingest_secret) throw new Error('no secret');
+                  const detailsJson = JSON.stringify([{ job: 'Copia física — Disco externo', status: 'success', size: 0, dur: 0, note: offlineBackupNote }]);
+                  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ingest-backup`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+                      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                      'X-Ingest-Secret': svc.ingest_secret,
+                    },
+                    body: JSON.stringify({
+                      service_id: offlineBackupServiceId,
+                      job_name: 'Copia física — Disco externo',
+                      status: 'success',
+                      size_bytes: 0,
+                      duration_seconds: 0,
+                      details: detailsJson,
+                      backed_up_at: new Date().toISOString(),
+                      suppress_email: false,
+                    }),
+                  });
+                  if (!res.ok) throw new Error(await res.text());
+                  setOfflineBackupResult('ok');
+                  load();
+                } catch {
+                  setOfflineBackupResult('err');
+                } finally {
+                  setOfflineBackupSubmitting(false);
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              {offlineBackupSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Lock className="w-3.5 h-3.5" />}
+              Registrar
+            </button>
+          </div>
+        </div>
+      </div>
     )}
     </>
   );
