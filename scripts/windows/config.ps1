@@ -83,6 +83,14 @@ $VM_SUSPEND_TIMEOUT = 600
 # Carpeta de logs (vacío = misma carpeta que el script)
 $VM_LOG_DIR        = ""
 
+# Hora límite: las VMs deben estar de vuelta corriendo antes de esta hora
+# Schedule-VMBackup.ps1 usa este valor para calcular el horario de inicio
+$VM_FINISH_BY      = "06:30"
+
+# Velocidad de transferencia al destino (MB/s). Sirve para estimar duración.
+# Gigabit LAN a NAS = ~80-110 MB/s. SSD local = ~300+. Ajustar con datos reales.
+$VM_THROUGHPUT_MBPS = 100
+
 # ---------- Re-intento automático de backup ----------
 # Llama a esto al final de un script si hubo warning/error.
 # Escribe un script temporal, lo lanza detached (WindowStyle Hidden) y sale.
