@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.6.1"
+$SCRIPT_VERSION = "1.6.2"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -354,25 +354,34 @@ if ($CHECK_SPEEDTEST) {
 $CHECK_RDP = if (Get-Variable 'CHECK_RDP' -ErrorAction SilentlyContinue) { $CHECK_RDP } else { $true }
 
 if ($CHECK_RDP) {
-    # AnyDesk — leer ID (v6 registry, v7 ProgramData, instalación por usuario en todos los perfiles)
+    # AnyDesk — leer ID con múltiples estrategias (v6, v7, por usuario, CLI)
     $anydeskId = $null
-    try { $anydeskId = (Get-ItemProperty -Path "HKLM:\SOFTWARE\AnyDesk" -Name "ad_id" -ErrorAction Stop).ad_id } catch {}
+
+    # 1. Registro (instalación nativa 64-bit y 32-bit WOW6432Node)
+    foreach ($regPath in @("HKLM:\SOFTWARE\AnyDesk", "HKLM:\SOFTWARE\WOW6432Node\AnyDesk")) {
+        if ($anydeskId) { break }
+        try { $anydeskId = (Get-ItemProperty -Path $regPath -Name "ad_id" -ErrorAction Stop).ad_id } catch {}
+    }
+
+    # 2. Archivos de configuración del sistema (ProgramData)
     if (-not $anydeskId) {
-        # Rutas fijas (instalación de sistema)
         $adFixed = @(
             "$env:ProgramData\AnyDesk\service.conf",
             "$env:ProgramData\AnyDesk\system.conf",
             "$env:ProgramData\AnyDesk\ad_anynet.cfg"
         )
         foreach ($c in $adFixed) {
+            if ($anydeskId) { break }
             if (Test-Path $c) {
-                $adLine = Get-Content $c -ErrorAction SilentlyContinue | Where-Object { $_ -match '^(ad\.anynet\.id|id)=' }
-                if ($adLine) { $anydeskId = ($adLine[0] -replace '^(ad\.anynet\.id|id)=', '').Trim(); break }
+                # Soporta "ad.anynet.id=XXX" (v6) y "id=XXX" bajo sección [identity] (v7)
+                $adLine = Get-Content $c -ErrorAction SilentlyContinue | Where-Object { $_ -match '^(ad\.anynet\.id|id)\s*=' }
+                if ($adLine) { $anydeskId = ($adLine[0] -replace '^(ad\.anynet\.id|id)\s*=\s*', '').Trim() }
             }
         }
     }
+
+    # 3. Instalación por usuario — escanear todos los perfiles en C:\Users
     if (-not $anydeskId) {
-        # Instalación por usuario — escanear todos los perfiles en C:\Users
         $usersRoot = "$env:SystemDrive\Users"
         Get-ChildItem $usersRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object {
             if ($anydeskId) { return }
@@ -382,10 +391,29 @@ if ($CHECK_RDP) {
                 "$($_.FullName)\AppData\Roaming\AnyDesk\ad_anynet.cfg"
             )
             foreach ($c in $candidates) {
+                if ($anydeskId) { break }
                 if (Test-Path $c) {
-                    $adLine = Get-Content $c -ErrorAction SilentlyContinue | Where-Object { $_ -match '^(ad\.anynet\.id|id)=' }
-                    if ($adLine) { $anydeskId = ($adLine[0] -replace '^(ad\.anynet\.id|id)=', '').Trim(); break }
+                    $adLine = Get-Content $c -ErrorAction SilentlyContinue | Where-Object { $_ -match '^(ad\.anynet\.id|id)\s*=' }
+                    if ($adLine) { $anydeskId = ($adLine[0] -replace '^(ad\.anynet\.id|id)\s*=\s*', '').Trim() }
                 }
+            }
+        }
+    }
+
+    # 4. Fallback: llamar al ejecutable directamente (más confiable con v8+)
+    if (-not $anydeskId) {
+        $adExePaths = @(
+            "$env:ProgramFiles\AnyDesk\AnyDesk.exe",
+            "${env:ProgramFiles(x86)}\AnyDesk\AnyDesk.exe",
+            "$env:LocalAppData\Programs\AnyDesk\AnyDesk.exe"
+        )
+        foreach ($adExe in $adExePaths) {
+            if ($anydeskId) { break }
+            if (Test-Path $adExe) {
+                try {
+                    $rawId = & $adExe --get-id 2>$null
+                    if ($rawId -match '^\d+$') { $anydeskId = $rawId.Trim() }
+                } catch {}
             }
         }
     }
