@@ -23,6 +23,7 @@ export function EditClientModal({ client, onClose, onSuccess }: Props) {
     uptime_status_url: client.uptime_status_url || '',
     digest_enabled: client.digest_enabled ?? false,
     spof_free: client.spof_free ?? null as boolean | null,
+    task_tracker_id: client.task_tracker_id || '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -184,6 +185,20 @@ export function EditClientModal({ client, onClose, onSuccess }: Props) {
               onChange={(e) => setFormData({ ...formData, uptime_status_url: e.target.value })}
               placeholder="https://status.tudominio.com/status/cliente"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Task Tracker ID
+            </label>
+            <p className="text-xs text-gray-400 mb-2">ID del cliente en el portal de tareas externo. Se usa para vincular incidentes automáticamente via webhook.</p>
+            <input
+              type="text"
+              value={formData.task_tracker_id}
+              onChange={(e) => setFormData({ ...formData, task_tracker_id: e.target.value })}
+              placeholder="client-123"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none font-mono text-sm"
             />
           </div>
 

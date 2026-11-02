@@ -25,6 +25,26 @@ export type Client = {
   spof_free?: boolean;
   uptime_status_url?: string;
   digest_enabled?: boolean;
+  task_tracker_id?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ServiceIncident = {
+  id: string;
+  user_id: string;
+  client_id: string | null;
+  service_id: string | null;
+  external_id: string | null;
+  source: 'manual' | 'task_tracker' | 'kuma';
+  type: 'incident' | 'maintenance' | 'change';
+  status: 'investigating' | 'identified' | 'monitoring' | 'resolved';
+  title: string;
+  description: string | null;
+  reported_by: string | null;
+  notes: { note: string; author?: string; timestamp?: string }[];
+  started_at: string;
+  resolved_at: string | null;
   created_at: string;
   updated_at: string;
 };
