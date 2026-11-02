@@ -13,7 +13,9 @@ const FREQ_OPTIONS = [
 type Contact = { name: string; email: string; company: string; digest_frequency: string };
 
 export function PreferencesPage() {
-  const token = new URLSearchParams(window.location.search).get('token') ?? '';
+  const params = new URLSearchParams(window.location.search);
+  const token       = params.get('token') ?? '';
+  const autoFreq    = params.get('frequency') ?? '';  // one-click reactivate via email link
 
   const [contact, setContact]       = useState<Contact | null>(null);
   const [selected, setSelected]     = useState('');
@@ -32,7 +34,26 @@ export function PreferencesPage() {
     if (!token) { setError('Link inválido.'); setLoading(false); return; }
     fetch(`${SUPABASE_URL}/functions/v1/email-preferences?token=${encodeURIComponent(token)}`, { headers })
       .then(r => r.ok ? r.json() : Promise.reject())
-      .then((data: Contact) => { setContact(data); setSelected(data.digest_frequency); })
+      .then(async (data: Contact) => {
+        setContact(data);
+        // One-click reactivate: si viene ?frequency=weekly en la URL, aplicar directo
+        const target = ['daily', 'weekly', 'none'].includes(autoFreq) ? autoFreq : data.digest_frequency;
+        setSelected(target);
+        if (target !== data.digest_frequency && autoFreq) {
+          setSaving(true);
+          try {
+            const res = await fetch(`${SUPABASE_URL}/functions/v1/email-preferences`, {
+              method: 'POST', headers,
+              body: JSON.stringify({ token, frequency: target }),
+            });
+            if (res.ok) {
+              setContact({ ...data, digest_frequency: target });
+              setSaved(true);
+            }
+          } catch { /* show form anyway */ }
+          setSaving(false);
+        }
+      })
       .catch(() => setError('Link inválido o expirado.'))
       .finally(() => setLoading(false));
   }, [token]);

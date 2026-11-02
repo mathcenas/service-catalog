@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Bell, BellOff, Mail, CheckCircle2, Clock, AlertCircle, Send, RefreshCw,
-         ChevronDown, ChevronUp, Users, Lock, Unlock, History, ShieldAlert, Link, Copy, ExternalLink, Plus } from 'lucide-react';
+         ChevronDown, ChevronUp, Users, Lock, Unlock, History, ShieldAlert, Link, Copy, ExternalLink, Plus, BellRing } from 'lucide-react';
 import { supabase, Client } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -138,6 +138,7 @@ export function NotificationCenterView({ clients }: Props) {
   const [lockEvents, setLockEvents] = useState<LockEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [sendingWelcome, setSendingWelcome] = useState<string | null>(null);
+  const [sendingDigestOff, setSendingDigestOff] = useState<string | null>(null);
   const [deletingLock, setDeletingLock] = useState<string | null>(null);
   const [expandedClient, setExpandedClient] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
@@ -214,6 +215,32 @@ export function NotificationCenterView({ clients }: Props) {
       showToast('Error de red', false);
     } finally {
       setSendingWelcome(null);
+    }
+  };
+
+  const sendDigestDisabled = async (contactId: string, contactEmail: string) => {
+    setSendingDigestOff(contactId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUrl = (supabase as any).supabaseUrl ?? import.meta.env.VITE_SUPABASE_URL;
+      const res = await fetch(`${supabaseUrl}/functions/v1/notify-digest-change`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ contact_id: contactId }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        showToast(`Notificación de baja enviada a ${contactEmail}`, true);
+      } else {
+        showToast(json.error ?? 'Error al enviar', false);
+      }
+    } catch {
+      showToast('Error de red', false);
+    } finally {
+      setSendingDigestOff(null);
     }
   };
 
@@ -425,19 +452,33 @@ export function NotificationCenterView({ clients }: Props) {
                                   </div>
                                 )}
                               </div>
-                              <button onClick={() => sendWelcome(contact.id, contact.email)}
-                                disabled={sendingWelcome === contact.id}
-                                title={contact.welcome_sent_at ? `Reenviar (último: ${fmtRelative(contact.welcome_sent_at)})` : 'Enviar email de bienvenida'}
-                                className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                                  contact.welcome_sent_at
-                                    ? 'border border-gray-200 text-gray-500 hover:bg-gray-50'
-                                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                                } disabled:opacity-50`}>
-                                {sendingWelcome === contact.id
-                                  ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                  : <Send className="w-3.5 h-3.5" />}
-                                {contact.welcome_sent_at ? 'Reenviar' : 'Welcome'}
-                              </button>
+                              <div className="shrink-0 flex items-center gap-1.5">
+                                {contact.digest_frequency === 'none' && (
+                                  <button
+                                    onClick={() => sendDigestDisabled(contact.id, contact.email)}
+                                    disabled={sendingDigestOff === contact.id}
+                                    title="Notificar al cliente sobre la baja, con link para reactivar"
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-amber-300 text-amber-700 hover:bg-amber-50 disabled:opacity-50 transition-colors">
+                                    {sendingDigestOff === contact.id
+                                      ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                      : <BellRing className="w-3.5 h-3.5" />}
+                                    Notificar baja
+                                  </button>
+                                )}
+                                <button onClick={() => sendWelcome(contact.id, contact.email)}
+                                  disabled={sendingWelcome === contact.id}
+                                  title={contact.welcome_sent_at ? `Reenviar (último: ${fmtRelative(contact.welcome_sent_at)})` : 'Enviar email de bienvenida'}
+                                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                                    contact.welcome_sent_at
+                                      ? 'border border-gray-200 text-gray-500 hover:bg-gray-50'
+                                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                                  } disabled:opacity-50`}>
+                                  {sendingWelcome === contact.id
+                                    ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                    : <Send className="w-3.5 h-3.5" />}
+                                  {contact.welcome_sent_at ? 'Reenviar' : 'Welcome'}
+                                </button>
+                              </div>
                             </div>
                           );
                         })}
