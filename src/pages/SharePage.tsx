@@ -479,8 +479,6 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
   }
   const healthEntries = Object.values(latestHealth);
 
-  // Resolved incidents from support_hours
-  const incidents = supportHours.filter(h => h.type === 'incident').slice(0, 5);
   const totalAllocated = services.reduce((sum, s) => sum + (s.confirmed_hours_monthly || 0), 0);
   const completedHours = roadmap
     .filter(r => r.status === 'Released' && r.amount_type === 'hours' && r.amount && r.amount > 0)
