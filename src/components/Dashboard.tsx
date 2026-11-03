@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings, Clock, CheckCircle2, AlertTriangle, Wrench, XCircle, Globe, MonitorSmartphone, Mail, Menu, X, Network, Bell } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings, Clock, CheckCircle2, AlertTriangle, Wrench, XCircle, Globe, MonitorSmartphone, Mail, Menu, X, Network, Bell, ShieldAlert, WifiOff, HardDrive } from 'lucide-react';
 import { supabase, Client, Service, Project, ServiceType } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { ClientList } from './ClientList';
@@ -303,6 +303,8 @@ export function Dashboard() {
               <OperationalStatusPanel services={services} clients={clients} />
             )}
 
+            <DailyOpsPanel services={services} clients={clients} onNavigate={setActiveTab} />
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -379,15 +381,15 @@ export function Dashboard() {
                   <p className="text-xs text-gray-500 mt-0.5">Quick reference for IPs, providers, and domains across active services.</p>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm min-w-[600px]">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
-                        <th className="text-left px-4 py-2.5 font-medium text-gray-600">Service</th>
-                        <th className="text-left px-4 py-2.5 font-medium text-gray-600">Client</th>
-                        <th className="text-left px-4 py-2.5 font-medium text-gray-600">IP</th>
-                        <th className="text-left px-4 py-2.5 font-medium text-gray-600">Provider</th>
-                        <th className="text-left px-4 py-2.5 font-medium text-gray-600">Domain / Proxy</th>
-                        <th className="text-left px-4 py-2.5 font-medium text-gray-600">Type</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-gray-600 whitespace-nowrap">Service</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-gray-600 whitespace-nowrap">Client</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-gray-600 whitespace-nowrap">IP</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-gray-600 whitespace-nowrap">Provider</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-gray-600 whitespace-nowrap">Domain / Proxy</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-gray-600 whitespace-nowrap">Type</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -577,6 +579,214 @@ export function Dashboard() {
   );
 
 }
+
+// ── Daily Ops Panel ──────────────────────────────────────────────────────────
+
+type DailyOpsItem = {
+  id: string;
+  kind: 'backup_fail' | 'no_heartbeat' | 'degraded';
+  serviceName: string;
+  clientName: string;
+  detail: string;
+};
+
+function DailyOpsPanel({
+  services,
+  clients,
+  onNavigate,
+}: {
+  services: Service[];
+  clients: Client[];
+  onNavigate: (tab: typeof activeTabValues[number]) => void;
+}) {
+  const [items, setItems] = useState<DailyOpsItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const clientMap = Object.fromEntries(clients.map(c => [c.id, c]));
+  const activeIds = services.filter(s => s.status === 'Active').map(s => s.id);
+
+  const load = useCallback(async () => {
+    if (activeIds.length === 0) { setLoading(false); return; }
+    setLoading(true);
+    const result: DailyOpsItem[] = [];
+    const now = new Date();
+
+    // 1. Backups fallidos o sin reporte en las últimas 26h
+    const backupCutoff = new Date(now.getTime() - 26 * 60 * 60 * 1000).toISOString();
+    const { data: backups } = await supabase
+      .from('service_backups')
+      .select('service_id, job_name, status, created_at')
+      .in('service_id', activeIds)
+      .order('created_at', { ascending: false });
+
+    if (backups) {
+      // Agrupar por servicio: último backup por servicio
+      const latestByService: Record<string, typeof backups[0]> = {};
+      for (const b of backups) {
+        if (!latestByService[b.service_id]) latestByService[b.service_id] = b;
+      }
+      for (const svc of services.filter(s => s.status === 'Active')) {
+        const latest = latestByService[svc.id];
+        const clientName = clientMap[svc.client_id]?.company_name ?? '';
+        if (!latest) {
+          // Sin ningún registro de backup
+          result.push({
+            id: `no-backup-${svc.id}`,
+            kind: 'backup_fail',
+            serviceName: svc.business_name || svc.name,
+            clientName,
+            detail: 'Sin registros de backup',
+          });
+        } else if (latest.status === 'failed' || latest.status === 'error') {
+          result.push({
+            id: `backup-fail-${svc.id}`,
+            kind: 'backup_fail',
+            serviceName: svc.business_name || svc.name,
+            clientName,
+            detail: `Último backup fallido — ${latest.job_name ?? ''}`,
+          });
+        } else if (latest.created_at < backupCutoff) {
+          const hoursAgo = Math.round((now.getTime() - new Date(latest.created_at).getTime()) / 3_600_000);
+          result.push({
+            id: `backup-stale-${svc.id}`,
+            kind: 'backup_fail',
+            serviceName: svc.business_name || svc.name,
+            clientName,
+            detail: `Sin backup hace ${hoursAgo}h`,
+          });
+        }
+      }
+    }
+
+    // 2. Heartbeats vencidos (servidor sin reporte en 2h)
+    const hbCutoff = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString();
+    const { data: heartbeats } = await supabase
+      .from('service_heartbeats')
+      .select('service_id, received_at, source')
+      .in('service_id', activeIds)
+      .eq('source', 'health')
+      .order('received_at', { ascending: false });
+
+    if (heartbeats) {
+      const latestHb: Record<string, string> = {};
+      for (const hb of heartbeats) {
+        if (!latestHb[hb.service_id]) latestHb[hb.service_id] = hb.received_at;
+      }
+      for (const svc of services.filter(s => s.status === 'Active' && s.specifications)) {
+        // Solo servicios que tienen historial de heartbeat (ya enviaron alguno)
+        if (!latestHb[svc.id]) continue;
+        if (latestHb[svc.id] < hbCutoff) {
+          const hoursAgo = Math.round((now.getTime() - new Date(latestHb[svc.id]).getTime()) / 3_600_000);
+          const clientName = clientMap[svc.client_id]?.company_name ?? '';
+          result.push({
+            id: `no-hb-${svc.id}`,
+            kind: 'no_heartbeat',
+            serviceName: svc.business_name || svc.name,
+            clientName,
+            detail: `Sin señal hace ${hoursAgo}h`,
+          });
+        }
+      }
+    }
+
+    // 3. Servicios degradados/caídos (ya cubierto en OperationalStatusPanel pero resumido aquí)
+    for (const svc of services.filter(s => s.status === 'Active' && (s.operational_status === 'Down' || s.operational_status === 'Degraded'))) {
+      const clientName = clientMap[svc.client_id]?.company_name ?? '';
+      result.push({
+        id: `ops-${svc.id}`,
+        kind: 'degraded',
+        serviceName: svc.business_name || svc.name,
+        clientName,
+        detail: svc.operational_status === 'Down' ? 'Servicio caído' : 'Servicio degradado',
+      });
+    }
+
+    setItems(result);
+    setLoading(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [services.length, clients.length]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return null;
+
+  const kindMeta = {
+    backup_fail:  { icon: HardDrive,   color: 'text-orange-600', bg: 'bg-orange-50',  border: 'border-orange-200', tab: 'telemetry'      as typeof activeTabValues[number] },
+    no_heartbeat: { icon: WifiOff,     color: 'text-red-600',    bg: 'bg-red-50',     border: 'border-red-200',    tab: 'telemetry'      as typeof activeTabValues[number] },
+    degraded:     { icon: ShieldAlert, color: 'text-amber-600',  bg: 'bg-amber-50',   border: 'border-amber-200',  tab: 'infrastructure' as typeof activeTabValues[number] },
+  };
+
+  // All clear
+  if (items.length === 0) {
+    return (
+      <div className="flex items-center gap-3 px-5 py-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-800">
+        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+        <span className="font-medium">Todo en orden</span>
+        <span className="text-emerald-600">· Backups, heartbeats y servicios sin alertas</span>
+      </div>
+    );
+  }
+
+  const grouped: Record<DailyOpsItem['kind'], DailyOpsItem[]> = {
+    backup_fail:  items.filter(i => i.kind === 'backup_fail'),
+    no_heartbeat: items.filter(i => i.kind === 'no_heartbeat'),
+    degraded:     items.filter(i => i.kind === 'degraded'),
+  };
+
+  const sectionLabels: Record<DailyOpsItem['kind'], string> = {
+    backup_fail:  'Backups',
+    no_heartbeat: 'Sin señal',
+    degraded:     'Operación',
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
+        <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+        <span className="text-sm font-semibold text-gray-900">Para hoy</span>
+        <span className="ml-auto text-xs text-gray-400">{items.length} {items.length === 1 ? 'alerta' : 'alertas'}</span>
+      </div>
+      <div className="divide-y divide-gray-50">
+        {(['backup_fail', 'no_heartbeat', 'degraded'] as DailyOpsItem['kind'][])
+          .filter(kind => grouped[kind].length > 0)
+          .map(kind => {
+            const meta = kindMeta[kind];
+            const Icon = meta.icon;
+            const list = grouped[kind];
+            return (
+              <div key={kind}>
+                <button
+                  onClick={() => onNavigate(meta.tab)}
+                  className="w-full flex items-center gap-2 px-5 py-2 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                >
+                  <Icon className={`w-3.5 h-3.5 ${meta.color}`} />
+                  <span className={`text-xs font-semibold uppercase tracking-wide ${meta.color}`}>{sectionLabels[kind]}</span>
+                  <span className={`ml-auto text-xs font-medium px-1.5 py-0.5 rounded-full ${meta.bg} ${meta.color} border ${meta.border}`}>
+                    {list.length}
+                  </span>
+                </button>
+                <ul className="divide-y divide-gray-50">
+                  {list.map(item => (
+                    <li key={item.id} className="px-5 py-2.5 flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium text-gray-900">{item.serviceName}</span>
+                        {item.clientName && <span className="text-xs text-gray-400 ml-1.5">· {item.clientName}</span>}
+                        <p className="text-xs text-gray-500 mt-0.5">{item.detail}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+      </div>
+    </div>
+  );
+}
+
+const activeTabValues = ['dashboard', 'clients', 'projects', 'services', 'payments', 'licenses', 'roadmap', 'hours', 'monthly_summary', 'telemetry', 'infrastructure', 'network', 'notifications', 'software', 'email_audit', 'data', 'settings'] as const;
+
+// ── Operational Status Panel ─────────────────────────────────────────────────
 
 function OperationalStatusPanel({ services, clients }: { services: Service[]; clients: Client[] }) {
   const [filter, setFilter] = useState<'all' | 'issues' | 'monitored'>('all');

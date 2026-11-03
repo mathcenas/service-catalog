@@ -57,6 +57,45 @@ function Invoke-KumaBackup { param([string]$Status, [string]$Msg)
     Invoke-Kuma -Status $Status -Msg $Msg -Url $url
 }
 
+# ---------- vmware-backup (Backup-WorkstationVMs.ps1) ----------
+# Dejar en blanco / $null los que no aplican al cliente.
+
+# Ruta al vmrun.exe (dejar vacío para usar la ubicación por defecto)
+$VM_VMRUN_PATH     = ""   # ej: "C:\Program Files (x86)\VMware\VMware Workstation\vmrun.exe"
+
+# Carpeta raíz donde están guardadas las VMs (para auto-descubrir *.vmx)
+# El script busca un nivel de profundidad: $VM_ROOT_DIR\<nombre-vm>\<nombre-vm>.vmx
+# Si se deja vacío, el script lee el inventario de VMware (%APPDATA%\VMware\inventory.vmls)
+$VM_ROOT_DIR       = ""   # ej: "D:\VMs"
+
+# Destino de backup (UNC o local)
+$VM_DEST_ROOT      = ""   # ej: "\\NAS\backups-vms"
+
+# Cuántas copias diarias conservar por VM
+$VM_RETENTION      = 3
+
+# Margen mínimo de espacio libre que debe quedar en destino (GB)
+$VM_MIN_FREE_GB    = 20
+
+# Timeout esperando que la VM suspenda (segundos)
+$VM_SUSPEND_TIMEOUT = 600
+
+# Carpeta de logs (vacío = misma carpeta que el script)
+$VM_LOG_DIR        = ""
+
+# Hora límite: las VMs deben estar de vuelta corriendo antes de esta hora
+# Schedule-VMBackup.ps1 usa este valor para calcular el horario de inicio
+$VM_FINISH_BY      = "06:30"
+
+# Velocidad de transferencia al destino (MB/s). Sirve para estimar duración.
+# Gigabit LAN a NAS = ~80-110 MB/s. SSD local = ~300+. Ajustar con datos reales.
+$VM_THROUGHPUT_MBPS = 100
+
+# URL de la función de notificaciones de mantenimiento VM.
+# Si se deja vacío, no se envían notificaciones de suspend/start.
+# Los SERVICE_ID, INGEST_SECRET y ANON_KEY de arriba se reusan.
+$VM_EVENT_URL      = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-vm-event"
+
 # ---------- Re-intento automático de backup ----------
 # Llama a esto al final de un script si hubo warning/error.
 # Escribe un script temporal, lo lanza detached (WindowStyle Hidden) y sale.

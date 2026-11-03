@@ -2,9 +2,10 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Server, Globe, Calendar, Clock, Shield, CheckCircle2,
   HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X,
-  Sparkles, Rocket, DollarSign, Send, Loader2, HelpCircle, ShieldCheck,
+  Sparkles, Rocket, DollarSign, Send, Loader2, HelpCircle, ShieldCheck, Lock,
+  AlertTriangle, AlertCircle, Eye, CheckCheck,
 } from 'lucide-react';
-import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapItemUpdate, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat, ClientApp } from '../lib/supabase';
+import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapItemUpdate, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat, ClientApp, ServiceIncident } from '../lib/supabase';
 import { BackupMetricsModal } from '../components/BackupMetricsModal';
 
 type Props = { token: string };
@@ -84,6 +85,7 @@ export function SharePage({ token }: Props) {
   const [heartbeats, setHeartbeats] = useState<ServiceHeartbeat[]>([]);
   const [systemHeartbeats, setSystemHeartbeats] = useState<ServiceHeartbeat[]>([]);
   const [clientApps, setClientApps] = useState<ClientApp[]>([]);
+  const [incidents, setIncidents] = useState<ServiceIncident[]>([]);
   const [backups, setBackups] = useState<ServiceBackup[]>([]);
   const [uptimeEvents, setUptimeEvents] = useState<UptimeEvent[]>([]);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
@@ -185,6 +187,15 @@ export function SharePage({ token }: Props) {
       const { data: appsData } = await supabase
         .from('client_apps').select('*').eq('client_id', tokenRow.client_id).order('sort_order');
       setClientApps(appsData || []);
+
+      const since90d = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: incidentsData } = await supabase
+        .from('service_incidents')
+        .select('*')
+        .eq('client_id', tokenRow.client_id)
+        .gte('started_at', since90d)
+        .order('started_at', { ascending: false });
+      setIncidents(incidentsData || []);
 
       setLoading(false);
     };
@@ -339,7 +350,7 @@ export function SharePage({ token }: Props) {
         </nav>
 
         <main className="max-w-5xl mx-auto px-4 py-6">
-          {section === 'overview' && <OverviewSection services={activeServices} roadmap={roadmap} changes={changes} getTypeName={getTypeName} backups={backups} uptimeEvents={uptimeEvents} supportHours={supportHours} systemHeartbeats={systemHeartbeats} clientApps={clientApps} licenses={licenses} riskFlags={client?.risk_flags ?? []} />}
+          {section === 'overview' && <OverviewSection services={activeServices} roadmap={roadmap} changes={changes} getTypeName={getTypeName} backups={backups} uptimeEvents={uptimeEvents} supportHours={supportHours} systemHeartbeats={systemHeartbeats} clientApps={clientApps} licenses={licenses} riskFlags={client?.risk_flags ?? []} incidents={incidents} />}
           {section === 'services' && <ServiceCatalog services={services} projects={projects} getTypeName={getTypeName} getProjectName={getProjectName} expandedService={expandedService} setExpandedService={setExpandedService} heartbeats={heartbeats} backups={backups} systemHeartbeats={systemHeartbeats} />}
           {section === 'licenses' && <LicensesSection licenses={licenses} services={services} />}
           {section === ('tickets' as Section) && <TicketsSection items={roadmap.filter(r => r.category === 'problem' || r.category === 'change_request')} updates={roadmapUpdates} />}
@@ -443,11 +454,11 @@ const RISK_FLAG_LABELS: Record<string, string> = {
   no_bco_plan:         'Sin plan de BCO documentado',
 };
 
-function OverviewSection({ services, roadmap, changes, getTypeName, backups, uptimeEvents, supportHours, systemHeartbeats, clientApps, licenses, riskFlags }: {
+function OverviewSection({ services, roadmap, changes, getTypeName, backups, uptimeEvents, supportHours, systemHeartbeats, clientApps, licenses, riskFlags, incidents }: {
   services: Service[]; roadmap: RoadmapItem[]; changes: ServiceChange[]; getTypeName: (id: string) => string;
   backups: ServiceBackup[]; uptimeEvents: UptimeEvent[]; supportHours: SupportHour[];
   systemHeartbeats: ServiceHeartbeat[]; clientApps: ClientApp[]; licenses: ClientLicense[];
-  riskFlags: string[];
+  riskFlags: string[]; incidents: ServiceIncident[];
 }) {
   const upcoming = roadmap.filter(r => r.status !== 'Released');
   const recentChanges = changes.slice(0, 3);
@@ -489,6 +500,8 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
 
       <BackupStatus services={services} backups={backups} />
       <UptimeStatus services={services} uptimeEvents={uptimeEvents} />
+
+      <IncidentPanel incidents={incidents} />
 
       {upcoming.length > 0 && (
         <section>
@@ -604,14 +617,15 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
         </section>
       )}
 
-      {incidents.length > 0 && (
+      {/* Resolved incidents history from support_hours (legacy — shown only when no new incident system entries) */}
+      {incidents.filter(i => i.status === 'resolved').length === 0 && supportHours.filter(h => h.type === 'incident').length > 0 && (
         <section>
           <div className="flex items-center gap-2 mb-3">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Resolved Incidents</h2>
             <InfoTooltip text="Incidentes técnicos recientes que ya fueron atendidos y resueltos por el equipo de Cenas IT." />
           </div>
           <div className="space-y-2">
-            {incidents.map(h => (
+            {supportHours.filter(h => h.type === 'incident').slice(0, 5).map(h => (
               <div key={h.id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3 flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 dark:text-white">{h.title || h.description}</p>
@@ -783,11 +797,18 @@ function backupIcon(jobName: string): string {
   return '💾';
 }
 
+function isOfflineBackup(jobName: string | null): boolean {
+  return !!(jobName && jobName.startsWith('Copia física'));
+}
+
 function BackupStatus({ services, backups }: { services: Service[]; backups: ServiceBackup[] }) {
   const withBackup = services.filter(s => s.last_backup_at || backups.some(b => b.service_id === s.id));
   if (withBackup.length === 0) return null;
 
   const [historyModal, setHistoryModal] = useState<{ serviceId: string; name: string } | null>(null);
+
+  // All offline copies across all services, most recent first
+  const offlineCopies = backups.filter(b => isOfflineBackup(b.job_name)).slice(0, 3);
 
   function jobDotColor(status: string, hoursOld: number) {
     if (status === 'failed') return 'bg-red-500';
@@ -814,15 +835,18 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
           const svcBackups = backups.filter(b => b.service_id === s.id);
 
           // Group by job_name, preserving order (most recent first per group)
+          // Offline copies are shown separately in the custody panel below
           const byJob = new Map<string, ServiceBackup[]>();
           for (const b of svcBackups) {
+            if (isOfflineBackup(b.job_name)) continue;
             const key = b.job_name || '';
             if (!byJob.has(key)) byJob.set(key, []);
             byJob.get(key)!.push(b);
           }
 
-          // Fallback: no history entries, use service.last_backup_at
+          // Fallback: no non-offline history entries, use service.last_backup_at
           if (byJob.size === 0) {
+            if (!s.last_backup_at) return null;
             const hoursOld = (Date.now() - new Date(s.last_backup_at!).getTime()) / 3600000;
             return (
               <div key={s.id} className="px-4 py-3 flex items-center gap-3">
@@ -912,6 +936,34 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
           );
         })}
       </div>
+      {offlineCopies.length > 0 && (
+        <div className="mt-3 rounded-xl border border-slate-600/40 bg-slate-800/60 px-4 py-3.5 flex gap-3">
+          <div className="shrink-0 mt-0.5">
+            <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center">
+              <Lock className="w-3.5 h-3.5 text-slate-300" />
+            </div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-slate-200 mb-0.5">
+              Copia física bajo custodia del cliente
+            </p>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Esta copia permite reactivar toda la operativa de la empresa ante una pérdida total de hardware. Almacenada bajo llave en la caja fuerte del cliente.
+            </p>
+            <div className="mt-2 space-y-1">
+              {offlineCopies.map(b => (
+                <div key={b.id} className="flex items-center gap-2 text-[11px] text-slate-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                  <span>
+                    {new Date(b.backed_up_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+                    {' — '}{services.find(s => s.id === b.service_id)?.business_name || services.find(s => s.id === b.service_id)?.name || ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       {historyModal && (
         <BackupMetricsModal
           serviceId={historyModal.serviceId}
@@ -1955,5 +2007,89 @@ function TicketsSection({ items, updates }: { items: RoadmapItem[]; updates: Roa
         <div className="text-center py-12 text-gray-400 dark:text-gray-600 text-sm">No hay tickets</div>
       )}
     </div>
+  );
+}
+
+// ── Incident Panel ────────────────────────────────────────────────────────────
+
+const INCIDENT_STATUS_META = {
+  investigating: { label: 'Investigando',  color: 'text-red-600',    bg: 'bg-red-50 dark:bg-red-900/20',    border: 'border-red-200 dark:border-red-800',    icon: AlertCircle  },
+  identified:    { label: 'Identificado',  color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-900/20', border: 'border-orange-200 dark:border-orange-800', icon: AlertTriangle },
+  monitoring:    { label: 'Monitoring',    color: 'text-blue-600',   bg: 'bg-blue-50 dark:bg-blue-900/20',   border: 'border-blue-200 dark:border-blue-800',   icon: Eye          },
+  resolved:      { label: 'Resuelto',      color: 'text-emerald-600',bg: 'bg-emerald-50 dark:bg-emerald-900/20', border: 'border-emerald-200 dark:border-emerald-800', icon: CheckCheck },
+} as const;
+
+function IncidentPanel({ incidents }: { incidents: ServiceIncident[] }) {
+  const active   = incidents.filter(i => i.status !== 'resolved');
+  const resolved = incidents.filter(i => i.status === 'resolved').slice(0, 5);
+
+  if (incidents.length === 0) return null;
+
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-3">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Incidentes</h2>
+        <InfoTooltip text="Estado de incidentes técnicos activos y resueltos recientemente." />
+      </div>
+      <div className="space-y-2">
+        {active.map(inc => {
+          const meta = INCIDENT_STATUS_META[inc.status] ?? INCIDENT_STATUS_META.investigating;
+          const Icon = meta.icon;
+          return (
+            <div key={inc.id} className={`rounded-lg border px-4 py-3 ${meta.bg} ${meta.border}`}>
+              <div className="flex items-start gap-2">
+                <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${meta.color}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">{inc.title}</span>
+                    <span className={`text-[10px] font-bold uppercase tracking-wide ${meta.color}`}>{meta.label}</span>
+                  </div>
+                  {inc.description && inc.description !== inc.title && (
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{inc.description}</p>
+                  )}
+                  {inc.notes.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {inc.notes.map((n, i) => (
+                        <li key={i} className="text-xs text-gray-500 dark:text-gray-400 flex gap-1.5">
+                          <span className="shrink-0 text-gray-300">·</span>
+                          <span>{n.note}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <p className="text-[11px] text-gray-400 mt-1.5">
+                    Iniciado {new Date(inc.started_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {resolved.map(inc => {
+          const Icon = INCIDENT_STATUS_META.resolved.icon;
+          const duration = inc.resolved_at
+            ? Math.round((new Date(inc.resolved_at).getTime() - new Date(inc.started_at).getTime()) / 60000)
+            : null;
+          return (
+            <div key={inc.id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3 flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2 flex-1 min-w-0">
+                <Icon className="w-3.5 h-3.5 mt-0.5 shrink-0 text-emerald-500" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">{inc.title}</p>
+                  {inc.notes.length > 0 && (
+                    <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{inc.notes[inc.notes.length - 1].note}</p>
+                  )}
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-xs text-gray-400">{new Date(inc.started_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
+                {duration !== null && <p className="text-xs text-gray-400">{duration < 60 ? `${duration}m` : `${Math.round(duration / 60)}h`}</p>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }

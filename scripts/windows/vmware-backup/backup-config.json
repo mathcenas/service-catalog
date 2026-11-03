@@ -1,0 +1,3 @@
+{
+  "_comment": "Este archivo ya no es necesario. Toda la configuración está en config.ps1 (un nivel arriba). Ver variables VM_* en config.ps1."
+}
