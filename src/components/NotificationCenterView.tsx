@@ -453,6 +453,23 @@ export function NotificationCenterView({ clients }: Props) {
                                 )}
                               </div>
                               <div className="shrink-0 flex items-center gap-1.5">
+                                <select
+                                  value={contact.digest_frequency}
+                                  onChange={async e => {
+                                    const freq = e.target.value as 'none' | 'daily' | 'weekly';
+                                    await supabase.from('client_contacts').update({ digest_frequency: freq }).eq('id', contact.id);
+                                    await load();
+                                  }}
+                                  className={`text-xs px-2 py-1.5 rounded-lg border font-medium cursor-pointer outline-none transition-colors ${
+                                    contact.digest_frequency === 'none'  ? 'bg-gray-100 text-gray-500 border-gray-200' :
+                                    contact.digest_frequency === 'daily' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                    'bg-violet-50 text-violet-700 border-violet-200'
+                                  }`}
+                                >
+                                  <option value="none">Sin digest</option>
+                                  <option value="weekly">Semanal</option>
+                                  <option value="daily">Diario</option>
+                                </select>
                                 {contact.digest_frequency === 'none' && (
                                   <button
                                     onClick={() => sendDigestDisabled(contact.id, contact.email)}

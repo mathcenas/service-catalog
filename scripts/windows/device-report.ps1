@@ -1,4 +1,5 @@
-﻿# =============================================================
+﻿param([switch]$Console)
+# =============================================================
 # device-report.ps1 — Reporte de equipo para Service Catalog
 # v1.0.0
 #
@@ -67,7 +68,6 @@ $OFFICE_TRUSTED_PATHS = @(
 
 # ──────────────────────────────────────────────────────────────
 
-param([switch]$Console)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "SilentlyContinue"
 

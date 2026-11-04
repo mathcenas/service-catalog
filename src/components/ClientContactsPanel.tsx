@@ -2,16 +2,16 @@ import { useState, useEffect } from 'react';
 import { Plus, Trash2, Mail, Send, Check, Clock } from 'lucide-react';
 import { ClientContact, supabase } from '../lib/supabase';
 
-const FREQ_LABELS: Record<string, string> = {
-  none: 'Sin digest',
-  daily: 'Diario',
-  weekly: 'Semanal',
-};
-
 const FREQ_COLORS: Record<string, string> = {
   none: 'bg-gray-100 text-gray-500',
   daily: 'bg-blue-100 text-blue-700',
   weekly: 'bg-violet-100 text-violet-700',
+};
+
+const FREQ_LABELS: Record<string, string> = {
+  none: 'Sin digest',
+  daily: 'Diario',
+  weekly: 'Semanal',
 };
 
 type Props = { clientId: string; userId: string };
@@ -20,7 +20,7 @@ export function ClientContactsPanel({ clientId, userId }: Props) {
   const [contacts, setContacts] = useState<ClientContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', role: '', digest_frequency: 'none' as ClientContact['digest_frequency'] });
+  const [form, setForm] = useState({ name: '', email: '', role: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [sendingWelcome, setSendingWelcome] = useState<string | null>(null);
@@ -49,18 +49,13 @@ export function ClientContactsPanel({ clientId, userId }: Props) {
       name: form.name.trim(),
       email: form.email.trim(),
       role: form.role.trim() || null,
-      digest_frequency: form.digest_frequency,
+      digest_frequency: 'none',
     });
     if (err) { setError(err.message); setSaving(false); return; }
-    setForm({ name: '', email: '', role: '', digest_frequency: 'none' });
+    setForm({ name: '', email: '', role: '' });
     setAdding(false);
     setSaving(false);
     load();
-  };
-
-  const handleFreqChange = async (id: string, freq: ClientContact['digest_frequency']) => {
-    await supabase.from('client_contacts').update({ digest_frequency: freq }).eq('id', id);
-    setContacts(cs => cs.map(c => c.id === id ? { ...c, digest_frequency: freq } : c));
   };
 
   const handleDelete = async (id: string) => {
@@ -97,7 +92,7 @@ export function ClientContactsPanel({ clientId, userId }: Props) {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-gray-700">Contactos</p>
-          <p className="text-xs text-gray-400 mt-0.5">Configurá el digest por contacto</p>
+          <p className="text-xs text-gray-400 mt-0.5">Frecuencia se gestiona desde Notificaciones</p>
         </div>
         <button
           type="button"
@@ -126,15 +121,9 @@ export function ClientContactsPanel({ clientId, userId }: Props) {
                   </div>
                   <span className="text-xs text-gray-500 truncate block">{c.email}</span>
                 </div>
-                <select
-                  value={c.digest_frequency}
-                  onChange={e => handleFreqChange(c.id, e.target.value as ClientContact['digest_frequency'])}
-                  className={`text-xs px-2 py-1 rounded border-0 font-medium cursor-pointer outline-none ${FREQ_COLORS[c.digest_frequency]}`}
-                >
-                  {Object.entries(FREQ_LABELS).map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
-                  ))}
-                </select>
+                <span className={`text-xs px-2 py-1 rounded font-medium ${FREQ_COLORS[c.digest_frequency]}`}>
+                  {FREQ_LABELS[c.digest_frequency]}
+                </span>
                 {/* Botón welcome */}
                 <button
                   type="button"
@@ -213,21 +202,7 @@ export function ClientContactsPanel({ clientId, userId }: Props) {
             onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
             className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-400"
           />
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-600">Digest:</label>
-            {Object.entries(FREQ_LABELS).map(([v, l]) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setForm(f => ({ ...f, digest_frequency: v as ClientContact['digest_frequency'] }))}
-                className={`text-xs px-2.5 py-1 rounded-full font-medium transition-colors ${
-                  form.digest_frequency === v ? FREQ_COLORS[v] + ' ring-1 ring-offset-1 ring-current' : 'bg-white text-gray-400 border border-gray-200'
-                }`}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
+          <p className="text-xs text-gray-400">La frecuencia de digest se configura desde el Centro de Notificaciones.</p>
           <div className="flex gap-2 pt-1">
             <button type="button" onClick={() => setAdding(false)}
               className="flex-1 text-xs py-1.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-white transition-colors">

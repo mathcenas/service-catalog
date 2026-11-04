@@ -625,19 +625,12 @@ function DailyOpsPanel({
       for (const b of backups) {
         if (!latestByService[b.service_id]) latestByService[b.service_id] = b;
       }
-      for (const svc of services.filter(s => s.status === 'Active')) {
+      // Solo evaluar servicios que ya tienen historial de backups
+      const servicesWithBackups = services.filter(s => s.status === 'Active' && latestByService[s.id]);
+      for (const svc of servicesWithBackups) {
         const latest = latestByService[svc.id];
         const clientName = clientMap[svc.client_id]?.company_name ?? '';
-        if (!latest) {
-          // Sin ningún registro de backup
-          result.push({
-            id: `no-backup-${svc.id}`,
-            kind: 'backup_fail',
-            serviceName: svc.business_name || svc.name,
-            clientName,
-            detail: 'Sin registros de backup',
-          });
-        } else if (latest.status === 'failed' || latest.status === 'error') {
+        if (latest.status === 'failed' || latest.status === 'error') {
           result.push({
             id: `backup-fail-${svc.id}`,
             kind: 'backup_fail',
