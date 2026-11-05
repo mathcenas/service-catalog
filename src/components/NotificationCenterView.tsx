@@ -19,11 +19,14 @@ type Contact = {
 type EmailOpen = {
   id: string;
   contact_id?: string;
+  client_id?: string;
+  client_email?: string;
   email_type?: string;
-  sent_at?: string;
+  created_at?: string;
   delivered_at?: string;
   opened_at?: string;
   resend_email_id?: string;
+  subject?: string;
   metadata?: { prev_frequency?: string; new_frequency?: string } | null;
 };
 
@@ -163,8 +166,8 @@ export function NotificationCenterView({ clients }: Props) {
         .order('name'),
       supabase
         .from('email_opens')
-        .select('id, contact_id, email_type, sent_at, delivered_at, opened_at, resend_email_id, metadata')
-        .order('sent_at', { ascending: false })
+        .select('id, contact_id, client_id, client_email, email_type, created_at, delivered_at, opened_at, resend_email_id, subject')
+        .order('created_at', { ascending: false })
         .limit(300),
       supabase.rpc('get_my_notification_locks'),
       supabase
@@ -310,7 +313,7 @@ export function NotificationCenterView({ clients }: Props) {
   const activeLocks  = locks.filter(l => l.cooldown_active);
   const expiredLocks = locks.filter(l => !l.cooldown_active);
 
-  const allEmails = emailOpens.filter(o => o.sent_at).slice(0, 100);
+  const allEmails = emailOpens.filter(o => o.created_at).slice(0, 200);
 
   const unsubs = emailOpens.filter(o => o.email_type === 'unsubscribe').length;
 
@@ -444,10 +447,10 @@ export function NotificationCenterView({ clients }: Props) {
                                     <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{opens.length} envío{opens.length !== 1 ? 's' : ''}</span>
                                     {isDelivered && <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3 h-3" /> Entregado</span>}
                                     {isOpened    && <span className="flex items-center gap-1 text-blue-600"><CheckCircle2 className="w-3 h-3" /> Abierto</span>}
-                                    {lastOpen?.sent_at && (
+                                    {lastOpen?.created_at && (
                                       <span className="flex items-center gap-1">
                                         <Clock className="w-3 h-3" />
-                                        {fmtRelative(lastOpen.sent_at)}
+                                        {fmtRelative(lastOpen.created_at!)}
                                       </span>
                                     )}
                                   </div>
@@ -543,7 +546,7 @@ export function NotificationCenterView({ clients }: Props) {
                                 </span>
                               </span>
                             )}
-                            <span className="text-xs text-gray-400 ml-auto">{o.sent_at ? fmtRelative(o.sent_at) : ''}</span>
+                            <span className="text-xs text-gray-400 ml-auto">{o.created_at ? fmtRelative(o.created_at) : ''}</span>
                           </div>
                         );
                       })}
@@ -583,7 +586,7 @@ export function NotificationCenterView({ clients }: Props) {
                             </td>
                             <td className="px-4 py-2.5 text-gray-700">
                               <span className="font-medium">{contact?.name ?? '—'}</span>
-                              {contact?.email && <span className="text-gray-400 block text-xs">{contact.email}</span>}
+                              <span className="text-gray-400 block text-xs">{contact?.email ?? o.client_email ?? ''}</span>
                             </td>
                             <td className="px-4 py-2.5 text-xs text-gray-400">
                               {m?.prev_frequency && m?.new_frequency ? (
@@ -597,7 +600,7 @@ export function NotificationCenterView({ clients }: Props) {
                               ) : '—'}
                             </td>
                             <td className="px-4 py-2.5 text-gray-400 text-xs">
-                              {o.sent_at ? fmtTime(o.sent_at) : '—'}
+                              {o.created_at ? fmtTime(o.created_at) : '—'}
                             </td>
                             <td className={`px-4 py-2.5 text-xs font-medium ${statusColor}`}>
                               {status ?? '—'}
