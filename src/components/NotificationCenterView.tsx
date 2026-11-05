@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Bell, BellOff, Mail, CheckCircle2, Clock, AlertCircle, Send, RefreshCw,
-         ChevronDown, ChevronUp, Users, Lock, Unlock, History, ShieldAlert, Link, Copy, ExternalLink, Plus, BellRing } from 'lucide-react';
+         ChevronDown, ChevronUp, Users, Lock, Unlock, History, ShieldAlert, Link, Copy, ExternalLink, Plus, BellRing,
+         Eye, Zap, Filter, X } from 'lucide-react';
 import { supabase, Client } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -91,6 +92,10 @@ const EMAIL_TYPE_LABEL: Record<string, string> = {
   backup_failed:     'Backup fallido',
   backup_warning:    'Backup warning',
   digest:            'Digest',
+  digest_daily:      'Digest diario',
+  digest_weekly:     'Digest semanal',
+  digest_monthly:    'Digest mensual',
+  digest_disabled:   'Digest desactivado',
   unsubscribe:       'Desuscripción',
   preference_change: 'Cambio preferencia',
 };
@@ -101,6 +106,10 @@ const EMAIL_TYPE_COLOR: Record<string, string> = {
   backup_failed:     'bg-red-50 text-red-700',
   backup_warning:    'bg-yellow-50 text-yellow-700',
   digest:            'bg-violet-50 text-violet-700',
+  digest_daily:      'bg-blue-50 text-blue-700',
+  digest_weekly:     'bg-violet-50 text-violet-700',
+  digest_monthly:    'bg-purple-50 text-purple-700',
+  digest_disabled:   'bg-gray-100 text-gray-500',
   unsubscribe:       'bg-orange-50 text-orange-700',
   preference_change: 'bg-amber-50 text-amber-700',
 };
@@ -131,7 +140,7 @@ function fmtTime(iso: string) {
   });
 }
 
-type Tab = 'contacts' | 'history' | 'locks' | 'links';
+type Tab = 'contacts' | 'history' | 'alerts' | 'locks' | 'links';
 
 export function NotificationCenterView({ clients }: Props) {
   const { user } = useAuth();
@@ -150,6 +159,15 @@ export function NotificationCenterView({ clients }: Props) {
   const [shareTokens, setShareTokens] = useState<ShareToken[]>([]);
   const [creatingLink, setCreatingLink] = useState<string | null>(null);
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
+
+  // History filters
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<string>('all');
+  const [historyClientFilter, setHistoryClientFilter] = useState<string>('all');
+
+  // Alerts tab state
+  const [sendingDigest, setSendingDigest] = useState<string | null>(null);
+  const [previewingDigest, setPreviewingDigest] = useState<string | null>(null);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
 
   const showToast = (msg: string, ok: boolean) => {
     setToast({ msg, ok });
@@ -248,6 +266,59 @@ export function NotificationCenterView({ clients }: Props) {
     }
   };
 
+  const sendDigestNow = async (clientId: string, clientName: string) => {
+    setSendingDigest(clientId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUrl = (supabase as any).supabaseUrl ?? import.meta.env.VITE_SUPABASE_URL;
+      const res = await fetch(`${supabaseUrl}/functions/v1/client-weekly-digest`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ client_id: clientId, force: true }),
+      });
+      const json = await res.json();
+      if (res.ok && (json.success || json.sent > 0)) {
+        showToast(`Digest enviado a ${clientName} (${json.sent ?? 1} contacto${json.sent !== 1 ? 's' : ''})`, true);
+        await load();
+      } else {
+        showToast(json.error ?? json.message ?? 'Error al enviar digest', false);
+      }
+    } catch {
+      showToast('Error de red', false);
+    } finally {
+      setSendingDigest(null);
+    }
+  };
+
+  const previewDigest = async (clientId: string) => {
+    setPreviewingDigest(clientId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUrl = (supabase as any).supabaseUrl ?? import.meta.env.VITE_SUPABASE_URL;
+      const res = await fetch(`${supabaseUrl}/functions/v1/client-weekly-digest`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ client_id: clientId, preview: true }),
+      });
+      const json = await res.json();
+      if (res.ok && json.html) {
+        setPreviewHtml(json.html);
+      } else {
+        showToast(json.error ?? 'No se pudo generar preview', false);
+      }
+    } catch {
+      showToast('Error de red', false);
+    } finally {
+      setPreviewingDigest(null);
+    }
+  };
+
   const deleteLock = async (lock: NotificationLock) => {
     setDeletingLock(lock.lock_id);
     const { data: deleted, error } = await supabase
@@ -315,6 +386,29 @@ export function NotificationCenterView({ clients }: Props) {
 
   const allEmails = emailOpens.filter(o => o.created_at).slice(0, 200);
 
+  // History stats
+  const totalSent      = allEmails.length;
+  const totalDelivered = allEmails.filter(o => o.delivered_at).length;
+  const totalOpened    = allEmails.filter(o => o.opened_at).length;
+  const openRate       = totalSent > 0 ? Math.round((totalOpened / totalSent) * 100) : 0;
+
+  // History filtered view
+  const filteredEmails = allEmails.filter(o => {
+    if (historyTypeFilter !== 'all' && o.email_type !== historyTypeFilter) return false;
+    if (historyClientFilter !== 'all' && o.client_id !== historyClientFilter) return false;
+    return true;
+  });
+
+  // Unique email types in history for filter dropdown
+  const historyTypes = Array.from(new Set(allEmails.map(o => o.email_type).filter(Boolean))) as string[];
+
+  // Clients with active digest contacts (for Alerts tab)
+  const alertClients = clients.map(cl => {
+    const activeContacts = contacts.filter(c => c.client_id === cl.id && c.digest_frequency !== 'none');
+    const clientLocks    = activeLocks.filter(l => l.client_id === cl.id);
+    return { client: cl, activeContacts, clientLocks };
+  }).filter(g => g.activeContacts.length > 0 || g.clientLocks.length > 0);
+
   const unsubs = emailOpens.filter(o => o.email_type === 'unsubscribe').length;
 
   const stats = {
@@ -330,6 +424,7 @@ export function NotificationCenterView({ clients }: Props) {
   const tabs: { id: Tab; label: string; badge?: number }[] = [
     { id: 'contacts', label: 'Contactos' },
     { id: 'history',  label: 'Historial de envíos', badge: allEmails.length },
+    { id: 'alerts',   label: 'Alertas',             badge: activeLocks.length || undefined },
     { id: 'locks',    label: 'Cooldowns activos',   badge: activeLocks.length },
     { id: 'links',    label: 'Links',               badge: totalLinks || undefined },
   ];
@@ -383,7 +478,7 @@ export function NotificationCenterView({ clients }: Props) {
             {t.label}
             {t.badge != null && t.badge > 0 && (
               <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
-                t.id === 'locks' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
+                t.id === 'locks' || t.id === 'alerts' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
               }`}>{t.badge}</span>
             )}
           </button>
@@ -516,7 +611,22 @@ export function NotificationCenterView({ clients }: Props) {
           {/* ── HISTORIAL ── */}
           {tab === 'history' && (
             <div className="space-y-3">
-              {/* Highlight de eventos de preferencias */}
+              {/* Stats row */}
+              <div className="grid grid-cols-4 gap-3">
+                {[
+                  { label: 'Enviados',   value: totalSent,      color: 'gray' },
+                  { label: 'Entregados', value: totalDelivered, color: 'emerald' },
+                  { label: 'Abiertos',   value: totalOpened,    color: 'blue' },
+                  { label: 'Tasa apertura', value: `${openRate}%`, color: openRate >= 30 ? 'emerald' : openRate >= 15 ? 'amber' : 'red' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} className="bg-white border border-gray-200 rounded-xl px-4 py-3">
+                    <div className={`text-xl font-bold text-${color}-600`}>{value}</div>
+                    <div className="text-xs text-gray-400 mt-0.5">{label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Preference events highlight */}
               {(() => {
                 const prefEvents = allEmails.filter(o =>
                   o.email_type === 'unsubscribe' || o.email_type === 'preference_change'
@@ -555,14 +665,49 @@ export function NotificationCenterView({ clients }: Props) {
                 );
               })()}
 
+              {/* Filters */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <Filter className="w-3.5 h-3.5 text-gray-400" />
+                <select
+                  value={historyTypeFilter}
+                  onChange={e => setHistoryTypeFilter(e.target.value)}
+                  className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg outline-none bg-white text-gray-700"
+                >
+                  <option value="all">Todos los tipos</option>
+                  {historyTypes.map(t => (
+                    <option key={t} value={t}>{EMAIL_TYPE_LABEL[t] ?? t}</option>
+                  ))}
+                </select>
+                <select
+                  value={historyClientFilter}
+                  onChange={e => setHistoryClientFilter(e.target.value)}
+                  className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg outline-none bg-white text-gray-700"
+                >
+                  <option value="all">Todos los clientes</option>
+                  {clients.map(cl => (
+                    <option key={cl.id} value={cl.id}>{cl.company_name}</option>
+                  ))}
+                </select>
+                {(historyTypeFilter !== 'all' || historyClientFilter !== 'all') && (
+                  <button
+                    onClick={() => { setHistoryTypeFilter('all'); setHistoryClientFilter('all'); }}
+                    className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+                  >
+                    <X className="w-3 h-3" /> Limpiar filtros
+                  </button>
+                )}
+                <span className="text-xs text-gray-400 ml-auto">{filteredEmails.length} registros</span>
+              </div>
+
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                {allEmails.length === 0 ? (
-                  <div className="text-center py-12 text-gray-400">No hay emails registrados aún.</div>
+                {filteredEmails.length === 0 ? (
+                  <div className="text-center py-12 text-gray-400">No hay emails para los filtros seleccionados.</div>
                 ) : (
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-100 text-xs text-gray-400 uppercase tracking-wide">
                         <th className="text-left px-4 py-2">Tipo</th>
+                        <th className="text-left px-4 py-2">Cliente</th>
                         <th className="text-left px-4 py-2">Contacto</th>
                         <th className="text-left px-4 py-2">Detalle</th>
                         <th className="text-left px-4 py-2">Enviado</th>
@@ -570,8 +715,9 @@ export function NotificationCenterView({ clients }: Props) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {allEmails.map(o => {
+                      {filteredEmails.map(o => {
                         const contact = contacts.find(c => c.id === o.contact_id);
+                        const clientRow = clients.find(cl => cl.id === o.client_id);
                         const isPref = o.email_type === 'unsubscribe' || o.email_type === 'preference_change';
                         const status = isPref ? null : (o.opened_at ? 'Abierto' : o.delivered_at ? 'Entregado' : 'Enviado');
                         const statusColor = o.opened_at ? 'text-blue-600' : o.delivered_at ? 'text-emerald-600' : 'text-gray-400';
@@ -583,6 +729,9 @@ export function NotificationCenterView({ clients }: Props) {
                               <span className={`text-xs px-2 py-0.5 rounded font-medium ${typeColor}`}>
                                 {EMAIL_TYPE_LABEL[o.email_type ?? ''] ?? o.email_type ?? '—'}
                               </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-xs text-gray-500">
+                              {clientRow?.company_name ?? '—'}
                             </td>
                             <td className="px-4 py-2.5 text-gray-700">
                               <span className="font-medium">{contact?.name ?? '—'}</span>
@@ -612,6 +761,106 @@ export function NotificationCenterView({ clients }: Props) {
                   </table>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* ── ALERTAS ── */}
+          {tab === 'alerts' && (
+            <div className="space-y-4">
+              <p className="text-xs text-gray-400">
+                Enviá o previsualiza el digest de cada cliente manualmente. Los envíos forzados ignoran el cooldown.
+              </p>
+
+              {alertClients.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <Bell className="w-8 h-8 mx-auto mb-3 opacity-30" />
+                  <p>No hay clientes con digest activo.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {alertClients.map(({ client, activeContacts, clientLocks }) => (
+                    <div key={client.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                      <div className="px-4 py-3 flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-sm text-gray-900">{client.company_name}</span>
+                            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                              {activeContacts.length} suscripto{activeContacts.length !== 1 ? 's' : ''}
+                            </span>
+                            {clientLocks.length > 0 && (
+                              <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-medium flex items-center gap-0.5">
+                                <Lock className="w-3 h-3" /> {clientLocks.length} cooldown{clientLocks.length !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex gap-1.5 mt-1 flex-wrap">
+                            {activeContacts.map(c => (
+                              <span key={c.id} className={`text-xs px-1.5 py-0.5 rounded ${
+                                c.digest_frequency === 'all'     ? 'bg-blue-50 text-blue-600' :
+                                c.digest_frequency === 'weekly'  ? 'bg-violet-50 text-violet-600' :
+                                'bg-purple-50 text-purple-600'
+                              }`}>
+                                {c.name} · {FREQ_SHORT[c.digest_frequency]}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="shrink-0 flex items-center gap-1.5">
+                          <button
+                            onClick={() => previewDigest(client.id)}
+                            disabled={previewingDigest === client.id}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            {previewingDigest === client.id
+                              ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              : <Eye className="w-3.5 h-3.5" />}
+                            Preview
+                          </button>
+                          <button
+                            onClick={() => sendDigestNow(client.id, client.company_name)}
+                            disabled={sendingDigest === client.id}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {sendingDigest === client.id
+                              ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              : <Zap className="w-3.5 h-3.5" />}
+                            Enviar ahora
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Active cooldowns for this client */}
+                      {clientLocks.length > 0 && (
+                        <div className="border-t border-amber-100 bg-amber-50/50 divide-y divide-amber-50">
+                          {clientLocks.map(l => (
+                            <div key={l.lock_id} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 text-xs flex-wrap">
+                                  <span className="font-medium text-gray-700">{l.service_name}</span>
+                                  <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+                                    {EVENT_LABEL[l.event_type] ?? l.event_type}
+                                  </span>
+                                  <span className="text-gray-400">vence {fmtTime(l.cooldown_expires)}</span>
+                                  {l.suppressed_count > 0 && (
+                                    <span className="text-gray-400">{l.suppressed_count} suprimido{l.suppressed_count !== 1 ? 's' : ''}</span>
+                                  )}
+                                </div>
+                              </div>
+                              <button onClick={() => deleteLock(l)} disabled={deletingLock === l.lock_id}
+                                className="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50">
+                                {deletingLock === l.lock_id
+                                  ? <RefreshCw className="w-3 h-3 animate-spin" />
+                                  : <Unlock className="w-3 h-3" />}
+                                Liberar
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -764,7 +1013,6 @@ export function NotificationCenterView({ clients }: Props) {
                       </button>
                     </div>
 
-                    {/* Short links (links.cenas...) */}
                     {clLinks.length > 0 && (
                       <div className="divide-y divide-gray-100">
                         {clLinks.map(link => {
@@ -813,7 +1061,6 @@ export function NotificationCenterView({ clients }: Props) {
                       </div>
                     )}
 
-                    {/* Share tokens (portal clásico) */}
                     {clTokens.length > 0 && (
                       <div className="divide-y divide-gray-100 border-t border-gray-100">
                         {clTokens.map(tok => {
@@ -871,6 +1118,31 @@ export function NotificationCenterView({ clients }: Props) {
         <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium text-white ${toast.ok ? 'bg-emerald-600' : 'bg-red-500'}`}>
           {toast.ok ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
           {toast.msg}
+        </div>
+      )}
+
+      {/* Preview modal */}
+      {previewHtml && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-[80vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 shrink-0">
+              <span className="font-semibold text-gray-800 flex items-center gap-2">
+                <Eye className="w-4 h-4 text-blue-600" /> Preview del digest
+              </span>
+              <button
+                onClick={() => setPreviewHtml(null)}
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <iframe
+              srcDoc={previewHtml}
+              className="flex-1 w-full border-0"
+              title="Preview del digest"
+              sandbox="allow-same-origin"
+            />
+          </div>
         </div>
       )}
     </div>
