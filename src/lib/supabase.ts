@@ -56,7 +56,7 @@ export type ClientContact = {
   name: string;
   email: string;
   role?: string;
-  digest_frequency: 'none' | 'daily' | 'weekly';
+  digest_frequency: 'none' | 'weekly' | 'monthly' | 'all';
   welcome_sent_at?: string | null;
   created_at: string;
   updated_at: string;

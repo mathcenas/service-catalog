@@ -9,7 +9,7 @@ type Contact = {
   name: string;
   email: string;
   role?: string;
-  digest_frequency: 'none' | 'daily' | 'weekly';
+  digest_frequency: 'none' | 'weekly' | 'monthly' | 'all';
   client_id: string;
   subscription_confirmed?: boolean;
   welcome_sent_at?: string;
@@ -76,9 +76,10 @@ type ShareToken = {
 type Props = { clients: Client[] };
 
 const FREQ_LABEL: Record<string, string> = {
-  daily:  'Diarias',
-  weekly: 'Semanales',
-  none:   'Desactivadas',
+  all:     'Todo (diario)',
+  weekly:  'Semanal',
+  monthly: 'Mensual',
+  none:    'Desactivadas',
 };
 
 const EMAIL_TYPE_LABEL: Record<string, string> = {
@@ -102,7 +103,7 @@ const EMAIL_TYPE_COLOR: Record<string, string> = {
 };
 
 const FREQ_SHORT: Record<string, string> = {
-  daily: 'Diario', weekly: 'Semanal', none: 'Desactivado',
+  all: 'Todo', weekly: 'Semanal', monthly: 'Mensual', none: 'Desactivado',
 };
 
 const EVENT_LABEL: Record<string, string> = {
@@ -456,19 +457,21 @@ export function NotificationCenterView({ clients }: Props) {
                                 <select
                                   value={contact.digest_frequency}
                                   onChange={async e => {
-                                    const freq = e.target.value as 'none' | 'daily' | 'weekly';
+                                    const freq = e.target.value as 'none' | 'weekly' | 'monthly' | 'all';
                                     await supabase.from('client_contacts').update({ digest_frequency: freq }).eq('id', contact.id);
                                     await load();
                                   }}
                                   className={`text-xs px-2 py-1.5 rounded-lg border font-medium cursor-pointer outline-none transition-colors ${
-                                    contact.digest_frequency === 'none'  ? 'bg-gray-100 text-gray-500 border-gray-200' :
-                                    contact.digest_frequency === 'daily' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                    contact.digest_frequency === 'none'    ? 'bg-gray-100 text-gray-500 border-gray-200' :
+                                    contact.digest_frequency === 'all'     ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                    contact.digest_frequency === 'monthly' ? 'bg-purple-50 text-purple-700 border-purple-200' :
                                     'bg-violet-50 text-violet-700 border-violet-200'
                                   }`}
                                 >
                                   <option value="none">Sin digest</option>
-                                  <option value="weekly">Semanal</option>
-                                  <option value="daily">Diario</option>
+                                  <option value="weekly">Semanal (lunes)</option>
+                                  <option value="monthly">Mensual (1er lunes)</option>
+                                  <option value="all">Todo (diario)</option>
                                 </select>
                                 {contact.digest_frequency === 'none' && (
                                   <button
