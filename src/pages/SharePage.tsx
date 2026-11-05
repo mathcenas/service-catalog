@@ -174,7 +174,7 @@ export function SharePage({ token }: Props) {
 
         const [{ data: hbData }, { data: sysHbData }, { data: backupsData }, { data: uptimeData }] = await Promise.all([
           supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).eq('source', 'speedtest').gte('received_at', since48h).order('received_at', { ascending: true }),
-          supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check']).gte('received_at', new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
+          supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check']).gte('received_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
           supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(100),
           supabase.from('uptime_events').select('id,service_id,monitor_name,event_type,message,duration_seconds,occurred_at').in('service_id', serviceIds).gte('occurred_at', since30d).order('occurred_at', { ascending: false }),
         ]);
@@ -212,7 +212,7 @@ export function SharePage({ token }: Props) {
       const serviceIds = (svcs || []).map((s: { id: string }) => s.id);
       if (serviceIds.length === 0) return;
       const [{ data: sysHbData }, { data: backupsData }] = await Promise.all([
-        supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check']).gte('received_at', new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
+        supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check']).gte('received_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
         supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(100),
       ]);
       if (sysHbData) setSystemHeartbeats(sysHbData);
@@ -589,7 +589,10 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
             {healthEntries.map(h => {
               const svc = services.find(s => s.id === h.service_id);
               const payload = h.payload as Record<string, any>;
-              const dot = h.status === 'ok' ? 'bg-emerald-500' : h.status === 'warning' ? 'bg-amber-500' : 'bg-red-500';
+              const ageMs = Date.now() - new Date(h.received_at).getTime();
+              const ageH = ageMs / (60 * 60 * 1000);
+              const stale = ageH > 72 ? 'critical' : ageH > 25 ? 'warn' : 'ok';
+              const dot = stale !== 'ok' ? (stale === 'critical' ? 'bg-red-500' : 'bg-amber-500') : (h.status === 'ok' ? 'bg-emerald-500' : h.status === 'warning' ? 'bg-amber-500' : 'bg-red-500');
 
               const cpu = payload?.cpu_pct != null ? Number(payload.cpu_pct) : null;
               const disk = payload?.disk_pct != null ? Number(payload.disk_pct) : null;
@@ -600,13 +603,15 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
                   <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white">{svc?.business_name || svc?.name || h.service_id}</p>
-                    {h.message && <p className="text-xs text-slate-400">{h.message}</p>}
+                    {h.message && stale === 'ok' && <p className="text-xs text-slate-400">{h.message}</p>}
+                    {stale === 'warn' && <p className="text-xs text-amber-400">Desactualizado · hace {Math.round(ageH)}h</p>}
+                    {stale === 'critical' && <p className="text-xs text-red-400">Sin contacto · hace {Math.round(ageH / 24)}d</p>}
                   </div>
                   <div className="flex gap-3 text-xs text-slate-500 shrink-0">
-                    {cpu != null && <span>CPU <span className={cpu > 95 ? 'text-red-400 font-semibold' : cpu > 80 ? 'text-amber-400 font-semibold' : 'text-slate-300'}>{cpu}%</span></span>}
-                    {ram != null && <span>RAM <span className={ram > 92 ? 'text-red-400 font-semibold' : ram > 80 ? 'text-amber-400 font-semibold' : 'text-slate-300'}>{ram}%</span></span>}
-                    {disk != null && <span>Disk <span className={disk > 90 ? 'text-red-400 font-semibold' : disk > 75 ? 'text-amber-400 font-semibold' : 'text-slate-300'}>{disk}%</span></span>}
-                    {uptime != null && <span className="text-slate-500">↑{uptime}</span>}
+                    {stale === 'ok' && cpu != null && <span>CPU <span className={cpu > 95 ? 'text-red-400 font-semibold' : cpu > 80 ? 'text-amber-400 font-semibold' : 'text-slate-300'}>{cpu}%</span></span>}
+                    {stale === 'ok' && ram != null && <span>RAM <span className={ram > 92 ? 'text-red-400 font-semibold' : ram > 80 ? 'text-amber-400 font-semibold' : 'text-slate-300'}>{ram}%</span></span>}
+                    {stale === 'ok' && disk != null && <span>Disk <span className={disk > 90 ? 'text-red-400 font-semibold' : disk > 75 ? 'text-amber-400 font-semibold' : 'text-slate-300'}>{disk}%</span></span>}
+                    {stale === 'ok' && uptime != null && <span className="text-slate-500">↑{uptime}</span>}
                   </div>
                 </div>
               );
