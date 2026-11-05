@@ -38,12 +38,16 @@ Deno.serve(async (req: Request) => {
     if (user) userId = user.id;
   }
 
-  // Monday check for weekly digests (0=Sun, 1=Mon in UTC)
-  const isMonday = new Date().getUTCDay() === 1;
+  const now = new Date();
+  const isMonday      = now.getUTCDay() === 1;
+  // First Monday of the month: day-of-month ≤ 7
+  const isFirstMonday = isMonday && now.getUTCDate() <= 7;
 
-  // Fetch contacts with active digest frequency
-  // For pg_cron run: daily contacts always, weekly contacts only on Monday
-  // For preview/targeted run: fetch all contacts of that client
+  // Frequencies:
+  //   'all'     → every day (formerly 'daily')
+  //   'weekly'  → Mondays only
+  //   'monthly' → first Monday of the month
+  //   'none'    → never
   type ContactRow = { id: string; client_id: string; name: string; email: string; digest_frequency: string };
   let contactsQuery = supabase
     .from("client_contacts")
@@ -52,7 +56,9 @@ Deno.serve(async (req: Request) => {
   if (targetClientId) {
     contactsQuery = contactsQuery.eq("client_id", targetClientId).neq("digest_frequency", "none");
   } else {
-    const freqFilter = isMonday ? ["daily", "weekly"] : ["daily"];
+    const freqFilter: string[] = ["all"];
+    if (isMonday)      freqFilter.push("weekly");
+    if (isFirstMonday) freqFilter.push("monthly");
     contactsQuery = contactsQuery.in("digest_frequency", freqFilter);
   }
 
@@ -114,8 +120,8 @@ Deno.serve(async (req: Request) => {
 
     // Determine which contact types are receiving this run for this client
     const clientContacts = contactsByClient.get(client.id) || [];
-    const hasDailyContact  = clientContacts.some(c => c.digest_frequency === "daily");
-    const hasWeeklyContact = clientContacts.some(c => c.digest_frequency === "weekly");
+    const hasDailyContact  = clientContacts.some(c => c.digest_frequency === "all");
+    const hasWeeklyContact = clientContacts.some(c => c.digest_frequency === "weekly" || c.digest_frequency === "monthly");
     // Daily email covers 24h; weekly email covers 7d — fetch the broader window needed
     const backupSince = since7d;
 
@@ -304,7 +310,7 @@ Deno.serve(async (req: Request) => {
     };
 
     if (previewMode) {
-      const html = buildHtml(hasWeeklyContact ? "weekly" : "daily");
+      const html = buildHtml(hasDailyContact ? "daily" : "weekly");
       return new Response(JSON.stringify({ html, client_name: client.company_name }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -312,15 +318,17 @@ Deno.serve(async (req: Request) => {
     }
 
     // Send one email per frequency group, to the matching contacts
+    // 'all' → daily email, 'weekly'/'monthly' → weekly email
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    for (const frequency of (["daily", "weekly"] as const)) {
+    for (const frequency of (["all", "weekly", "monthly"] as const)) {
       const group = clientContacts.filter(c => c.digest_frequency === frequency);
       if (group.length === 0) continue;
-      // In pg_cron mode, skip weekly if not Monday
-      if (frequency === "weekly" && !isMonday && !targetClientId) continue;
+      if (frequency === "weekly"  && !isMonday      && !targetClientId) continue;
+      if (frequency === "monthly" && !isFirstMonday && !targetClientId) continue;
 
-      const html        = buildHtml(frequency);
-      const label       = frequency === "daily" ? "Resumen diario" : "Resumen semanal";
+      const buildFreq = frequency === "all" ? "daily" : "weekly";
+      const html      = buildHtml(buildFreq);
+      const label       = frequency === "all" ? "Resumen diario" : frequency === "monthly" ? "Resumen mensual" : "Resumen semanal";
       const subject     = `${label} — ${client.company_name} — ${dateLabel}`;
       const toEmails    = group.map(c => c.email);
       const trackingId  = crypto.randomUUID();
@@ -331,7 +339,7 @@ Deno.serve(async (req: Request) => {
         client_id:    client.id,
         client_email: toEmails[0],
         tracking_id:  trackingId,
-        email_type:   `digest_${frequency}`,
+        email_type:   frequency === "all" ? "digest_daily" : `digest_${frequency}`,
         subject,
       });
 

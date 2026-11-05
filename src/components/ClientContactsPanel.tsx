@@ -3,15 +3,17 @@ import { Plus, Trash2, Mail, Send, Check, Clock } from 'lucide-react';
 import { ClientContact, supabase } from '../lib/supabase';
 
 const FREQ_COLORS: Record<string, string> = {
-  none: 'bg-gray-100 text-gray-500',
-  daily: 'bg-blue-100 text-blue-700',
-  weekly: 'bg-violet-100 text-violet-700',
+  none:    'bg-gray-100 text-gray-500',
+  all:     'bg-blue-100 text-blue-700',
+  weekly:  'bg-violet-100 text-violet-700',
+  monthly: 'bg-purple-100 text-purple-700',
 };
 
 const FREQ_LABELS: Record<string, string> = {
-  none: 'Sin digest',
-  daily: 'Diario',
-  weekly: 'Semanal',
+  none:    'Sin digest',
+  all:     'Todo',
+  weekly:  'Semanal',
+  monthly: 'Mensual',
 };
 
 type Props = { clientId: string; userId: string };
