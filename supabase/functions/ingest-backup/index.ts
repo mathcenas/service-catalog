@@ -105,15 +105,14 @@ Deno.serve(async (req: Request) => {
       await supabaseAdmin.from("services").update(updatePayload).eq("id", service_id);
     }
 
-    // Send email notification (unless suppressed by caller or rate-limited)
+    // Send email notification: only for failed/warning, not success (success goes in digest)
     if (suppress_email) {
       console.log("[ingest-backup] email suprimido por suppress_email=true");
     }
-    if (!suppress_email) {
-      // Rate limiting: un email por (service_id, event_type) por día para success,
-      // 60 min para warning/failed para no suprimir alertas reales.
+    if (!suppress_email && normalizedStatus !== "success") {
+      // Rate limiting: 60 min cooldown para warning/failed para no suprimir alertas reales.
       const eventType = `backup_${normalizedStatus}`;
-      const cooldown  = normalizedStatus === "success" ? 23 * 60 : 60;
+      const cooldown  = 60;
       const allowed   = await canSendNotification(supabaseAdmin, service_id, eventType, cooldown);
       if (!allowed) {
         return new Response(
