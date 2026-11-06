@@ -134,7 +134,8 @@ Deno.serve(async (_req: Request) => {
         client_id:   proj.ttClientId,
         title:       `Backup vencido — ${svcName}`,
         description: `El servicio "${svcName}" no reportó backup en las últimas ${hrsAgo}h. Último backup: ${new Date(s.last_backup_at).toLocaleString("es-UY", { timeZone: "America/Montevideo" })}.`,
-        status:      "todo",
+        type:        "request",
+        status:      "not_started",
         priority:    hrsAgo > 48 ? "high" : "medium",
       }, TT_API_KEY, TT_BASE, supabase, { source: "alert-backup-stale", clientId: s.client_id });
       if (taskId) ttPushed++;

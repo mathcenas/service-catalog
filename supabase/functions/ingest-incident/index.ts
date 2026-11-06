@@ -180,7 +180,8 @@ Deno.serve(async (req: Request) => {
           client_id:   proj.ttClientId,
           title:       description,
           description: newNotes.map(n => n.note).join("\n"),
-          status:      "todo",
+          type:        "incident",
+          status:      "not_started",
           priority:    "high",
         }, TT_API_KEY, TT_BASE, supabaseAdmin, { source: "ingest-incident", clientId: clientId! });
         // Store the tt task id on the incident for future reference
