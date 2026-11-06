@@ -1132,8 +1132,6 @@ export function NotificationCenterView({ clients }: Props) {
               })}
             </div>
           )}
-        </>
-      )}
 
           {/* ── TASKTRACKER LOG ── */}
           {tab === 'tasklog' && (
