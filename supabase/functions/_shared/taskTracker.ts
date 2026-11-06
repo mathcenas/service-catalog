@@ -36,6 +36,7 @@ async function _post(
         "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
+        id:          crypto.randomUUID(),
         projectId:   payload.project_id,
         clientId:    payload.client_id,
         title:       payload.title,
