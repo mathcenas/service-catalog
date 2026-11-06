@@ -177,6 +177,7 @@ Deno.serve(async (req: Request) => {
       if (proj) {
         ttTaskId = await pushTaskToTracker({
           project_id:  proj.ttProjectId,
+          client_id:   proj.ttClientId,
           title:       description,
           description: newNotes.map(n => n.note).join("\n"),
           status:      "todo",
