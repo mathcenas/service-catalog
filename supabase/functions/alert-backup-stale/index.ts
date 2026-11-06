@@ -135,7 +135,7 @@ Deno.serve(async (_req: Request) => {
         description: `El servicio "${svcName}" no reportó backup en las últimas ${hrsAgo}h. Último backup: ${new Date(s.last_backup_at).toLocaleString("es-UY", { timeZone: "America/Montevideo" })}.`,
         status:      "todo",
         priority:    hrsAgo > 48 ? "high" : "medium",
-      }, TT_API_KEY, TT_BASE);
+      }, TT_API_KEY, TT_BASE, supabase, { source: "alert-backup-stale", clientId: s.client_id });
       if (taskId) ttPushed++;
     }
   }

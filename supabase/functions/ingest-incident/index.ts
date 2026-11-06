@@ -181,7 +181,7 @@ Deno.serve(async (req: Request) => {
           description: newNotes.map(n => n.note).join("\n"),
           status:      "todo",
           priority:    "high",
-        }, TT_API_KEY, TT_BASE);
+        }, TT_API_KEY, TT_BASE, supabaseAdmin, { source: "ingest-incident", clientId: clientId! });
         // Store the tt task id on the incident for future reference
         if (ttTaskId) {
           await supabaseAdmin
