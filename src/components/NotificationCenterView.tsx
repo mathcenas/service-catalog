@@ -1133,71 +1133,72 @@ export function NotificationCenterView({ clients }: Props) {
             </div>
           )}
 
-          {/* ── TASKTRACKER LOG ── */}
-          {tab === 'tasklog' && (
-            <div className="space-y-3">
-              {/* Stats row */}
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: 'Total enviados', val: ttLog.length },
-                  { label: 'Exitosos', val: ttLog.filter(e => e.status === 'ok').length, color: 'text-emerald-600' },
-                  { label: 'Con error', val: ttLog.filter(e => e.status === 'error').length, color: 'text-red-500' },
-                ].map(s => (
-                  <div key={s.label} className="bg-gray-50 rounded-xl px-4 py-3 text-center">
-                    <p className={`text-2xl font-bold ${s.color ?? 'text-gray-800'}`}>{s.val}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
-                  </div>
-                ))}
-              </div>
+        </>
+      )}
 
-              {ttLog.length === 0 ? (
-                <div className="text-center py-12 text-gray-400">
-                  <p>No hay registros aún.</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto rounded-xl border border-gray-200">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50">
-                        {['Fecha', 'Cliente', 'Origen', 'Título', 'Hs', 'Task ID', 'Estado'].map(h => (
-                          <th key={h} className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide text-[10px]">{h}</th>
-                        ))}
+      {/* ── TASKTRACKER LOG ── */}
+      {tab === 'tasklog' && !loading && (
+        <div className="space-y-3">
+          {/* Stats row */}
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: 'Total enviados', val: ttLog.length },
+              { label: 'Exitosos', val: ttLog.filter(e => e.status === 'ok').length, color: 'text-emerald-600' },
+              { label: 'Con error', val: ttLog.filter(e => e.status === 'error').length, color: 'text-red-500' },
+            ].map(s => (
+              <div key={s.label} className="bg-gray-50 rounded-xl px-4 py-3 text-center">
+                <p className={`text-2xl font-bold ${s.color ?? 'text-gray-800'}`}>{s.val}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {ttLog.length === 0 ? (
+            <div className="text-center py-12 text-gray-400">
+              <p>No hay registros aún.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-gray-200">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    {['Fecha', 'Cliente', 'Origen', 'Título', 'Hs', 'Task ID', 'Estado'].map(h => (
+                      <th key={h} className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide text-[10px]">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {ttLog.map(e => {
+                    const cl = clients.find(c => c.id === e.client_id);
+                    return (
+                      <tr key={e.id} className={e.status === 'error' ? 'bg-red-50/60' : ''}>
+                        <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{fmtRelative(e.created_at)}</td>
+                        <td className="px-3 py-2 text-gray-700 font-medium">{cl?.company_name ?? cl?.name ?? '—'}</td>
+                        <td className="px-3 py-2">
+                          <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-mono">{e.source}</span>
+                        </td>
+                        <td className="px-3 py-2 text-gray-700 max-w-[200px] truncate" title={e.title}>{e.title}</td>
+                        <td className="px-3 py-2 text-gray-500">{e.hours != null ? e.hours : '—'}</td>
+                        <td className="px-3 py-2 font-mono text-gray-400">
+                          {e.tt_task_id
+                            ? <span className="text-[10px]">{e.tt_task_id.slice(0, 8)}…</span>
+                            : '—'}
+                        </td>
+                        <td className="px-3 py-2">
+                          {e.status === 'ok'
+                            ? <span className="text-emerald-600 font-semibold">✓ ok</span>
+                            : e.status === 'error'
+                              ? <span className="text-red-500 font-semibold" title={e.error_message ?? ''}>✗ error{e.http_status ? ` ${e.http_status}` : ''}</span>
+                              : <span className="text-gray-400">skip</span>}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {ttLog.map(e => {
-                        const cl = clients.find(c => c.id === e.client_id);
-                        return (
-                          <tr key={e.id} className={e.status === 'error' ? 'bg-red-50/60' : ''}>
-                            <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{fmtRelative(e.created_at)}</td>
-                            <td className="px-3 py-2 text-gray-700 font-medium">{cl?.company_name ?? cl?.name ?? '—'}</td>
-                            <td className="px-3 py-2">
-                              <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-mono">{e.source}</span>
-                            </td>
-                            <td className="px-3 py-2 text-gray-700 max-w-[200px] truncate" title={e.title}>{e.title}</td>
-                            <td className="px-3 py-2 text-gray-500">{e.hours != null ? e.hours : '—'}</td>
-                            <td className="px-3 py-2 font-mono text-gray-400">
-                              {e.tt_task_id
-                                ? <span className="text-[10px]">{e.tt_task_id.slice(0, 8)}…</span>
-                                : '—'}
-                            </td>
-                            <td className="px-3 py-2">
-                              {e.status === 'ok'
-                                ? <span className="text-emerald-600 font-semibold">✓ ok</span>
-                                : e.status === 'error'
-                                  ? <span className="text-red-500 font-semibold" title={e.error_message ?? ''}>✗ error{e.http_status ? ` ${e.http_status}` : ''}</span>
-                                  : <span className="text-gray-400">skip</span>}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* Toast */}
