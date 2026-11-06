@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings, Clock, CheckCircle2, AlertTriangle, Wrench, XCircle, Globe, MonitorSmartphone, Mail, Menu, X, Network, Bell, ShieldAlert, WifiOff, HardDrive } from 'lucide-react';
+import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings, Clock, CheckCircle2, AlertTriangle, Wrench, XCircle, Globe, MonitorSmartphone, Mail, Menu, X, Network, Bell, ShieldAlert, WifiOff, HardDrive, BookOpen } from 'lucide-react';
 import { supabase, Client, Service, Project, ServiceType } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { ClientList } from './ClientList';
@@ -210,7 +210,16 @@ export function Dashboard() {
           ))}
         </nav>
 
-        <div className="px-2 pb-3 border-t border-gray-100 pt-2">
+        <div className="px-2 pb-3 border-t border-gray-100 pt-2 space-y-0.5">
+          <a
+            href="https://claude.ai/artifact/2B9ZPDecvP8Bg162MESAuV"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+          >
+            <BookOpen className="w-4 h-4 shrink-0" />
+            Guía del operador
+          </a>
           <button
             onClick={() => signOut()}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
