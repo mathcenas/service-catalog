@@ -27,6 +27,8 @@ export function RoadmapManager({ clients, services }: Props) {
     scheduled_date: '', client_id: '', service_id: '', publish_to_changelog: false,
   });
   const [saving, setSaving] = useState(false);
+  const [draftTtProjectId, setDraftTtProjectId] = useState<string>('');
+  const [ttProjects, setTtProjects] = useState<{ tt_project_id: string; project_name: string; is_default: boolean }[]>([]);
   const [filterCategory, setFilterCategory] = useState<RoadmapCategory | 'all'>('all');
   const [filterClientId, setFilterClientId] = useState<string>('all');
   const [notifying, setNotifying] = useState<string | null>(null);
@@ -82,6 +84,29 @@ export function RoadmapManager({ clients, services }: Props) {
     return list;
   }, [items, filterCategory, filterClientId]);
 
+  useEffect(() => {
+    if (!draft.client_id) { setTtProjects([]); setDraftTtProjectId(''); return; }
+    supabase
+      .from('clients')
+      .select('task_tracker_id')
+      .eq('id', draft.client_id)
+      .maybeSingle()
+      .then(({ data: cl }) => {
+        if (!cl?.task_tracker_id) { setTtProjects([]); setDraftTtProjectId(''); return; }
+        supabase
+          .from('task_tracker_projects')
+          .select('tt_project_id, project_name, is_default')
+          .eq('tt_client_id', cl.task_tracker_id)
+          .order('project_name')
+          .then(({ data }) => {
+            const list = data || [];
+            setTtProjects(list);
+            const def = list.find(p => p.is_default);
+            setDraftTtProjectId(list.length === 1 ? list[0].tt_project_id : (def?.tt_project_id ?? ''));
+          });
+      });
+  }, [draft.client_id]);
+
   const addItem = async () => {
     if (!draft.title.trim()) return;
     setSaving(true);
@@ -102,7 +127,33 @@ export function RoadmapManager({ clients, services }: Props) {
       sort_order: items.length,
       is_public: draft.category === 'idea',
     });
+
+    // Push a TaskTracker si hay proyecto seleccionado
+    if (draftTtProjectId) {
+      const hours = draft.amount && draft.amount_type === 'hours' ? parseFloat(draft.amount) : undefined;
+      const { data: { session } } = await supabase.auth.getSession();
+      const supabaseUrl = (supabase as any).supabaseUrl ?? import.meta.env.VITE_SUPABASE_URL;
+      fetch(`${supabaseUrl}/functions/v1/push-roadmap-task`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({
+          project_id:  draftTtProjectId,
+          title:       draft.title.trim(),
+          description: draft.description.trim() || undefined,
+          status:      'todo',
+          priority:    draft.category === 'problem' ? 'high' : 'medium',
+          hours,
+          due_date:    draft.scheduled_date || undefined,
+          client_id:   draft.client_id || undefined,
+        }),
+      }).catch(err => console.error('TT push failed:', err));
+    }
+
     setDraft({ title: '', description: '', eta: '', status: 'Planned', category: 'idea', requested_by: '', amount: '', amount_type: 'money', scheduled_date: '', client_id: '', service_id: '', publish_to_changelog: false });
+    setDraftTtProjectId('');
     setSaving(false);
     load();
   };
@@ -373,6 +424,25 @@ export function RoadmapManager({ clients, services }: Props) {
               <option value="">None</option>
               {clients.filter(c => c.status === 'Active').map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
             </select>
+            {/* TaskTracker project selector — aparece solo si el cliente tiene proyectos mapeados */}
+            {ttProjects.length > 0 && (
+              <div className="mt-2">
+                <label className="block text-xs font-medium text-blue-600 mb-1">↳ Proyecto TaskTracker</label>
+                <select
+                  value={draftTtProjectId}
+                  onChange={e => setDraftTtProjectId(e.target.value)}
+                  className="w-full px-3 py-2 border border-blue-200 rounded-lg text-sm bg-blue-50 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                >
+                  <option value="">Sin push a TaskTracker</option>
+                  {ttProjects.map(p => (
+                    <option key={p.tt_project_id} value={p.tt_project_id}>{p.project_name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {draft.client_id && ttProjects.length === 0 && (
+              <p className="mt-1 text-xs text-gray-400">Cliente sin proyectos TT configurados</p>
+            )}
           </div>
           <div className="md:col-span-2">
             <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
