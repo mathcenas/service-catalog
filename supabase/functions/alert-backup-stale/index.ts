@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { B, EMAIL_FONT, emailMeta } from "../_shared/emailBrand.ts";
+import { pushTaskToTracker, resolveDefaultProject } from "../_shared/taskTracker.ts";
 
 // Runs via pg_cron (no JWT). Sends ONE email to the operator when a service
 // that has backup history hasn't reported a backup in the last 26 hours.
@@ -117,5 +118,27 @@ Deno.serve(async (_req: Request) => {
     }),
   });
 
-  return new Response(JSON.stringify({ sent: 1, stale_count: services.length }), { status: 200 });
+  // Push a task to TaskTracker for each stale service whose client is mapped
+  const TT_API_KEY = Deno.env.get("TASK_TRACKER_API_KEY");
+  const TT_BASE    = Deno.env.get("TASK_TRACKER_URL");
+  let ttPushed = 0;
+  if (TT_API_KEY && TT_BASE) {
+    for (const s of services as any[]) {
+      if (!s.client_id) continue;
+      const proj = await resolveDefaultProject(supabase, s.client_id);
+      if (!proj) continue;
+      const hrsAgo = Math.floor((Date.now() - new Date(s.last_backup_at).getTime()) / 3600000);
+      const svcName = s.business_name || s.name;
+      const taskId = await pushTaskToTracker({
+        project_id:  proj.ttProjectId,
+        title:       `Backup vencido — ${svcName}`,
+        description: `El servicio "${svcName}" no reportó backup en las últimas ${hrsAgo}h. Último backup: ${new Date(s.last_backup_at).toLocaleString("es-UY", { timeZone: "America/Montevideo" })}.`,
+        status:      "todo",
+        priority:    hrsAgo > 48 ? "high" : "medium",
+      }, TT_API_KEY, TT_BASE, supabase, { source: "alert-backup-stale", clientId: s.client_id });
+      if (taskId) ttPushed++;
+    }
+  }
+
+  return new Response(JSON.stringify({ sent: 1, stale_count: services.length, tt_tasks_created: ttPushed }), { status: 200 });
 });

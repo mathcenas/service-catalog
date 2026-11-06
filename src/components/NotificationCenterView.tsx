@@ -140,7 +140,21 @@ function fmtTime(iso: string) {
   });
 }
 
-type Tab = 'contacts' | 'history' | 'alerts' | 'locks' | 'links';
+type Tab = 'contacts' | 'history' | 'alerts' | 'locks' | 'links' | 'tasklog';
+
+type TTLogEntry = {
+  id: string;
+  created_at: string;
+  source: string;
+  client_id?: string;
+  tt_project_id?: string;
+  tt_task_id?: string;
+  title: string;
+  hours?: number;
+  status: 'ok' | 'error' | 'skipped';
+  error_message?: string;
+  http_status?: number;
+};
 
 export function NotificationCenterView({ clients }: Props) {
   const { user } = useAuth();
@@ -149,6 +163,7 @@ export function NotificationCenterView({ clients }: Props) {
   const [emailOpens, setEmailOpens] = useState<EmailOpen[]>([]);
   const [locks, setLocks] = useState<NotificationLock[]>([]);
   const [lockEvents, setLockEvents] = useState<LockEvent[]>([]);
+  const [ttLog, setTtLog] = useState<TTLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [sendingWelcome, setSendingWelcome] = useState<string | null>(null);
   const [sendingDigestOff, setSendingDigestOff] = useState<string | null>(null);
@@ -177,7 +192,7 @@ export function NotificationCenterView({ clients }: Props) {
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const [{ data: ctcs }, { data: opens }, { data: lockRows }, { data: events }, { data: links }, { data: stoks }] = await Promise.all([
+    const [{ data: ctcs }, { data: opens }, { data: lockRows }, { data: events }, { data: links }, { data: stoks }, { data: ttLogRows }] = await Promise.all([
       supabase
         .from('client_contacts')
         .select('id, name, email, role, digest_frequency, client_id, subscription_confirmed, welcome_sent_at, last_email_at')
@@ -201,6 +216,11 @@ export function NotificationCenterView({ clients }: Props) {
         .from('client_share_tokens')
         .select('id, client_id, token, label, created_at, expires_at, open_count, first_opened_at')
         .order('created_at', { ascending: false }),
+      supabase
+        .from('task_tracker_log')
+        .select('id, created_at, source, client_id, tt_project_id, tt_task_id, title, hours, status, error_message, http_status')
+        .order('created_at', { ascending: false })
+        .limit(200),
     ]);
     setContacts((ctcs ?? []) as Contact[]);
     setEmailOpens((opens ?? []) as EmailOpen[]);
@@ -208,6 +228,7 @@ export function NotificationCenterView({ clients }: Props) {
     setLockEvents((events ?? []) as LockEvent[]);
     setShortLinks((links ?? []) as ShortLinkStat[]);
     setShareTokens((stoks ?? []) as ShareToken[]);
+    setTtLog((ttLogRows ?? []) as TTLogEntry[]);
     setLoading(false);
   }, [user]);
 
@@ -427,6 +448,7 @@ export function NotificationCenterView({ clients }: Props) {
     { id: 'alerts',   label: 'Alertas',             badge: activeLocks.length || undefined },
     { id: 'locks',    label: 'Cooldowns activos',   badge: activeLocks.length },
     { id: 'links',    label: 'Links',               badge: totalLinks || undefined },
+    { id: 'tasklog',  label: 'TaskTracker',          badge: ttLog.filter(e => e.status === 'error').length || undefined },
   ];
 
   return (
@@ -1108,6 +1130,73 @@ export function NotificationCenterView({ clients }: Props) {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </>
+      )}
+
+          {/* ── TASKTRACKER LOG ── */}
+          {tab === 'tasklog' && (
+            <div className="space-y-3">
+              {/* Stats row */}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: 'Total enviados', val: ttLog.length },
+                  { label: 'Exitosos', val: ttLog.filter(e => e.status === 'ok').length, color: 'text-emerald-600' },
+                  { label: 'Con error', val: ttLog.filter(e => e.status === 'error').length, color: 'text-red-500' },
+                ].map(s => (
+                  <div key={s.label} className="bg-gray-50 rounded-xl px-4 py-3 text-center">
+                    <p className={`text-2xl font-bold ${s.color ?? 'text-gray-800'}`}>{s.val}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {ttLog.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <p>No hay registros aún.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-gray-200">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-100 bg-gray-50">
+                        {['Fecha', 'Cliente', 'Origen', 'Título', 'Hs', 'Task ID', 'Estado'].map(h => (
+                          <th key={h} className="text-left px-3 py-2 font-semibold text-gray-500 uppercase tracking-wide text-[10px]">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {ttLog.map(e => {
+                        const cl = clients.find(c => c.id === e.client_id);
+                        return (
+                          <tr key={e.id} className={e.status === 'error' ? 'bg-red-50/60' : ''}>
+                            <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{fmtRelative(e.created_at)}</td>
+                            <td className="px-3 py-2 text-gray-700 font-medium">{cl?.company_name ?? cl?.name ?? '—'}</td>
+                            <td className="px-3 py-2">
+                              <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-mono">{e.source}</span>
+                            </td>
+                            <td className="px-3 py-2 text-gray-700 max-w-[200px] truncate" title={e.title}>{e.title}</td>
+                            <td className="px-3 py-2 text-gray-500">{e.hours != null ? e.hours : '—'}</td>
+                            <td className="px-3 py-2 font-mono text-gray-400">
+                              {e.tt_task_id
+                                ? <span className="text-[10px]">{e.tt_task_id.slice(0, 8)}…</span>
+                                : '—'}
+                            </td>
+                            <td className="px-3 py-2">
+                              {e.status === 'ok'
+                                ? <span className="text-emerald-600 font-semibold">✓ ok</span>
+                                : e.status === 'error'
+                                  ? <span className="text-red-500 font-semibold" title={e.error_message ?? ''}>✗ error{e.http_status ? ` ${e.http_status}` : ''}</span>
+                                  : <span className="text-gray-400">skip</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </>

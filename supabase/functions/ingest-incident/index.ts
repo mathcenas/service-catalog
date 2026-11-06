@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { pushTaskToTracker, resolveDefaultProject } from "../_shared/taskTracker.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -167,8 +168,32 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // Push task to TaskTracker if client is mapped
+    let ttTaskId: string | null = null;
+    const TT_API_KEY = Deno.env.get("TASK_TRACKER_API_KEY");
+    const TT_BASE    = Deno.env.get("TASK_TRACKER_URL");
+    if (clientId && TT_API_KEY && TT_BASE && !isClose) {
+      const proj = await resolveDefaultProject(supabaseAdmin, clientId);
+      if (proj) {
+        ttTaskId = await pushTaskToTracker({
+          project_id:  proj.ttProjectId,
+          title:       description,
+          description: newNotes.map(n => n.note).join("\n"),
+          status:      "todo",
+          priority:    "high",
+        }, TT_API_KEY, TT_BASE, supabaseAdmin, { source: "ingest-incident", clientId: clientId! });
+        // Store the tt task id on the incident for future reference
+        if (ttTaskId) {
+          await supabaseAdmin
+            .from("service_incidents")
+            .update({ external_task_id: ttTaskId })
+            .eq("id", inserted.id);
+        }
+      }
+    }
+
     return new Response(
-      JSON.stringify({ success: true, action: "created", incident_id: inserted.id, client_matched: !!clientId }),
+      JSON.stringify({ success: true, action: "created", incident_id: inserted.id, client_matched: !!clientId, tt_task_id: ttTaskId }),
       { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
