@@ -12,7 +12,7 @@ export interface PushTaskPayload {
   status?:     string;   // defaults to "todo"
   priority?:   string;   // defaults to "medium"
   hours?:      number;   // actual hours worked (REAL column in tasks)
-  due_date?:   string;   // ISO date string
+  date?:       string;   // YYYY-MM-DD, mandatory in TaskTracker — defaults to today
 }
 
 interface PushResult {
@@ -41,8 +41,8 @@ async function _post(
         description: payload.description || "",
         status:      payload.status   || "todo",
         priority:    payload.priority || "medium",
-        ...(payload.hours    != null ? { hours:    payload.hours    } : {}),
-        ...(payload.due_date != null ? { dueDate:  payload.due_date } : {}),
+        date:        payload.date ?? new Date().toISOString().split("T")[0],
+        ...(payload.hours != null ? { hours: payload.hours } : {}),
       }),
     });
 

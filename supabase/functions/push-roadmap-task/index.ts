@@ -62,7 +62,9 @@ Deno.serve(async (req: Request) => {
   }
 
   const hours   = typeof body.hours === "number" ? body.hours : undefined;
-  const dueDate = typeof body.due_date === "string" && body.due_date ? body.due_date : undefined;
+  const date    = typeof body.due_date === "string" && body.due_date
+    ? body.due_date.split("T")[0]
+    : undefined;
 
   const ttTaskId = await pushTaskToTracker({
     project_id:  projectId,
@@ -72,7 +74,7 @@ Deno.serve(async (req: Request) => {
     status:      typeof body.status   === "string" ? body.status   : "todo",
     priority:    typeof body.priority === "string" ? body.priority : "medium",
     hours,
-    due_date:    dueDate,
+    date,
   }, TT_API_KEY, TT_BASE, supabaseAdmin, { source: "roadmap", clientId: portalClientId });
 
   return new Response(
