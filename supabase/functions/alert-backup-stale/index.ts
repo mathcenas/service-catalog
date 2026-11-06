@@ -131,6 +131,7 @@ Deno.serve(async (_req: Request) => {
       const svcName = s.business_name || s.name;
       const taskId = await pushTaskToTracker({
         project_id:  proj.ttProjectId,
+        client_id:   proj.ttClientId,
         title:       `Backup vencido — ${svcName}`,
         description: `El servicio "${svcName}" no reportó backup en las últimas ${hrsAgo}h. Último backup: ${new Date(s.last_backup_at).toLocaleString("es-UY", { timeZone: "America/Montevideo" })}.`,
         status:      "todo",

@@ -5,7 +5,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 type SupabaseClient = ReturnType<typeof createClient>;
 
 export interface PushTaskPayload {
-  project_id:  string;
+  project_id:  string;   // tt_project_id (UUID in TaskTracker)
+  client_id:   string;   // tt_client_id (UUID in TaskTracker)
   title:       string;
   description?: string;
   status?:     string;   // defaults to "todo"
@@ -34,13 +35,14 @@ async function _post(
         "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        project_id:  payload.project_id,
+        projectId:   payload.project_id,
+        clientId:    payload.client_id,
         title:       payload.title,
         description: payload.description || "",
         status:      payload.status   || "todo",
         priority:    payload.priority || "medium",
         ...(payload.hours    != null ? { hours:    payload.hours    } : {}),
-        ...(payload.due_date != null ? { due_date: payload.due_date } : {}),
+        ...(payload.due_date != null ? { dueDate:  payload.due_date } : {}),
       }),
     });
 
