@@ -9,10 +9,11 @@ export interface PushTaskPayload {
   client_id:   string;   // tt_client_id (UUID in TaskTracker)
   title:       string;
   description?: string;
-  status?:     string;   // defaults to "todo"
-  priority?:   string;   // defaults to "medium"
-  hours?:      number;   // actual hours worked (REAL column in tasks)
-  date?:       string;   // YYYY-MM-DD, mandatory in TaskTracker — defaults to today
+  type?:       string;   // "request"|"change"|"incident"|"problem"|"insumos" — defaults to "request"
+  status?:     string;   // "not_started"|"in_progress"|"review"|"completed" — defaults to "not_started"
+  priority?:   string;   // "low"|"medium"|"high" — defaults to "medium"
+  hours?:      number;
+  date?:       string;   // YYYY-MM-DD — defaults to today
 }
 
 interface PushResult {
@@ -39,7 +40,8 @@ async function _post(
         clientId:    payload.client_id,
         title:       payload.title,
         description: payload.description || "",
-        status:      payload.status   || "todo",
+        type:        payload.type     || "request",
+        status:      payload.status   || "not_started",
         priority:    payload.priority || "medium",
         date:        payload.date ?? new Date().toISOString().split("T")[0],
         ...(payload.hours != null ? { hours: payload.hours } : {}),
