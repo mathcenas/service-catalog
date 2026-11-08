@@ -7,9 +7,16 @@ import { B, EMAIL_FONT, emailHeader, emailPortalPanel, emailMeta } from "../_sha
 //   { client_id: "uuid" }                 → sends to that client only
 //   {}                                     → pg_cron: daily contacts always, weekly contacts only on Monday
 
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
 Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: cors });
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405 });
+    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: cors });
   }
 
   const supabase = createClient(
@@ -27,7 +34,7 @@ Deno.serve(async (req: Request) => {
   const targetClientId: string | null = body?.client_id || null;
 
   if (!RESEND_API_KEY && !previewMode) {
-    return new Response(JSON.stringify({ error: "RESEND_API_KEY not configured" }), { status: 500 });
+    return new Response(JSON.stringify({ error: "RESEND_API_KEY not configured" }), { status: 500, headers: cors });
   }
 
   // Determine user from auth header (for preview) or service role (pg_cron)
@@ -64,7 +71,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: allContacts } = await contactsQuery;
   if (!allContacts || allContacts.length === 0) {
-    return new Response(JSON.stringify({ sent: 0, reason: "No contacts with active digest" }), { status: 200 });
+    return new Response(JSON.stringify({ sent: 0, reason: "No contacts with active digest" }), { status: 200, headers: cors });
   }
 
   // Group contacts by client_id
@@ -86,7 +93,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: targetClients } = await clientsQuery;
   if (!targetClients || targetClients.length === 0) {
-    return new Response(JSON.stringify({ sent: 0, reason: "No clients found" }), { status: 200 });
+    return new Response(JSON.stringify({ sent: 0, reason: "No clients found" }), { status: 200, headers: cors });
   }
 
   const since7d  = new Date(Date.now() - 7 * 86400000).toISOString();
@@ -313,7 +320,7 @@ Deno.serve(async (req: Request) => {
       const html = buildHtml(hasDailyContact ? "daily" : "weekly");
       return new Response(JSON.stringify({ html, client_name: client.company_name }), {
         status: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: { ...cors, "Content-Type": "application/json" },
       });
     }
 
@@ -355,5 +362,5 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  return new Response(JSON.stringify({ sent }), { status: 200 });
+  return new Response(JSON.stringify({ sent }), { status: 200, headers: cors });
 });
