@@ -579,46 +579,7 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
         </section>
       ); })()}
 
-      {healthEntries.length > 0 && (
-        <section>
-          <div className="flex items-center gap-2 mb-3">
-            <h2 className="text-sm font-semibold text-white">System Health</h2>
-            <InfoTooltip text="Monitoreo en tiempo real de tus servidores y equipos: CPU, RAM, disco, red y estado de backups. Los datos se actualizan automáticamente cada vez que el script de monitoreo corre." />
-          </div>
-          <div className="space-y-2">
-            {healthEntries.map(h => {
-              const svc = services.find(s => s.id === h.service_id);
-              const payload = h.payload as Record<string, any>;
-              const ageMs = Date.now() - new Date(h.received_at).getTime();
-              const ageH = ageMs / (60 * 60 * 1000);
-              const stale = ageH > 72 ? 'critical' : ageH > 25 ? 'warn' : 'ok';
-              const dot = stale !== 'ok' ? (stale === 'critical' ? 'bg-red-500' : 'bg-amber-500') : (h.status === 'ok' ? 'bg-emerald-500' : h.status === 'warning' ? 'bg-amber-500' : 'bg-red-500');
-
-              const cpu = payload?.cpu_pct != null ? Number(payload.cpu_pct) : null;
-              const disk = payload?.disk_pct != null ? Number(payload.disk_pct) : null;
-              const ram = payload?.ram_pct != null ? Number(payload.ram_pct) : null;
-              const uptime = payload?.uptime_str != null ? String(payload.uptime_str) : null;
-              return (
-                <div key={h.id} className="bg-[#1E293B] rounded-xl border border-white/5 px-4 py-3 flex items-center gap-3">
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white">{svc?.business_name || svc?.name || h.service_id}</p>
-                    {h.message && stale === 'ok' && <p className="text-xs text-slate-400">{h.message}</p>}
-                    {stale === 'warn' && <p className="text-xs text-amber-400">Desactualizado · hace {Math.round(ageH)}h</p>}
-                    {stale === 'critical' && <p className="text-xs text-red-400">Sin contacto · hace {Math.round(ageH / 24)}d</p>}
-                  </div>
-                  <div className="flex gap-3 text-xs text-slate-500 shrink-0">
-                    {stale === 'ok' && cpu != null && <span>CPU <span className={cpu > 95 ? 'text-red-400 font-semibold' : cpu > 80 ? 'text-amber-400 font-semibold' : 'text-slate-300'}>{cpu}%</span></span>}
-                    {stale === 'ok' && ram != null && <span>RAM <span className={ram > 92 ? 'text-red-400 font-semibold' : ram > 80 ? 'text-amber-400 font-semibold' : 'text-slate-300'}>{ram}%</span></span>}
-                    {stale === 'ok' && disk != null && <span>Disk <span className={disk > 90 ? 'text-red-400 font-semibold' : disk > 75 ? 'text-amber-400 font-semibold' : 'text-slate-300'}>{disk}%</span></span>}
-                    {stale === 'ok' && uptime != null && <span className="text-slate-500">↑{uptime}</span>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
+      {healthEntries.length > 0 && <SystemHealth entries={healthEntries} services={services} />}
 
       {/* Resolved incidents history from support_hours (legacy — shown only when no new incident system entries) */}
       {incidents.filter(i => i.status === 'resolved').length === 0 && supportHours.filter(h => h.type === 'incident').length > 0 && (
@@ -1207,16 +1168,131 @@ function ServiceCatalog({ services, projects, getTypeName, getProjectName, expan
   );
 }
 
+// Linux scripts report success/warning/failed, Windows scripts ok/warning/error.
+type HealthLevel = 'ok' | 'warning' | 'error';
+function healthLevel(status: string | null | undefined): HealthLevel {
+  if (status === 'error' || status === 'failed') return 'error';
+  if (status === 'warning') return 'warning';
+  return 'ok';
+}
+
+const HEALTH_META = {
+  ok:       { label: 'Operativo',       pill: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-400/20', dot: 'bg-emerald-500' },
+  warning:  { label: 'Atención',        pill: 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-400 dark:ring-amber-400/20',           dot: 'bg-amber-500' },
+  error:    { label: 'Crítico',         pill: 'bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-500/10 dark:text-red-400 dark:ring-red-400/20',                     dot: 'bg-red-500' },
+  stale:    { label: 'Desactualizado',  pill: 'bg-gray-100 text-gray-600 ring-gray-500/20 dark:bg-gray-500/10 dark:text-gray-400 dark:ring-gray-400/20',              dot: 'bg-gray-400' },
+  offline:  { label: 'Sin contacto',    pill: 'bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-500/10 dark:text-red-400 dark:ring-red-400/20',                     dot: 'bg-red-500' },
+} as const;
+
+function HealthMeter({ label, pct, warnAt, critAt, detail }: { label: string; pct: number; warnAt: number; critAt: number; detail?: string }) {
+  const clamped = Math.max(0, Math.min(100, pct));
+  const tone = clamped >= critAt ? 'crit' : clamped >= warnAt ? 'warn' : 'ok';
+  const bar = tone === 'crit' ? 'bg-red-500' : tone === 'warn' ? 'bg-amber-500' : 'bg-brand-accent';
+  const value = tone === 'crit' ? 'text-red-600 dark:text-red-400' : tone === 'warn' ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-white';
+  return (
+    <div className="min-w-0">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[10px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</span>
+        <span className={`text-sm font-semibold tabular-nums ${value}`}>{Math.round(clamped)}%</span>
+      </div>
+      <div className="mt-1.5 h-1 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+        <div className={`h-full rounded-full ${bar}`} style={{ width: `${clamped}%` }} />
+      </div>
+      {detail && <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500 tabular-nums truncate">{detail}</p>}
+    </div>
+  );
+}
+
+function timeAgoEs(iso: string): string {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'recién';
+  if (mins < 60) return `hace ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `hace ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? 'ayer' : `hace ${days} días`;
+}
+
+function SystemHealth({ entries, services }: { entries: ServiceHeartbeat[]; services: Service[] }) {
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-3">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">System Health</h2>
+        <InfoTooltip text="Monitoreo de tus servidores y equipos: CPU, RAM, disco y disponibilidad. Los datos se actualizan cada vez que corre el script de monitoreo." />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 items-start gap-3">
+        {entries.map(h => {
+          const svc = services.find(s => s.id === h.service_id);
+          const p = (h.payload ?? {}) as Record<string, any>;
+          const ageH = (Date.now() - new Date(h.received_at).getTime()) / 3600000;
+          const freshness = ageH > 72 ? 'offline' : ageH > 25 ? 'stale' : 'fresh';
+          const level = healthLevel(h.status);
+          const meta = HEALTH_META[freshness === 'fresh' ? level : freshness];
+
+          const num = (v: unknown) => (v != null && v !== '' && !Number.isNaN(Number(v)) ? Number(v) : null);
+          const cpu = num(p.cpu_pct);
+          const ram = num(p.ram_pct);
+          const disk = num(p.disk_pct);
+          const diskFree = num(p.disk_free_gb);
+          const ramTotal = num(p.ram_total_gb);
+          const uptime = p.uptime_str ? String(p.uptime_str) : null;
+          const hasMetrics = cpu != null || ram != null || disk != null;
+
+          const raidIssue = Array.isArray(p.disk_raid)
+            ? p.disk_raid.filter((r: any) => r?.status && r.status !== 'ok').map((r: any) => `Volumen ${r.name}: ${r.health}`).join(' · ')
+            : '';
+          const issues = typeof p.issues === 'string' && p.issues.trim() && p.issues !== 'Normal' ? p.issues.trim() : raidIssue || null;
+          const reason =
+            freshness === 'offline' ? `No reporta hace ${Math.round(ageH / 24)} días` :
+            freshness === 'stale'   ? `Último reporte hace ${Math.round(ageH)} h` :
+            level !== 'ok'          ? (issues ?? (hasMetrics ? 'Revisar alertas del equipo' : h.message)) :
+            !hasMetrics             ? h.message :
+            null;
+
+          return (
+            <article key={h.id} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4 flex flex-col gap-4 min-w-0">
+              <header className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white truncate">{svc?.business_name || svc?.name || 'Equipo'}</h3>
+                  {reason && (
+                    <p className={`mt-0.5 text-xs ${freshness !== 'fresh' || level !== 'ok' ? 'text-gray-600 dark:text-gray-300' : 'text-gray-500 dark:text-gray-400'}`}>{reason}</p>
+                  )}
+                </div>
+                <span className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${meta.pill}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+                  {meta.label}
+                </span>
+              </header>
+
+              {hasMetrics && freshness !== 'offline' && (
+                <div className={`grid grid-cols-3 gap-4 ${freshness === 'stale' ? 'opacity-50' : ''}`}>
+                  {cpu != null  && <HealthMeter label="CPU"   pct={cpu}  warnAt={80} critAt={95} />}
+                  {ram != null  && <HealthMeter label="RAM"   pct={ram}  warnAt={80} critAt={92} detail={ramTotal ? `de ${ramTotal} GB` : undefined} />}
+                  {disk != null && <HealthMeter label="Disco" pct={disk} warnAt={75} critAt={90} detail={diskFree != null ? `${diskFree} GB libres` : undefined} />}
+                </div>
+              )}
+
+              <footer className="flex items-center gap-x-3 gap-y-1 flex-wrap text-[11px] text-gray-400 dark:text-gray-500 pt-3 border-t border-gray-100 dark:border-gray-800">
+                <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" />Actualizado {timeAgoEs(h.received_at)}</span>
+                {uptime && freshness === 'fresh' && <span>Encendido hace {uptime}</span>}
+              </footer>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function HealthDot({ hb }: { hb: ServiceHeartbeat | null }) {
   if (!hb) return null;
   const p = hb.payload as any;
   const diskPct: number | undefined = p?.disk_pct ?? p?.disk_used_pct;
   const ramPct: number | undefined  = p?.ram_pct  ?? p?.ram_used_pct;
 
-  const warn = hb.status === 'warning' || hb.status === 'error';
-  const color = hb.status === 'error'   ? 'bg-red-500'
-              : hb.status === 'warning'  ? 'bg-amber-500'
-              : 'bg-emerald-500';
+  const level = healthLevel(hb.status);
+  const warn = level !== 'ok';
+  const color = HEALTH_META[level].dot;
 
   const label = warn && diskPct != null ? `Disk ${diskPct}%`
               : warn && ramPct  != null ? `RAM ${ramPct}%`
