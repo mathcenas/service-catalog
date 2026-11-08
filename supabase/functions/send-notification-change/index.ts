@@ -93,9 +93,7 @@ Deno.serve(async (req: Request) => {
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;border:1px solid ${B.border};">
   <tr><td style="padding:28px;">
 
-    ${emailHeader({ senderName, label: "MEJORA DE SERVICIO", accentColor: "#06B6D4", title: client.company_name, subtitle: "Novedades en monitoreo y notificaciones",
-      logoHtml: `<img src="https://cenas.uy/assets/brand/logo-badge-light.png" alt="${senderName}" height="32" style="display:block;" />`
-    })}
+    ${emailHeader({ senderName, label: "MEJORA DE SERVICIO", accentColor: "#06B6D4", title: client.company_name, subtitle: "Novedades en monitoreo y notificaciones" })}
 
     <h2 style="font-size:16px;font-weight:700;color:${B.primary};margin:0 0 10px;">
       Mejoras en el monitoreo de tus servicios IT
@@ -202,11 +200,36 @@ Deno.serve(async (req: Request) => {
       </tr>
     </table>` : ''}
 
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+      <tr>
+        <td style="background:${B.primary};border-radius:10px;padding:18px 20px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td valign="middle">
+                <div style="font-size:13px;font-weight:700;color:#ffffff;margin-bottom:4px;">Ver tu portal de servicios</div>
+                <div style="font-size:12px;color:${B.textSoft};line-height:1.5;">Estado en tiempo real, backups e incidentes — siempre disponible.</div>
+              </td>
+              <td valign="middle" align="right" style="padding-left:16px;white-space:nowrap;">
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="background:${B.accent};border-radius:6px;">
+                      ${portalUrl
+                        ? `<a href="${portalUrl}" style="display:inline-block;padding:8px 18px;font-size:12px;font-weight:700;color:${B.primary};text-decoration:none;">Ver mis servicios →</a>`
+                        : `<span style="display:inline-block;padding:8px 18px;font-size:12px;font-weight:700;color:${B.primary};">Próximamente →</span>`}
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
     <div style="background:#F0FDF4;border:1px solid #A7F3D0;border-radius:8px;padding:14px 16px;margin-bottom:24px;">
       <p style="font-size:12px;color:#065F46;margin:0 0 6px;font-weight:700;">¿Querés ajustar la frecuencia de notificaciones?</p>
       <p style="font-size:12px;color:#047857;margin:0;line-height:1.6;">
-        Podemos configurarlo según tu preferencia: recibir una alerta por evento, solo cuando hay problemas, o únicamente el resumen semanal.
-        ${portalUrl ? `<a href="${portalUrl}" style="color:#065F46;font-weight:700;">Accedé a tu portal</a> o respondé` : 'Respondé'} este correo y lo ajustamos.
+        Podemos configurarlo según tu preferencia: recibir una alerta por evento, solo cuando hay problemas, o únicamente el resumen semanal. Respondé este correo y lo ajustamos.
       </p>
     </div>
 
