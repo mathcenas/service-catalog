@@ -55,6 +55,7 @@ Deno.serve(async (req: Request) => {
 
     const fromEmail = Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Alerts <alerts@updates.cenas.uy>";
     const replyTo = Deno.env.get("RESEND_REPLY_TO") || "mathias@cenas.uy";
+    const REMINDER_DAYS = [30, 15, 7, 3, 1];
     let sent = 0;
     const errors: string[] = [];
 
@@ -65,6 +66,8 @@ Deno.serve(async (req: Request) => {
       const daysLeft = Math.ceil(
         (new Date(lic.expiration_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
       );
+      // Runs daily: only remind on these milestones, not every day of the last month.
+      if (!REMINDER_DAYS.includes(daysLeft)) continue;
 
       const { data: settings } = await supabase
         .from("user_settings")
@@ -148,7 +151,7 @@ Deno.serve(async (req: Request) => {
           from: fromEmail,
           reply_to: replyTo,
           to: recipients,
-          subject: `License Renewal: ${lic.software_name} expires in ${daysLeft} days`,
+          subject: `Renovación de licencia: ${lic.software_name} vence en ${daysLeft} día${daysLeft === 1 ? "" : "s"}`,
           html: htmlBody,
         }),
       });
