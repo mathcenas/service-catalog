@@ -2,7 +2,7 @@
 # config.ps1 - Configuracion por cliente/servidor
 # Copiar este archivo por cada cliente y ajustar los valores
 # =============================================================
-$SCRIPT_VERSION = "1.2.3"
+$SCRIPT_VERSION = "1.3.0"
 
 $INGEST_URL    = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-backup"
 $HEARTBEAT_URL = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-heartbeat"
@@ -14,6 +14,13 @@ $SERVICE_ID    = "REEMPLAZAR_CON_UUID_DEL_SERVICIO"
 # Carpeta compartida a monitorear (dejar vacio si no se usa smb-check.ps1)
 $SMB_SERVICE_ID    = ""   # UUID del servicio en la app (distinto al $SERVICE_ID del server)
 $SMB_INGEST_SECRET = ""   # Ingest secret del servicio SMB (Settings del servicio en la app)
+
+# Otros servicios del catalogo que corren en este mismo equipo (ej: un sistema contable
+# instalado en el server). Cada uno recibe una copia del heartbeat de hardware (system-health).
+# $EXTRA_HEALTH_SERVICES = @(
+#     @{ Name = "Contabilidad"; ServiceId = "UUID-DEL-SERVICIO"; IngestSecret = "INGEST_SECRET_DEL_SERVICIO" }
+# )
+$EXTRA_HEALTH_SERVICES = @()
 $SMB_KUMA_PUSH_URL = ""   # Push monitor de Kuma para el share (distinto al del server)
 $SMB_PATH          = ""   # Ruta local de la carpeta compartida, ej: C:\Compartidos\Ventas
 

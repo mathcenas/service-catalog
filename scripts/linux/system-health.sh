@@ -12,7 +12,7 @@
 # Version: 1.6.0
 # =============================================================
 
-SCRIPT_VERSION="1.8.0"
+SCRIPT_VERSION="1.9.0"
 
 # ---------- Verificación de dependencias ----------
 if ! command -v jq >/dev/null 2>&1; then
@@ -557,3 +557,26 @@ else
   notify_kuma "down" "system-health error HTTP $HTTP_CODE"
   exit 1
 fi
+
+# ---------- Servicios extra en este mismo host ----------
+# Cada EXTRA_n del .env recibe una copia del heartbeat de hardware.
+for i in $(seq 1 10); do
+  extra_id_var="EXTRA_${i}_SERVICE_ID";        extra_id="${!extra_id_var:-}"
+  extra_secret_var="EXTRA_${i}_INGEST_SECRET"; extra_secret="${!extra_secret_var:-}"
+  [[ -z "$extra_id" || -z "$extra_secret" ]] && break
+  extra_name_var="EXTRA_${i}_NAME";            extra_name="${!extra_name_var:-$extra_id}"
+
+  extra_code=$(curl -s -o /dev/null -w "%{http_code}" \
+    --retry 3 --retry-delay 5 --retry-connrefused \
+    -X POST "$HEARTBEAT_URL" \
+    -H "Content-Type: application/json" \
+    -H "apikey: $SUPABASE_ANON_KEY" \
+    -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+    -H "X-Ingest-Secret: $extra_secret" \
+    -d "$(jq --arg id "$extra_id" '.service_id = $id' <<< "$PAYLOAD")")
+  if [[ "$extra_code" == "200" || "$extra_code" == "201" ]]; then
+    log "✓ system-health [${extra_name}] → $STATUS"
+  else
+    log "✗ system-health [${extra_name}] → HTTP $extra_code"
+  fi
+done
