@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.4.0"
+$SCRIPT_VERSION = "1.5.0"
 
 # ---------- IPs (pública WAN + local) ----------
 $publicIp = $null
@@ -161,7 +161,7 @@ foreach ($r in $raidList) {
 }
 $issues = if ($issueList.Count -gt 0) { $issueList -join ' ' } else { 'Normal' }
 
-$hwBody = @{
+$hwData = @{
     service_id = $SERVICE_ID
     source     = "system-health"
     status     = $hwStatus
@@ -186,13 +186,30 @@ $hwBody = @{
         os_caption     = (Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue).Caption
         script_version = $SCRIPT_VERSION
     }
-} | ConvertTo-Json -Depth 5
+}
+$hwBody = $hwData | ConvertTo-Json -Depth 5
 
 try {
     Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $hwBody | Out-Null
     Write-Log "✅ system-health → $hwStatus | CPU: $cpuUsage% | RAM: $ramUsePct% | Disk: $diskUsePct%"
 } catch {
     Write-Log "❌ system-health Error: $($_.Exception.Message)"
+}
+
+# ---------- Servicios extra en este mismo host ----------
+# Cada servicio de $EXTRA_HEALTH_SERVICES (config.ps1) recibe una copia del heartbeat de hardware.
+foreach ($extra in @($EXTRA_HEALTH_SERVICES)) {
+    if (-not $extra -or -not $extra.ServiceId -or -not $extra.IngestSecret) { continue }
+    $label = if ($extra.Name) { $extra.Name } else { $extra.ServiceId }
+    $hwData.service_id = $extra.ServiceId
+    $extraHeaders = $headers.Clone()
+    $extraHeaders["X-Ingest-Secret"] = $extra.IngestSecret
+    try {
+        Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $extraHeaders -Body ($hwData | ConvertTo-Json -Depth 5) | Out-Null
+        Write-Log "✅ system-health [$label] → $hwStatus"
+    } catch {
+        Write-Log "❌ system-health [$label] Error: $($_.Exception.Message)"
+    }
 }
 
 # ---------- 2. RED (Gateway + Internet + Latencia / Pérdida) ----------
