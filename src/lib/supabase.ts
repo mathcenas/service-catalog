@@ -165,6 +165,8 @@ export type Service = {
   rto?: string;
   rpo?: string;
   maintenance_window?: string;
+  spof?: boolean | null;
+  recovery_steps?: string | null;
   last_backup_at?: string;
   last_backup_size_bytes?: number;
   last_restore_test_at?: string;
