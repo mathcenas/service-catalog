@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Mail, Send, Check, Clock } from 'lucide-react';
+import { Plus, Trash2, Mail, Send, Check, Clock, Pencil, X } from 'lucide-react';
 import { ClientContact, supabase } from '../lib/supabase';
 
 const FREQ_COLORS: Record<string, string> = {
@@ -27,6 +27,9 @@ export function ClientContactsPanel({ clientId, userId }: Props) {
   const [error, setError] = useState('');
   const [sendingWelcome, setSendingWelcome] = useState<string | null>(null);
   const [sentOk, setSentOk] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ name: '', role: '' });
+  const [editSaving, setEditSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -58,6 +61,23 @@ export function ClientContactsPanel({ clientId, userId }: Props) {
     setAdding(false);
     setSaving(false);
     load();
+  };
+
+  const startEdit = (c: ClientContact) => {
+    setEditingId(c.id);
+    setEditForm({ name: c.name, role: c.role || '' });
+  };
+
+  const handleEdit = async () => {
+    if (!editingId || !editForm.name.trim()) return;
+    setEditSaving(true);
+    await supabase.from('client_contacts').update({
+      name: editForm.name.trim(),
+      role: editForm.role.trim() || null,
+    }).eq('id', editingId);
+    setContacts(cs => cs.map(c => c.id === editingId ? { ...c, name: editForm.name.trim(), role: editForm.role.trim() || null } : c));
+    setEditingId(null);
+    setEditSaving(false);
   };
 
   const handleDelete = async (id: string) => {
@@ -114,65 +134,97 @@ export function ClientContactsPanel({ clientId, userId }: Props) {
         <div className="space-y-2">
           {contacts.map(c => (
             <div key={c.id} className="p-2.5 bg-gray-50 rounded-lg border border-gray-200">
-              <div className="flex items-center gap-2">
-                <Mail className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-medium text-gray-800 truncate">{c.name}</span>
-                    {c.role && <span className="text-xs text-gray-400">· {c.role}</span>}
+              {editingId === c.id ? (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={editForm.name}
+                      onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                      placeholder="Nombre *"
+                      className="px-2.5 py-1.5 text-sm border border-blue-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                    />
+                    <input
+                      type="text"
+                      value={editForm.role}
+                      onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))}
+                      placeholder="Rol"
+                      className="px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                    />
                   </div>
-                  <span className="text-xs text-gray-500 truncate block">{c.email}</span>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setEditingId(null)}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-white transition-colors">
+                      <X className="w-3 h-3" /> Cancelar
+                    </button>
+                    <button type="button" onClick={handleEdit} disabled={editSaving}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50">
+                      <Check className="w-3 h-3" /> {editSaving ? 'Guardando...' : 'Guardar'}
+                    </button>
+                  </div>
                 </div>
-                <span className={`text-xs px-2 py-1 rounded font-medium ${FREQ_COLORS[c.digest_frequency]}`}>
-                  {FREQ_LABELS[c.digest_frequency]}
-                </span>
-                {/* Botón welcome */}
-                <button
-                  type="button"
-                  onClick={() => sendWelcome(c)}
-                  disabled={sendingWelcome === c.id}
-                  title={c.welcome_sent_at ? `Reenviar bienvenida (enviado ${new Date(c.welcome_sent_at).toLocaleDateString('es-UY')})` : 'Enviar bienvenida'}
-                  className={`p-1 rounded transition-colors ${
-                    sentOk === c.id
-                      ? 'text-green-500'
-                      : sendingWelcome === c.id
-                      ? 'text-gray-300'
-                      : c.welcome_sent_at
-                      ? 'text-blue-400 hover:text-blue-600 hover:bg-blue-50'
-                      : 'text-amber-400 hover:text-amber-600 hover:bg-amber-50'
-                  }`}
-                >
-                  {sentOk === c.id
-                    ? <Check className="w-3.5 h-3.5" />
-                    : sendingWelcome === c.id
-                    ? <Send className="w-3.5 h-3.5 animate-pulse" />
-                    : c.welcome_sent_at
-                    ? <Send className="w-3.5 h-3.5" />
-                    : <Clock className="w-3.5 h-3.5" />
-                  }
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(c.id)}
-                  className="p-1 hover:bg-red-50 rounded text-gray-300 hover:text-red-500 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              {/* Badge de estado welcome */}
-              <div className="mt-1.5 ml-5">
-                {c.welcome_sent_at ? (
-                  <span className="inline-flex items-center gap-1 text-xs text-blue-600">
-                    <Check className="w-3 h-3" />
-                    Bienvenida enviada · {new Date(c.welcome_sent_at).toLocaleDateString('es-UY', { day: '2-digit', month: 'short', year: 'numeric' })}
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-xs text-amber-500">
-                    <Clock className="w-3 h-3" />
-                    Pendiente de bienvenida
-                  </span>
-                )}
-              </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-medium text-gray-800 truncate">{c.name}</span>
+                        {c.role && <span className="text-xs text-gray-400">· {c.role}</span>}
+                      </div>
+                      <span className="text-xs text-gray-500 truncate block">{c.email}</span>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded font-medium ${FREQ_COLORS[c.digest_frequency]}`}>
+                      {FREQ_LABELS[c.digest_frequency]}
+                    </span>
+                    <button type="button" onClick={() => startEdit(c)}
+                      className="p-1 hover:bg-blue-50 rounded text-gray-300 hover:text-blue-500 transition-colors" title="Editar">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => sendWelcome(c)}
+                      disabled={sendingWelcome === c.id}
+                      title={c.welcome_sent_at ? `Reenviar bienvenida (enviado ${new Date(c.welcome_sent_at).toLocaleDateString('es-UY')})` : 'Enviar bienvenida'}
+                      className={`p-1 rounded transition-colors ${
+                        sentOk === c.id
+                          ? 'text-green-500'
+                          : sendingWelcome === c.id
+                          ? 'text-gray-300'
+                          : c.welcome_sent_at
+                          ? 'text-blue-400 hover:text-blue-600 hover:bg-blue-50'
+                          : 'text-amber-400 hover:text-amber-600 hover:bg-amber-50'
+                      }`}
+                    >
+                      {sentOk === c.id
+                        ? <Check className="w-3.5 h-3.5" />
+                        : sendingWelcome === c.id
+                        ? <Send className="w-3.5 h-3.5 animate-pulse" />
+                        : c.welcome_sent_at
+                        ? <Send className="w-3.5 h-3.5" />
+                        : <Clock className="w-3.5 h-3.5" />
+                      }
+                    </button>
+                    <button type="button" onClick={() => handleDelete(c.id)}
+                      className="p-1 hover:bg-red-50 rounded text-gray-300 hover:text-red-500 transition-colors">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="mt-1.5 ml-5">
+                    {c.welcome_sent_at ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-blue-600">
+                        <Check className="w-3 h-3" />
+                        Bienvenida enviada · {new Date(c.welcome_sent_at).toLocaleDateString('es-UY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs text-amber-500">
+                        <Clock className="w-3 h-3" />
+                        Pendiente de bienvenida
+                      </span>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           ))}
         </div>
