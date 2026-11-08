@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.3.4"
+$SCRIPT_VERSION = "1.4.0"
 
 # ---------- IPs (pública WAN + local) ----------
 $publicIp = $null
@@ -107,9 +107,9 @@ try {
     $diskUsePct = 0; $diskFreeGB = 0
 }
 
-$hwStatus = if   ($diskUsePct -gt 90 -or $ramUsePct -gt 92 -or $cpuUsage -gt 95) { "error" }
+$hwStatus = if   ($diskUsePct -gt 90 -or $ramUsePct -gt 92 -or $cpuUsage -gt 95) { "failed" }
             elseif ($diskUsePct -gt 75 -or $ramUsePct -gt 80 -or $cpuUsage -gt 80) { "warning" }
-            else { "ok" }
+            else { "success" }
 
 # ---------- RAID / Storage Spaces ----------
 $raidList = @()
@@ -124,7 +124,7 @@ try {
                 'Unhealthy' { 'error' }
                 default     { 'warning' }
             }
-            if ($rStatus -ne 'ok' -and $hwStatus -eq 'ok') { $hwStatus = 'warning' }
+            if ($rStatus -ne 'ok' -and $hwStatus -eq 'success') { $hwStatus = 'warning' }
             if ($rStatus -eq 'error') { $hwStatus = 'warning' }
             $sizeGB  = if ($vd.Size -gt 0) { [math]::Round($vd.Size / 1GB, 1) } else { $null }
             $allocGB = if ($vd.FootprintOnPool -gt 0) { [math]::Round($vd.FootprintOnPool / 1GB, 1) } else { $null }
@@ -142,6 +142,25 @@ try {
     }
 } catch {}
 
+# ---------- Uptime / issues (mismo formato que system-health.sh) ----------
+$uptimeStr = $null; $uptimeSecs = $null
+try {
+    $boot       = (Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).LastBootUpTime
+    $up         = (Get-Date) - $boot
+    $uptimeSecs = [int][math]::Floor($up.TotalSeconds)
+    $uptimeStr  = if ($up.Days -gt 0) { "$($up.Days)d $($up.Hours)h" } else { "$($up.Hours)h" }
+} catch {}
+
+$issueList = @()
+if     ($cpuUsage   -gt 80) { $issueList += "CPU alta ($cpuUsage%)" }
+if     ($ramUsePct  -gt 80) { $issueList += "RAM alta ($ramUsePct%)" }
+if     ($diskUsePct -gt 90) { $issueList += "Disco C lleno ($diskUsePct%)" }
+elseif ($diskUsePct -gt 75) { $issueList += "Disco C alto ($diskUsePct%)" }
+foreach ($r in $raidList) {
+    if ($r.status -ne 'ok') { $issueList += "Volumen $($r.name): $($r.health)" }
+}
+$issues = if ($issueList.Count -gt 0) { $issueList -join ' ' } else { 'Normal' }
+
 $hwBody = @{
     service_id = $SERVICE_ID
     source     = "system-health"
@@ -157,6 +176,9 @@ $hwBody = @{
         ram_total_gb   = $ramTotalGB
         disk_pct       = $diskUsePct
         disk_free_gb   = $diskFreeGB
+        uptime_str     = $uptimeStr
+        uptime_seconds = $uptimeSecs
+        issues         = $issues
         disk_raid      = $raidList
         public_ip      = $publicIp
         local_ip       = $localIp
@@ -199,11 +221,11 @@ try {
 }
 
 # error = sin internet; warning = gateway ok pero internet lento/perdida; ok = todo bien
-$netStatus = if   (-not $gatewayOk)                                        { "error" }
-             elseif (-not $internetOk)                                      { "error" }
+$netStatus = if   (-not $gatewayOk)                                        { "failed" }
+             elseif (-not $internetOk)                                      { "failed" }
              elseif ($packetLoss -gt 10 -or $avgLatency -gt 200)           { "warning" }
              elseif ($packetLoss -gt 2  -or $avgLatency -gt 100)           { "warning" }
-             else { "ok" }
+             else { "success" }
 
 $netMsg = "GW: $(if ($gatewayOk) {'ok'} else {'❌'}) | Internet: $(if ($internetOk) {'ok'} else {'❌'}) | Ping: ${avgLatency}ms | Loss: ${packetLoss}%"
 
@@ -348,19 +370,19 @@ try {
 }
 $rdpWarnThreshold = [math]::Floor($maxAllowed * 0.85)
 
-$rdpStatus = if   ($rdpSvcStatus -ne 'Running' -or -not $rdpListening)  { "error" }
-             elseif ($sessions -ge $maxAllowed -or $disconnects -gt 3)  { "error" }
+$rdpStatus = if   ($rdpSvcStatus -ne 'Running' -or -not $rdpListening)  { "failed" }
+             elseif ($sessions -ge $maxAllowed -or $disconnects -gt 3)  { "failed" }
              elseif ($sessions -ge $rdpWarnThreshold -or $rdpRestarted) { "warning" }
              elseif ($rdpConnections -eq 0 -and $sessions -gt 0)        { "warning" }
-             else { "ok" }
+             else { "success" }
 
-$diskIOStatus = if   ($diskLatency -gt 0.050) { "error" }
+$diskIOStatus = if   ($diskLatency -gt 0.050) { "failed" }
                 elseif ($diskLatency -gt 0.030) { "warning" }
-                else { "ok" }
+                else { "success" }
 
-$rdpOverallStatus = if ($diskIOStatus -eq "error" -or $rdpStatus -eq "error") { "error" }
+$rdpOverallStatus = if ($diskIOStatus -eq "failed" -or $rdpStatus -eq "failed") { "failed" }
                     elseif ($diskIOStatus -eq "warning" -or $rdpStatus -eq "warning") { "warning" }
-                    else { "ok" }
+                    else { "success" }
 
 $rdpMsg = "TermService: $rdpSvcStatus | Sessions: $sessions/$maxAllowed | TCP 3389: $rdpConnections | Disconnects (${RdpEventWindow}m): $disconnects | DiskIO: ${diskLatency}s"
 if ($rdpRestarted) { $rdpMsg += " | AUTO-REINICIADO" }
@@ -389,7 +411,7 @@ $rdpBody = @{
 
 try {
     Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $rdpBody | Out-Null
-    $icon = if ($rdpOverallStatus -eq 'error') {'❌'} elseif ($rdpOverallStatus -eq 'warning') {'⚠️'} else {'✅'}
+    $icon = if ($rdpOverallStatus -eq 'failed') {'❌'} elseif ($rdpOverallStatus -eq 'warning') {'⚠️'} else {'✅'}
     Write-Log "$icon rdp → $rdpOverallStatus | TermService: $rdpSvcStatus | Sessions: $sessions | Disconnects: $disconnects | DiskIO: ${diskLatency}s$(if ($rdpRestarted) {' | AUTO-REINICIADO'})"
 } catch {
     Write-Log "❌ rdp Error: $($_.Exception.Message)"
@@ -397,7 +419,7 @@ try {
 
 } else {
     $disabledBody = @{
-        service_id = $SERVICE_ID; source = "rdp"; status = "ok"
+        service_id = $SERVICE_ID; source = "rdp"; status = "success"
         message = "Deshabilitado (CHECK_RDP = false)"
         payload = @{ disabled = $true; is_server = $true; script_version = $SCRIPT_VERSION }
     } | ConvertTo-Json -Depth 3
