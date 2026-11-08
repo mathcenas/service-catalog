@@ -1237,6 +1237,9 @@ function SystemHealth({ entries, services }: { entries: ServiceHeartbeat[]; serv
           const ramTotal = num(p.ram_total_gb);
           const uptime = p.uptime_str ? String(p.uptime_str) : null;
           const hasMetrics = cpu != null || ram != null || disk != null;
+          const osu = p.os_updates && typeof p.os_updates.pending === 'number'
+            ? p.os_updates as { pending: number; security: number; reboot_required: boolean; last_installed_at: string | null }
+            : null;
 
           const raidIssue = Array.isArray(p.disk_raid)
             ? p.disk_raid.filter((r: any) => r?.status && r.status !== 'ok').map((r: any) => `Volumen ${r.name}: ${r.health}`).join(' · ')
@@ -1275,6 +1278,17 @@ function SystemHealth({ entries, services }: { entries: ServiceHeartbeat[]; serv
               <footer className="flex items-center gap-x-3 gap-y-1 flex-wrap text-[11px] text-gray-400 dark:text-gray-500 pt-3 border-t border-gray-100 dark:border-gray-800">
                 <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" />Actualizado {timeAgoEs(h.received_at)}</span>
                 {uptime && freshness === 'fresh' && <span>Encendido hace {uptime}</span>}
+                {osu && freshness === 'fresh' && (
+                  <span className={osu.security > 0 || osu.reboot_required ? 'text-amber-600 dark:text-amber-400' : undefined}>
+                    {osu.pending === 0
+                      ? 'Sistema al día'
+                      : `${osu.pending} actualizaci${osu.pending === 1 ? 'ón' : 'ones'} pendiente${osu.pending === 1 ? '' : 's'}${osu.security > 0 ? ` (${osu.security} de seguridad)` : ''}`}
+                    {osu.reboot_required && ' · reinicio pendiente'}
+                  </span>
+                )}
+                {osu?.last_installed_at && freshness === 'fresh' && (
+                  <span>Último parche {new Date(osu.last_installed_at + 'T00:00:00').toLocaleDateString('es', { day: 'numeric', month: 'short' })}</span>
+                )}
               </footer>
             </article>
           );

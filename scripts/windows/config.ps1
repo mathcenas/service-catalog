@@ -2,7 +2,7 @@
 # config.ps1 - Configuracion por cliente/servidor
 # Copiar este archivo por cada cliente y ajustar los valores
 # =============================================================
-$SCRIPT_VERSION = "1.3.0"
+$SCRIPT_VERSION = "1.4.0"
 
 $INGEST_URL    = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-backup"
 $HEARTBEAT_URL = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-heartbeat"
@@ -46,6 +46,7 @@ $KUMA_PUSH_URL_BACKUP = ""   # kopia-report.ps1 / veeam-agent-report.ps1 / kls-r
 $CHECK_RDP       = $true   # $false si el cliente no usa Remote Desktop
 $CHECK_SPEEDTEST = $true   # $false si no hay herramienta speedtest instalada
 $CHECK_SMART     = $true   # $false en VMs (discos virtuales no reportan SMART real)
+$CHECK_OS_UPDATES = $true  # actualizaciones pendientes de Windows (solo lectura, 1 consulta por dia)
 
 function Invoke-Kuma {
     param([string]$Status, [string]$Msg, [string]$Url = "")
