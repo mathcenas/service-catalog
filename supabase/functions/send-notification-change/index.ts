@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { B, EMAIL_FONT, emailHeader, emailPortalPanel, emailMeta } from "../_shared/emailBrand.ts";
+import { B, EMAIL_FONT, emailHeader, emailMeta, emailUnsubscribeFooter } from "../_shared/emailBrand.ts";
 
 // One-shot announcement: notifica a todos los contactos activos sobre el cambio
 // en las notificaciones de backup.
@@ -76,6 +76,16 @@ Deno.serve(async (req: Request) => {
       ? `${Deno.env.get("APP_URL") || "https://servicios.cenas-support.com"}/share/${portalSlug}/${clientId}`
       : null;
 
+    // Load monitored services for this client
+    const { data: clientServices } = await supabase
+      .from("services")
+      .select("id, name, business_name, telemetry_enabled, cloud_backup_enabled, status")
+      .eq("client_id", clientId)
+      .eq("status", "Active")
+      .order("name");
+
+    const monitoredServices = (clientServices || []).filter((s: any) => s.telemetry_enabled || s.cloud_backup_enabled);
+
     const subject = `Mejoras en el monitoreo y notificaciones de tus servicios — ${client.company_name}`;
 
     const html = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${B.bg};font-family:${EMAIL_FONT};">
@@ -83,7 +93,9 @@ Deno.serve(async (req: Request) => {
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;border:1px solid ${B.border};">
   <tr><td style="padding:28px;">
 
-    ${emailHeader({ senderName, label: "MEJORA DE SERVICIO", accentColor: "#06B6D4", title: client.company_name, subtitle: "Novedades en monitoreo y notificaciones" })}
+    ${emailHeader({ senderName, label: "MEJORA DE SERVICIO", accentColor: "#06B6D4", title: client.company_name, subtitle: "Novedades en monitoreo y notificaciones",
+      logoHtml: `<img src="https://cenas.uy/assets/brand/logo-badge-light.png" alt="${senderName}" height="32" style="display:block;" />`
+    })}
 
     <h2 style="font-size:16px;font-weight:700;color:${B.primary};margin:0 0 10px;">
       Mejoras en el monitoreo de tus servicios IT
@@ -150,6 +162,21 @@ Deno.serve(async (req: Request) => {
 
     </table>
 
+    ${monitoredServices.length > 0 ? `
+    <div style="margin-bottom:24px;">
+      <p style="font-size:11px;font-weight:700;color:${B.textSoft};text-transform:uppercase;letter-spacing:.5px;margin:0 0 8px;">Servicios monitoreados</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${B.border};border-radius:8px;overflow:hidden;">
+        ${monitoredServices.map((s: any, i: number) => `
+        <tr style="background:${i % 2 === 0 ? '#F8FAFC' : '#ffffff'};">
+          <td style="padding:8px 12px;font-size:12px;color:${B.primary};font-weight:600;">${s.business_name || s.name}</td>
+          <td style="padding:8px 12px;text-align:right;">
+            ${s.telemetry_enabled ? `<span style="display:inline-block;background:#EFF6FF;color:#3B82F6;border:1px solid #BFDBFE;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:4px;">Telemetría</span>` : ''}
+            ${s.cloud_backup_enabled ? `<span style="display:inline-block;background:#ECFDF5;color:#059669;border:1px solid #A7F3D0;padding:1px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:4px;">Backup</span>` : ''}
+          </td>
+        </tr>`).join('')}
+      </table>
+    </div>` : ''}
+
     ${portalUrl ? `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
       <tr>
@@ -157,8 +184,8 @@ Deno.serve(async (req: Request) => {
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td valign="middle">
-                <div style="font-size:13px;font-weight:700;color:#ffffff;margin-bottom:4px;">Portal de servicios</div>
-                <div style="font-size:12px;color:${B.textSoft};line-height:1.5;">Seguimiento en tiempo real de tus servicios, backups e incidentes. Siempre disponible.</div>
+                <div style="font-size:13px;font-weight:700;color:#ffffff;margin-bottom:4px;">Ver tu portal de servicios</div>
+                <div style="font-size:12px;color:${B.textSoft};line-height:1.5;">Estado en tiempo real, backups e incidentes — siempre disponible.</div>
               </td>
               <td valign="middle" align="right" style="padding-left:16px;white-space:nowrap;">
                 <table role="presentation" cellpadding="0" cellspacing="0">
@@ -178,12 +205,13 @@ Deno.serve(async (req: Request) => {
     <div style="background:#F0FDF4;border:1px solid #A7F3D0;border-radius:8px;padding:14px 16px;margin-bottom:24px;">
       <p style="font-size:12px;color:#065F46;margin:0 0 6px;font-weight:700;">¿Querés ajustar la frecuencia de notificaciones?</p>
       <p style="font-size:12px;color:#047857;margin:0;line-height:1.6;">
-        Podemos configurarlo según tu preferencia: recibir un correo por cada evento de backup, solo alertas cuando hay problemas, o el resumen semanal únicamente. Respondé este correo y lo ajustamos.
+        Podemos configurarlo según tu preferencia: recibir una alerta por evento, solo cuando hay problemas, o únicamente el resumen semanal.
+        ${portalUrl ? `<a href="${portalUrl}" style="color:#065F46;font-weight:700;">Accedé a tu portal</a> o respondé` : 'Respondé'} este correo y lo ajustamos.
       </p>
     </div>
 
-    ${emailPortalPanel({ companyName: client.company_name, portalUrl })}
     ${emailMeta(senderName)}
+    ${emailUnsubscribeFooter()}
 
   </td></tr>
   </table>
