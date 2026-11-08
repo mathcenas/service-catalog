@@ -90,13 +90,13 @@ function Parse-TaskBlock($block) {
         (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     }
 
-    # Stats: "Processed files: X. Backed up files: Y. Backup size: Z MB."
+    # Stats globales del bloque
     $statsMatch = [regex]::Match($block, 'Processed files:\s*(\d+).*?Backed up files:\s*(\d+).*?Backup size:\s*([\d\.]+)\s*(MB|GB|KB|TB)')
     $processedFiles = if ($statsMatch.Success) { [int]$statsMatch.Groups[1].Value } else { 0 }
     $backedUpFiles  = if ($statsMatch.Success) { [int]$statsMatch.Groups[2].Value } else { 0 }
     $sizeValue      = if ($statsMatch.Success) { [double]$statsMatch.Groups[3].Value } else { 0 }
     $sizeUnit       = if ($statsMatch.Success) { $statsMatch.Groups[4].Value } else { "MB" }
-    $sizeBytes = switch ($sizeUnit) {
+    $totalSizeBytes = switch ($sizeUnit) {
         "KB" { [long]($sizeValue * 1KB) }
         "MB" { [long]($sizeValue * 1MB) }
         "GB" { [long]($sizeValue * 1GB) }
@@ -104,45 +104,93 @@ function Parse-TaskBlock($block) {
         default { 0 }
     }
 
-    # Errores y duración
+    # Duración total
     $errMatch = [regex]::Match($block, 'Number of errors:\s*(\d+).*?Time elapsed:\s*(\d+)\s*hours?,\s*(\d+)\s*minutes?,\s*(\d+)\s*seconds?')
     $errorCount      = if ($errMatch.Success) { [int]$errMatch.Groups[1].Value } else { 0 }
     $durationSeconds = if ($errMatch.Success) {
         [int]$errMatch.Groups[2].Value * 3600 + [int]$errMatch.Groups[3].Value * 60 + [int]$errMatch.Groups[4].Value
     } else { 0 }
 
-    # Tipos de error
-    $diskFull   = $block -match 'Espacio en disco insuficiente|insufficient disk space|not enough space'
-    $pathFail   = $block -match "couldn't be created.*?\(3\)|El sistema no puede encontrar la ruta"
-    $hasEnded   = $block -match 'The backup has ended\.'
-    $hasErrors  = $block -match 'There are errors'
+    $hasEnded = $block -match 'The backup has ended\.'
 
-    # Status: disco lleno > ruta faltante > errores genéricos
-    $status = if (-not $hasEnded) {
-        "failed"
-    } elseif ($diskFull) {
-        "failed"
-    } elseif ($pathFail -or $hasErrors -or $errorCount -gt 0) {
-        "warning"
-    } else {
-        "success"
+    # ── Parsear por destino ──────────────────────────────────────────────────
+    # Cada destino aparece como: Backing up "..." to "X:\ruta\..."
+    # Extraemos todas las letras de unidad únicas mencionadas como destino
+    $destDrives = [regex]::Matches($block, 'to "([A-Za-z]):\\') |
+        ForEach-Object { $_.Groups[1].Value.ToUpper() } |
+        Select-Object -Unique
+
+    # Destinos que fallaron por ruta no encontrada: "M:\Respaldo-B"
+    $failedDrives = [regex]::Matches($block, "couldn't be created.*?\[([A-Za-z]):\\") |
+        ForEach-Object { $_.Groups[1].Value.ToUpper() }
+
+    # Archivos con acceso denegado por destino
+    $deniedByDrive = @{}
+    [regex]::Matches($block, 'An error occurred while copying "[^"]+" to "([A-Za-z]):\\[^"]*": Acceso denegado') |
+        ForEach-Object {
+            $d = $_.Groups[1].Value.ToUpper()
+            $deniedByDrive[$d] = ($deniedByDrive[$d] ?? 0) + 1
+        }
+
+    # Disco lleno por destino
+    $diskFullDrives = [regex]::Matches($block, '(?:Espacio en disco insuficiente|insufficient disk space|not enough space).*?"([A-Za-z]):\\') |
+        ForEach-Object { $_.Groups[1].Value.ToUpper() }
+
+    # Si no se detectaron destinos, caer en modo legacy (un solo reporte global)
+    if ($destDrives.Count -eq 0) {
+        $diskFull = $block -match 'Espacio en disco insuficiente|insufficient disk space|not enough space'
+        $pathFail = $block -match "couldn't be created.*?\(3\)|El sistema no puede encontrar la ruta"
+        $status = if (-not $hasEnded) { "failed" }
+                  elseif ($diskFull)  { "failed" }
+                  elseif ($pathFail -or ($errorCount -gt 0)) { "warning" }
+                  else { "success" }
+        $sizeMB = [math]::Round($totalSizeBytes / 1MB, 1)
+        $details = "$backedUpFiles archivos — ${sizeMB} MB"
+        if ($errorCount -gt 0) { $details += " — $errorCount errores" }
+        return @([PSCustomObject]@{
+            TaskName        = $taskName
+            JobName         = $taskName
+            Status          = $status
+            SizeBytes       = $totalSizeBytes
+            DurationSeconds = $durationSeconds
+            Details         = $details
+            BackedUpAt      = $backedUpAt
+        })
     }
 
-    # Detalle
-    $sizeMB  = [math]::Round($sizeBytes / 1MB, 1)
-    $details = "$backedUpFiles archivos copiados de $processedFiles procesados — ${sizeMB} MB"
-    if ($diskFull)         { $details += " — Disco lleno en destino" }
-    elseif ($pathFail)     { $details += " — Destino no disponible (unidad desconectada?)" }
-    elseif ($errorCount -gt 0) { $details += " — $errorCount errores" }
+    # Construir un resultado por destino
+    $results = @()
+    foreach ($drive in ($destDrives + $failedDrives | Select-Object -Unique | Sort-Object)) {
+        $isFailed  = $failedDrives -contains $drive
+        $isDiskFull = $diskFullDrives -contains $drive
+        $deniedCount = $deniedByDrive[$drive] ?? 0
+        $wasAttempted = $destDrives -contains $drive
 
-    return [PSCustomObject]@{
-        TaskName        = $taskName
-        Status          = $status
-        SizeBytes       = $sizeBytes
-        DurationSeconds = $durationSeconds
-        Details         = $details
-        BackedUpAt      = $backedUpAt
+        $destStatus = if (-not $hasEnded) { "failed" }
+                      elseif ($isFailed -or $isDiskFull) { "failed" }
+                      elseif ($deniedCount -gt 0) { "warning" }
+                      else { "success" }
+
+        # Tamaño: solo el destino que completó tiene datos reales; los fallidos van en 0
+        $destSize = if ($isFailed) { 0 } else { [long]($totalSizeBytes / [math]::Max($destDrives.Count, 1)) }
+
+        $destDetails = if ($isFailed -and $isDiskFull) { "Disco lleno — destino no disponible" }
+                       elseif ($isFailed)              { "Destino no disponible (unidad desconectada o ruta no encontrada)" }
+                       elseif ($deniedCount -gt 0)     { "$backedUpFiles archivos copiados — $deniedCount archivo(s) con acceso denegado" }
+                       else                            { "$backedUpFiles archivos copiados" }
+
+        $results += [PSCustomObject]@{
+            TaskName        = $taskName
+            JobName         = "$taskName → ${drive}:"
+            Status          = $destStatus
+            SizeBytes       = $destSize
+            DurationSeconds = if ($isFailed) { 0 } else { $durationSeconds }
+            Details         = $destDetails
+            BackedUpAt      = $backedUpAt
+        }
     }
+
+    return $results
 }
 
 # ---------- Parsear log de hoy ----------
@@ -170,35 +218,40 @@ if ($blocks.Count -eq 0) {
 
 Write-Log "Log de hoy: $logPath — $($blocks.Count) bloque(s) encontrado(s)"
 
-# Parsear y reportar cada bloque
-# Si hay múltiples ejecuciones del mismo task en el día, quedarse con la última
+# Parsear bloques — múltiples ejecuciones del mismo job_name: quedarse con la última
 $seen = @{}
 foreach ($m in $blocks) {
-    $parsed = Parse-TaskBlock $m.Value
-    $seen[$parsed.TaskName] = $parsed
+    $parsed = @(Parse-TaskBlock $m.Value)
+    foreach ($p in $parsed) {
+        $seen[$p.JobName] = $p
+    }
 }
 
-$toReport = $seen.Values | Sort-Object BackedUpAt
+$toReport = @($seen.Values | Sort-Object BackedUpAt)
 if ($TASK_FILTER -ne "") {
-    $toReport = $toReport | Where-Object { $_.TaskName -match [regex]::Escape($TASK_FILTER) }
+    $toReport = @($toReport | Where-Object { $_.TaskName -match [regex]::Escape($TASK_FILTER) })
 }
 
-if (-not $toReport) {
+if ($toReport.Count -eq 0) {
     Write-Log "Ninguna task coincide con el filtro '$TASK_FILTER'"
     exit 0
 }
 
-# Armar array de tasks para el JSON (formato tabla del email)
+foreach ($t in $toReport) {
+    Write-Log "Job: $($t.JobName) | $($t.Status) | $($t.Details)"
+}
+
+# Armar array de rows para el JSON (tabla en el email/portal)
 $taskRows = @($toReport | ForEach-Object {
     [PSCustomObject]@{
-        job             = $_.TaskName
+        job             = $_.JobName
         status          = $_.Status
         sizeBytes       = $_.SizeBytes
         durationSeconds = $_.DurationSeconds
     }
 })
 
-# Status global: failed si alguna falló, warning si alguna tuvo warning, success si todas OK
+# Status global: failed si alguno falló, warning si alguno tuvo warning, success si todos OK
 $globalStatus = if ($taskRows | Where-Object { $_.status -eq 'failed' }) { 'failed' }
                elseif ($taskRows | Where-Object { $_.status -eq 'warning' }) { 'warning' }
                else { 'success' }
@@ -207,12 +260,8 @@ $totalBytes   = ($taskRows | Measure-Object -Property sizeBytes -Sum).Sum
 $totalSeconds = ($taskRows | Measure-Object -Property durationSeconds -Sum).Sum
 $backedUpAt   = ($toReport | Sort-Object BackedUpAt | Select-Object -Last 1).BackedUpAt
 $jobCount     = $taskRows.Count
-$jobLabel     = "Cobian Reflector — Resumen diario ($jobCount job$(if ($jobCount -ne 1) {'s'}))"
-
-foreach ($t in $toReport) {
-    Write-Log "Task: $($t.TaskName) | $($t.Status) | $($t.Details)"
-}
+$jobLabel     = "Cobian Reflector — Resumen diario ($jobCount destino$(if ($jobCount -ne 1) {'s'}))"
 
 Send-BackupReport $globalStatus $jobLabel $taskRows $totalBytes $totalSeconds $backedUpAt
 
-Write-Log "Listo — $($toReport.Count) tarea(s) consolidadas en un solo reporte [$globalStatus]"
+Write-Log "Listo — $jobCount destino(s) reportados [$globalStatus]"
