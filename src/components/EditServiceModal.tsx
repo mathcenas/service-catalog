@@ -42,6 +42,8 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
     rto: service.rto || '',
     rpo: service.rpo || '',
     maintenance_window: service.maintenance_window || '',
+    spof: service.spof ?? null as boolean | null,
+    recovery_steps: service.recovery_steps || '',
     ip_internal: service.ip_internal || '',
     ip_public: service.ip_public || '',
     dns_record: service.dns_record || '',
@@ -178,6 +180,8 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
         rto: formData.rto || null,
         rpo: formData.rpo || null,
         maintenance_window: formData.maintenance_window || null,
+        spof: formData.spof,
+        recovery_steps: formData.recovery_steps || null,
         ip_internal: columnUpdates.ip_internal ?? (formData.ip_internal || null),
         ip_public: formData.ip_public || null,
         dns_record: formData.dns_record || null,
@@ -309,6 +313,40 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
                 <input type="text" value={formData.maintenance_window} onChange={e => set('maintenance_window', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                   placeholder="e.g., Sundays 02:00-04:00 UTC" />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Evaluación SPOF</label>
+                <div className="flex gap-2 mb-3">
+                  {([null, true, false] as (boolean | null)[]).map(val => {
+                    const label = val === null ? 'Sin evaluar' : val ? 'Sin SPOF crítico' : 'SPOF identificado';
+                    const active = formData.spof === val;
+                    const color = active
+                      ? val === null ? 'bg-gray-200 text-gray-700 border-gray-400'
+                      : val ? 'bg-emerald-100 text-emerald-800 border-emerald-400'
+                      : 'bg-amber-100 text-amber-800 border-amber-400'
+                      : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300';
+                    return (
+                      <button key={String(val)} type="button"
+                        onClick={() => set('spof', val)}
+                        className={`flex-1 text-xs px-2 py-1.5 rounded border font-medium transition-colors ${color}`}>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {formData.spof === false && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Pasos para volver a producción</label>
+                    <textarea
+                      value={formData.recovery_steps}
+                      onChange={e => set('recovery_steps', e.target.value)}
+                      rows={3}
+                      placeholder="Describí los pasos para restaurar este servicio en caso de falla..."
+                      className="w-full px-3 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-transparent outline-none resize-none text-sm bg-amber-50"
+                    />
+                  </div>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

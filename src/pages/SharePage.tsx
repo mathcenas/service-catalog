@@ -1375,10 +1375,25 @@ function TechnicalDetails({ service, heartbeats, backups, latestDbCheck, showCos
         {service.infrastructure_type && <Field label="Infrastructure" value={service.infrastructure_type} />}
         {service.rto && <Field label="RTO" value={service.rto} />}
         {service.rpo && <Field label="RPO" value={service.rpo} />}
+        {service.spof != null && (
+          <div className="col-span-2">
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${service.spof ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300' : 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300'}`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${service.spof ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              {service.spof ? 'Sin SPOF crítico' : 'SPOF identificado'}
+            </span>
+          </div>
+        )}
         {service.maintenance_window && <Field label="Maintenance" value={service.maintenance_window} />}
         {service.next_renewal_date && <Field label="Next Renewal" value={new Date(service.next_renewal_date).toLocaleDateString()} />}
         {service.last_backup_at && <Field label="Last Backup" value={formatTimeAgo(service.last_backup_at)} />}
       </div>
+
+      {service.spof === false && service.recovery_steps && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-lg px-4 py-3">
+          <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-1.5">Plan de recuperación</p>
+          <p className="text-sm text-amber-900 dark:text-amber-200 whitespace-pre-line leading-relaxed">{service.recovery_steps}</p>
+        </div>
+      )}
 
       {(service.storage_used_pct != null || service.ram_used_pct != null) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
