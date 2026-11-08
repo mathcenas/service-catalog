@@ -105,11 +105,11 @@ Deno.serve(async (req: Request) => {
       await supabaseAdmin.from("services").update(updatePayload).eq("id", service_id);
     }
 
-    // Send email notification: only for failed/warning, not success (success goes in digest)
+    // All per-event emails suppressed — backup-alert-digest sends a daily batch per client.
     if (suppress_email) {
       console.log("[ingest-backup] email suprimido por suppress_email=true");
     }
-    if (!suppress_email && normalizedStatus !== "success") {
+    if (false && !suppress_email && normalizedStatus !== "success") {
       // Rate limiting: 60 min cooldown para warning/failed para no suprimir alertas reales.
       const eventType = `backup_${normalizedStatus}`;
       const cooldown  = 60;
