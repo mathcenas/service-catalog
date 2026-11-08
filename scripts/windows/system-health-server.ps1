@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.6.0"
+$SCRIPT_VERSION = "1.6.1"
 
 # ---------- IPs (pública WAN + local) ----------
 $publicIp = $null
@@ -212,6 +212,7 @@ if ($CHECK_OS_UPDATES -ne $false) {
     $osuReboot = (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired') -or
                  (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending')
 
+    if ($null -eq $osuPending) { Write-Log "⚠️ os-updates: sin datos (la consulta no devolvió resultados)" }
     if ($null -ne $osuPending) {
         $lastBoot = $null
         try { $lastBoot = (Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).LastBootUpTime.ToUniversalTime() } catch {}
@@ -231,6 +232,8 @@ if ($CHECK_OS_UPDATES -ne $false) {
             checked_at        = Format-UtcDate $checkedAt
         }
         try { $osUpdates | ConvertTo-Json | Set-Content -Path $osuCacheFile -Encoding UTF8 } catch {}
+        $osuSrc = if ($osuFresh) { "cache" } else { "Windows Update" }
+        Write-Log "✅ os-updates → $([int]$osuPending) pendientes ($([int]$osuSecurity) de seguridad) | reinicio: $(if ($osuReboot) {'sí'} else {'no'}) | último parche: $osuLast | fuente: $osuSrc"
 
         if ($secSince -and ($nowUtc - $secSince).TotalDays -ge 14) {
             $osuIssues += "$([int]$osuSecurity) parches de seguridad pendientes"

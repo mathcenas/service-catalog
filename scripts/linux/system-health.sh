@@ -12,7 +12,7 @@
 # Version: 1.6.0
 # =============================================================
 
-SCRIPT_VERSION="1.10.0"
+SCRIPT_VERSION="1.10.1"
 
 # ---------- Verificación de dependencias ----------
 if ! command -v jq >/dev/null 2>&1; then
@@ -506,6 +506,7 @@ if [[ "${CHECK_OS_UPDATES:-true}" != "false" ]]; then
     osu_last=$(rpm -qa --last 2>/dev/null | head -1 | awk '{$1=""; print}' | xargs -I{} date -d "{}" +%Y-%m-%d 2>/dev/null || true)
   fi
 
+  [[ -z "$osu_pending" ]] && log "⚠ os-updates: ni apt ni dnf disponibles"
   if [[ -n "$osu_pending" ]]; then
     now_iso=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     prev_sec_since=$(jq -r '.security_since // empty' "$OSU_CACHE" 2>/dev/null || true)
@@ -526,6 +527,7 @@ if [[ "${CHECK_OS_UPDATES:-true}" != "false" ]]; then
         last_installed_at: (if $last == "" then null else $last end),
         checked_at: $checked}')
     echo "$OS_UPDATES_JSON" > "$OSU_CACHE" 2>/dev/null || true
+    log "✓ os-updates → ${osu_pending} pendientes (${osu_security} de seguridad) | reinicio: ${osu_reboot} | último: ${osu_last:-?}"
 
     days_since() { echo $(( ( $(date +%s) - $(date -d "$1" +%s) ) / 86400 )); }
     if [[ -n "$osu_security_since" ]] && (( $(days_since "$osu_security_since") >= 14 )); then
