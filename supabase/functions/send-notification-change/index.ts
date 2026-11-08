@@ -93,7 +93,9 @@ Deno.serve(async (req: Request) => {
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;border:1px solid ${B.border};">
   <tr><td style="padding:28px;">
 
-    ${emailHeader({ senderName, label: "MEJORA DE SERVICIO", accentColor: "#06B6D4", title: client.company_name, subtitle: "Novedades en monitoreo y notificaciones" })}
+    ${emailHeader({ senderName, label: "MEJORA DE SERVICIO", accentColor: "#06B6D4", title: client.company_name, subtitle: "Novedades en monitoreo y notificaciones",
+      logoHtml: `<img src="https://cenas.uy/assets/brand/logo-badge-light.png" alt="${senderName}" height="32" style="display:block;" />`
+    })}
 
     <h2 style="font-size:16px;font-weight:700;color:${B.primary};margin:0 0 10px;">
       Mejoras en el monitoreo de tus servicios IT
@@ -229,7 +231,8 @@ Deno.serve(async (req: Request) => {
     <div style="background:#F0FDF4;border:1px solid #A7F3D0;border-radius:8px;padding:14px 16px;margin-bottom:24px;">
       <p style="font-size:12px;color:#065F46;margin:0 0 6px;font-weight:700;">¿Querés ajustar la frecuencia de notificaciones?</p>
       <p style="font-size:12px;color:#047857;margin:0;line-height:1.6;">
-        Podemos configurarlo según tu preferencia: recibir una alerta por evento, solo cuando hay problemas, o únicamente el resumen semanal. Respondé este correo y lo ajustamos.
+        Podemos configurarlo según tu preferencia: recibir una alerta por evento, solo cuando hay problemas, o únicamente el resumen semanal.
+        ${portalUrl ? `<a href="${portalUrl}" style="color:#065F46;font-weight:700;text-decoration:underline;">Accedé al portal</a> o respondé` : 'Respondé'} este correo y lo ajustamos.
       </p>
     </div>
 

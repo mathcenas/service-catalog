@@ -90,11 +90,8 @@ export function emailHeader(opts: {
           <table role="presentation" cellpadding="0" cellspacing="0">
             <tr>
               <td valign="middle" style="padding-right:10px;">
-                <div style="background:${B.primary};padding:7px 13px;border-radius:7px;display:inline-block;">
-                  <span style="color:${B.accent};font-size:11px;font-weight:700;letter-spacing:.5px;">${senderName.toUpperCase()}</span>
-                </div>
+                ${logoHtml ? logoHtml : `<div style="background:${B.primary};padding:7px 13px;border-radius:7px;display:inline-block;"><span style="color:${B.accent};font-size:11px;font-weight:700;letter-spacing:.5px;">${senderName.toUpperCase()}</span></div>`}
               </td>
-              ${logoHtml ? `<td valign="middle">${logoHtml}</td>` : ""}
             </tr>
           </table>
           ${title ? `<div style="font-size:16px;font-weight:700;color:${B.primary};margin-top:8px;">${title}</div>` : ""}
