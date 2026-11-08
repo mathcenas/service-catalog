@@ -76,21 +76,20 @@ Deno.serve(async (req: Request) => {
       ? `${Deno.env.get("APP_URL") || "https://servicios.cenas-support.com"}/share/${portalSlug}/${clientId}`
       : null;
 
-    const subject = `Mejora en tus notificaciones de backup — ${client.company_name}`;
+    const subject = `Mejoras en el monitoreo y notificaciones de tus servicios — ${client.company_name}`;
 
     const html = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${B.bg};font-family:${EMAIL_FONT};">
   <tr><td align="center" style="padding:32px 24px;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;border:1px solid ${B.border};">
   <tr><td style="padding:28px;">
 
-    ${emailHeader({ senderName, label: "MEJORA DE SERVICIO", accentColor: "#06B6D4", title: client.company_name, subtitle: "Novedades en tus notificaciones" })}
+    ${emailHeader({ senderName, label: "MEJORA DE SERVICIO", accentColor: "#06B6D4", title: client.company_name, subtitle: "Novedades en monitoreo y notificaciones" })}
 
     <h2 style="font-size:16px;font-weight:700;color:${B.primary};margin:0 0 10px;">
-      Ordenamos tus notificaciones de backup
+      Mejoras en el monitoreo de tus servicios IT
     </h2>
     <p style="font-size:13px;color:${B.textMain};line-height:1.6;margin:0 0 20px;">
-      Estuvimos trabajando para que recibas menos correos pero con más información útil.
-      A partir de ahora, las notificaciones de backup funcionan así:
+      Estuvimos trabajando para que todos tus servicios — backups, servidores, aplicaciones — reporten a un único sistema centralizado de control. Esto nos permite detectar problemas antes de que te afecten, ver tendencias y actuar de forma proactiva. Como decimos nosotros: si no se mide, no se puede mejorar.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
@@ -100,12 +99,12 @@ Deno.serve(async (req: Request) => {
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td valign="top" style="padding-right:12px;width:28px;">
-                <div style="background:#ECFDF5;border-radius:50%;width:28px;height:28px;text-align:center;line-height:28px;font-size:14px;">📋</div>
+                <div style="background:#ECFDF5;border-radius:50%;width:28px;height:28px;text-align:center;line-height:28px;font-size:14px;">🖥️</div>
               </td>
               <td valign="top">
-                <div style="font-size:13px;font-weight:700;color:${B.primary};margin-bottom:3px;">Resumen diario de alertas</div>
+                <div style="font-size:13px;font-weight:700;color:${B.primary};margin-bottom:3px;">Monitoreo centralizado</div>
                 <div style="font-size:12px;color:${B.textMid};line-height:1.5;">
-                  Si algún backup falló o tuvo advertencias, te llega un único correo a las 8am con el detalle de todos tus servicios. Si todo estuvo bien, no recibís nada.
+                  Backups, estado de servidores, alertas y cambios en un solo lugar. Tenemos visibilidad completa de tu infraestructura en tiempo real.
                 </div>
               </td>
             </tr>
@@ -114,7 +113,25 @@ Deno.serve(async (req: Request) => {
       </tr>
 
       <tr>
-        <td style="padding:12px 16px;background:#ffffff;border-radius:0 0 8px 8px;border:1px solid ${B.border};border-top:none;">
+        <td style="padding:12px 16px;background:#ffffff;border:1px solid ${B.border};border-top:none;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td valign="top" style="padding-right:12px;width:28px;">
+                <div style="background:#FEF3C7;border-radius:50%;width:28px;height:28px;text-align:center;line-height:28px;font-size:14px;">📋</div>
+              </td>
+              <td valign="top">
+                <div style="font-size:13px;font-weight:700;color:${B.primary};margin-bottom:3px;">Resumen diario de alertas</div>
+                <div style="font-size:12px;color:${B.textMid};line-height:1.5;">
+                  Si algún backup falló o tuvo advertencias, recibís un único correo a las 8am con el detalle de todos tus servicios. Si todo estuvo bien, no recibís nada.
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+      <tr>
+        <td style="padding:12px 16px;background:#F8FAFC;border-radius:0 0 8px 8px;border:1px solid ${B.border};border-top:none;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td valign="top" style="padding-right:12px;width:28px;">
@@ -123,7 +140,7 @@ Deno.serve(async (req: Request) => {
               <td valign="top">
                 <div style="font-size:13px;font-weight:700;color:${B.primary};margin-bottom:3px;">Resumen semanal</div>
                 <div style="font-size:12px;color:${B.textMid};line-height:1.5;">
-                  Todos los lunes recibís un resumen completo: estado de backups, servicios, renovaciones y cambios de la semana.
+                  Todos los lunes recibís un resumen completo: estado de backups, servidores, renovaciones próximas y cambios de la semana.
                 </div>
               </td>
             </tr>
@@ -133,10 +150,35 @@ Deno.serve(async (req: Request) => {
 
     </table>
 
-    <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:14px 16px;margin-bottom:24px;">
-      <p style="font-size:12px;color:#92400E;margin:0;line-height:1.6;">
-        <strong>¿Preferís seguir recibiendo una notificación por cada backup?</strong><br>
-        Avisanos y lo configuramos para vos sin problema.
+    ${portalUrl ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+      <tr>
+        <td style="background:${B.primary};border-radius:10px;padding:18px 20px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td valign="middle">
+                <div style="font-size:13px;font-weight:700;color:#ffffff;margin-bottom:4px;">Portal de servicios</div>
+                <div style="font-size:12px;color:${B.textSoft};line-height:1.5;">Seguimiento en tiempo real de tus servicios, backups e incidentes. Siempre disponible.</div>
+              </td>
+              <td valign="middle" align="right" style="padding-left:16px;white-space:nowrap;">
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="background:${B.accent};border-radius:6px;">
+                      <a href="${portalUrl}" style="display:inline-block;padding:8px 18px;font-size:12px;font-weight:700;color:${B.primary};text-decoration:none;">Ver mis servicios →</a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>` : ''}
+
+    <div style="background:#F0FDF4;border:1px solid #A7F3D0;border-radius:8px;padding:14px 16px;margin-bottom:24px;">
+      <p style="font-size:12px;color:#065F46;margin:0 0 6px;font-weight:700;">¿Querés ajustar la frecuencia de notificaciones?</p>
+      <p style="font-size:12px;color:#047857;margin:0;line-height:1.6;">
+        Podemos configurarlo según tu preferencia: recibir un correo por cada evento de backup, solo alertas cuando hay problemas, o el resumen semanal únicamente. Respondé este correo y lo ajustamos.
       </p>
     </div>
 
