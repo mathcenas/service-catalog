@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.8.0"
+$SCRIPT_VERSION = "1.9.0"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -214,6 +214,106 @@ try {
     }
 } catch {}
 
+# ---------- Actualizaciones del SO (solo lectura, no instala nada) ----------
+# La consulta a Windows Update es lenta: se hace 1 vez por día y el resultado queda en cache.
+function ConvertTo-UtcDate($v) {
+    if (-not $v) { return $null }
+    if ($v -is [datetime]) { return $v.ToUniversalTime() }
+    try { return [datetime]::Parse([string]$v, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]'AssumeUniversal,AdjustToUniversal') } catch { return $null }
+}
+function Format-UtcDate($d) { if ($d) { $d.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") } else { $null } }
+
+$osUpdates = $null
+$osuIssues = @()
+if ($CHECK_OS_UPDATES -ne $false) {
+    $osuCacheFile = Join-Path $PSScriptRoot "os-updates-cache.json"
+    $osuCache = $null
+    if (Test-Path $osuCacheFile) { try { $osuCache = Get-Content $osuCacheFile -Raw | ConvertFrom-Json } catch {} }
+    $nowUtc     = (Get-Date).ToUniversalTime()
+    $prevCheck  = if ($osuCache) { ConvertTo-UtcDate $osuCache.checked_at } else { $null }
+    $osuFresh   = $prevCheck -and ($nowUtc - $prevCheck).TotalHours -lt 20
+
+    $osuPending = $null; $osuSecurity = $null; $osuLast = $null; $checkedAt = $nowUtc
+    if ($osuFresh) {
+        $osuPending = $osuCache.pending; $osuSecurity = $osuCache.security
+        $osuLast = $osuCache.last_installed_at; $checkedAt = $prevCheck
+    } else {
+        $osuJob = Start-Job -ScriptBlock {
+            $searcher = (New-Object -ComObject Microsoft.Update.Session).CreateUpdateSearcher()
+            $res = $searcher.Search("IsInstalled=0 and IsHidden=0 and Type='Software'")
+            # Categorías "Security Updates" y "Critical Updates" (por GUID: el nombre depende del idioma)
+            $secCats = @('0fa1201d-4330-4fa8-8ae9-b877473b6441', 'e6cf1350-c01b-414d-a61f-263d14d133b4')
+            $sec = 0
+            foreach ($u in $res.Updates) {
+                $isSec = @('Critical', 'Important') -contains $u.MsrcSeverity
+                foreach ($c in $u.Categories) { if ($secCats -contains ([string]$c.CategoryID).ToLower()) { $isSec = $true } }
+                if ($isSec) { $sec++ }
+            }
+            $last = $null
+            $n = $searcher.GetTotalHistoryCount()
+            if ($n -gt 0) {
+                foreach ($h in $searcher.QueryHistory(0, [math]::Min($n, 200))) {
+                    # Operation 1 = instalación, ResultCode 2 = exitosa
+                    if ($h.Operation -eq 1 -and $h.ResultCode -eq 2 -and ($null -eq $last -or $h.Date -gt $last)) { $last = $h.Date }
+                }
+            }
+            [pscustomobject]@{ pending = $res.Updates.Count; security = $sec; last = if ($last) { $last.ToString('yyyy-MM-dd') } else { $null } }
+        }
+        $osuError = $null
+        if (Wait-Job $osuJob -Timeout 300) {
+            try {
+                $r = Receive-Job $osuJob -ErrorAction Stop
+                $osuPending = $r.pending; $osuSecurity = $r.security; $osuLast = $r.last
+            } catch { $osuError = $_.Exception.Message }
+        } else {
+            $osuError = "timeout consultando Windows Update"
+        }
+        Remove-Job $osuJob -Force -ErrorAction SilentlyContinue
+        if ($osuError) {
+            Write-Log "⚠️ os-updates: $osuError"
+            if ($osuCache) { $osuPending = $osuCache.pending; $osuSecurity = $osuCache.security; $osuLast = $osuCache.last_installed_at }
+        }
+        if (-not $osuLast) {
+            try {
+                $hf = Get-HotFix -ErrorAction Stop | Where-Object { $_.InstalledOn } | Sort-Object InstalledOn -Descending | Select-Object -First 1
+                if ($hf) { $osuLast = $hf.InstalledOn.ToString('yyyy-MM-dd') }
+            } catch {}
+        }
+    }
+
+    $osuReboot = (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired') -or
+                 (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending')
+
+    if ($null -ne $osuPending) {
+        $lastBoot = $null
+        try { $lastBoot = (Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).LastBootUpTime.ToUniversalTime() } catch {}
+        $prevRebootSince = if ($osuCache) { ConvertTo-UtcDate $osuCache.reboot_since } else { $null }
+        if ($prevRebootSince -and $lastBoot -and $prevRebootSince -lt $lastBoot) { $prevRebootSince = $null }
+        $rebootSince = if ($osuReboot) { if ($prevRebootSince) { $prevRebootSince } else { $nowUtc } } else { $null }
+        $prevSecSince = if ($osuCache) { ConvertTo-UtcDate $osuCache.security_since } else { $null }
+        $secSince = if ([int]$osuSecurity -gt 0) { if ($prevSecSince) { $prevSecSince } else { $nowUtc } } else { $null }
+
+        $osUpdates = [ordered]@{
+            pending           = [int]$osuPending
+            security          = [int]$osuSecurity
+            reboot_required   = [bool]$osuReboot
+            reboot_since      = Format-UtcDate $rebootSince
+            security_since    = Format-UtcDate $secSince
+            last_installed_at = $osuLast
+            checked_at        = Format-UtcDate $checkedAt
+        }
+        try { $osUpdates | ConvertTo-Json | Set-Content -Path $osuCacheFile -Encoding UTF8 } catch {}
+
+        if ($secSince -and ($nowUtc - $secSince).TotalDays -ge 14) {
+            $osuIssues += "$([int]$osuSecurity) parches de seguridad pendientes"
+        }
+        if ($rebootSince -and ($nowUtc - $rebootSince).TotalDays -ge 7) {
+            $osuIssues += "Reinicio pendiente hace $([int][math]::Floor(($nowUtc - $rebootSince).TotalDays)) días"
+        }
+        if ($osuIssues.Count -gt 0 -and $hwStatus -eq 'success') { $hwStatus = 'warning' }
+    }
+}
+
 # ---------- Uptime / issues (mismo formato que system-health.sh) ----------
 $uptimeStr = $null; $uptimeSecs = $null
 try {
@@ -240,7 +340,8 @@ foreach ($d in $diskSmartList) {
 foreach ($r in $raidList) {
     if ($r.status -ne 'ok') { $issueList += "Volumen $($r.name): $($r.health)" }
 }
-$issues = if ($issueList.Count -gt 0) { $issueList -join ' ' } else { 'Normal' }
+$issueList += $osuIssues
+$issues = if ($issueList.Count -gt 0) { $issueList -join ' · ' } else { 'Normal' }
 
 $hwData = @{
     service_id = $SERVICE_ID
@@ -260,6 +361,7 @@ $hwData = @{
         uptime_str     = $uptimeStr
         uptime_seconds = $uptimeSecs
         issues         = $issues
+        os_updates     = $osUpdates
         disk_smart     = $diskSmartList
         disk_raid      = $raidList
         public_ip      = $publicIp

@@ -12,7 +12,7 @@
 # Version: 1.6.0
 # =============================================================
 
-SCRIPT_VERSION="1.9.0"
+SCRIPT_VERSION="1.10.0"
 
 # ---------- Verificación de dependencias ----------
 if ! command -v jq >/dev/null 2>&1; then
@@ -117,6 +117,10 @@ DISK_FREE_B=$(echo "$DISK_INFO" | awk '{print $2}')
 DISK_PCT=$(echo "$DISK_INFO" | awk '{print $3}' | tr -d '%')
 DISK_FREE_GB=$(awk -v free="$DISK_FREE_B" 'BEGIN { printf "%.1f", free / 1073741824 }')
 
+# ---------- Status ----------
+STATUS="success"
+ISSUES=""
+
 # ---------- Discos adicionales ----------
 DISK_MOUNTS_JSON="[]"
 if [[ -n "${DISK_MOUNTS:-}" ]]; then
@@ -139,10 +143,10 @@ if [[ -n "${DISK_MOUNTS:-}" ]]; then
     mounts_arr+=("$item")
 
     if [ "${mnt_pct:-0}" -ge 90 ]; then
-      STATUS="failed"; ISSUES="${ISSUES}Disco ${mnt} lleno (${mnt_pct}%) "
+      STATUS="failed"; ISSUES="${ISSUES}Disco ${mnt} lleno (${mnt_pct}%)|"
     elif [ "${mnt_pct:-0}" -ge 75 ]; then
       [ "$STATUS" = "success" ] && STATUS="warning"
-      ISSUES="${ISSUES}Disco ${mnt} alto (${mnt_pct}%) "
+      ISSUES="${ISSUES}Disco ${mnt} alto (${mnt_pct}%)|"
     fi
   done
   if [ ${#mounts_arr[@]} -gt 0 ]; then
@@ -160,36 +164,30 @@ else
   UPTIME_STR="${UPTIME_HRS}h"
 fi
 
-# ---------- Status ----------
-STATUS="success"
-ISSUES=""
-
 CPU_INT=${CPU_PCT%.*}
 RAM_INT=${RAM_PCT%.*}
 DISK_INT=${DISK_PCT%.*}
 
 if [ "${CPU_INT:-0}" -ge 95 ]; then
-  STATUS="failed"; ISSUES="CPU alta (${CPU_PCT}%) "
+  STATUS="failed"; ISSUES="${ISSUES}CPU alta (${CPU_PCT}%)|"
 elif [ "${CPU_INT:-0}" -ge 80 ]; then
-  STATUS="warning"; ISSUES="CPU alta (${CPU_PCT}%) "
+  [ "$STATUS" = "success" ] && STATUS="warning"
+  ISSUES="${ISSUES}CPU alta (${CPU_PCT}%)|"
 fi
 
 if [ "${RAM_INT:-0}" -ge 92 ]; then
-  STATUS="failed"; ISSUES="${ISSUES}RAM alta (${RAM_PCT}%) "
+  STATUS="failed"; ISSUES="${ISSUES}RAM alta (${RAM_PCT}%)|"
 elif [ "${RAM_INT:-0}" -ge 80 ]; then
   [ "$STATUS" = "success" ] && STATUS="warning"
-  ISSUES="${ISSUES}RAM alta (${RAM_PCT}%) "
+  ISSUES="${ISSUES}RAM alta (${RAM_PCT}%)|"
 fi
 
 if [ "${DISK_INT:-0}" -ge 90 ]; then
-  STATUS="failed"; ISSUES="${ISSUES}Disco lleno (${DISK_PCT}%) "
+  STATUS="failed"; ISSUES="${ISSUES}Disco lleno (${DISK_PCT}%)|"
 elif [ "${DISK_INT:-0}" -ge 75 ]; then
   [ "$STATUS" = "success" ] && STATUS="warning"
-  ISSUES="${ISSUES}Disco alto (${DISK_PCT}%) "
+  ISSUES="${ISSUES}Disco alto (${DISK_PCT}%)|"
 fi
-
-ISSUES=$(echo "$ISSUES" | xargs)
-[ -z "$ISSUES" ] && ISSUES="Normal"
 
 MESSAGE="CPU: ${CPU_PCT}% | RAM: ${RAM_PCT}% | Disk: ${DISK_PCT}% (${DISK_FREE_GB} GB free) | Up: ${UPTIME_STR}"
 
@@ -250,7 +248,7 @@ if command -v docker >/dev/null 2>&1; then
   fi
   if [[ -n "$DOCKER_DOWN" ]]; then
     [ "$STATUS" = "success" ] && STATUS="warning"
-    ISSUES="${ISSUES}Containers caídos: ${DOCKER_DOWN}"
+    ISSUES="${ISSUES}Containers caídos: ${DOCKER_DOWN}|"
   fi
 fi
 
@@ -279,7 +277,7 @@ for i in $(seq 1 20); do
 
   if [[ "$prc" != "0" ]]; then
     [ "$STATUS" = "success" ] && STATUS="warning"
-    ISSUES="${ISSUES}Puerto ${pname}:${pport} cerrado "
+    ISSUES="${ISSUES}Puerto ${pname}:${pport} cerrado|"
   fi
 done
 if [ ${#port_arr[@]} -gt 0 ]; then
@@ -482,6 +480,68 @@ for i in $(seq 1 10); do
   fi
 done
 
+# ---------- Actualizaciones del SO (solo lectura, no instala nada) ----------
+# Usa la lista de paquetes que el sistema ya refresca solo (apt-daily / dnf-makecache);
+# no corre apt update. El cache local solo guarda desde cuándo hay pendientes.
+OS_UPDATES_JSON="null"
+if [[ "${CHECK_OS_UPDATES:-true}" != "false" ]]; then
+  OSU_CACHE="${SCRIPT_DIR}/os-updates-cache.json"
+  osu_pending=""; osu_security=0; osu_reboot=false; osu_reboot_since=""; osu_last=""
+  if command -v apt >/dev/null 2>&1; then
+    osu_list=$(apt list --upgradable 2>/dev/null | grep -v '^Listing' || true)
+    osu_pending=$(grep -c . <<< "$osu_list" || true)
+    osu_security=$(grep -c -- '-security' <<< "$osu_list" || true)
+    if [[ -f /var/run/reboot-required ]]; then
+      osu_reboot=true
+      osu_reboot_since=$(date -u -r /var/run/reboot-required +%Y-%m-%dT%H:%M:%SZ)
+    fi
+    osu_last=$( { zgrep -h '^End-Date:' /var/log/apt/history.log* 2>/dev/null || true; } \
+      | awk '{print $2}' | sort | tail -1)
+  elif command -v dnf >/dev/null 2>&1; then
+    osu_pending=$(dnf -q check-update 2>/dev/null | grep -cE '^[[:alnum:]]' || true)
+    osu_security=$(dnf -q updateinfo list --security --available 2>/dev/null | grep -c . || true)
+    if command -v needs-restarting >/dev/null 2>&1 && ! needs-restarting -r >/dev/null 2>&1; then
+      osu_reboot=true
+    fi
+    osu_last=$(rpm -qa --last 2>/dev/null | head -1 | awk '{$1=""; print}' | xargs -I{} date -d "{}" +%Y-%m-%d 2>/dev/null || true)
+  fi
+
+  if [[ -n "$osu_pending" ]]; then
+    now_iso=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    prev_sec_since=$(jq -r '.security_since // empty' "$OSU_CACHE" 2>/dev/null || true)
+    prev_rb_since=$(jq -r '.reboot_since // empty' "$OSU_CACHE" 2>/dev/null || true)
+    osu_security_since=""
+    (( osu_security > 0 )) && osu_security_since="${prev_sec_since:-$now_iso}"
+    if [[ "$osu_reboot" == "true" && -z "$osu_reboot_since" ]]; then
+      osu_reboot_since="${prev_rb_since:-$now_iso}"
+    fi
+
+    OS_UPDATES_JSON=$(jq -n \
+      --argjson pending "$osu_pending" --argjson security "$osu_security" \
+      --argjson reboot "$osu_reboot" --arg reboot_since "$osu_reboot_since" \
+      --arg security_since "$osu_security_since" --arg last "$osu_last" --arg checked "$now_iso" \
+      '{pending: $pending, security: $security, reboot_required: $reboot,
+        reboot_since: (if $reboot_since == "" then null else $reboot_since end),
+        security_since: (if $security_since == "" then null else $security_since end),
+        last_installed_at: (if $last == "" then null else $last end),
+        checked_at: $checked}')
+    echo "$OS_UPDATES_JSON" > "$OSU_CACHE" 2>/dev/null || true
+
+    days_since() { echo $(( ( $(date +%s) - $(date -d "$1" +%s) ) / 86400 )); }
+    if [[ -n "$osu_security_since" ]] && (( $(days_since "$osu_security_since") >= 14 )); then
+      [ "$STATUS" = "success" ] && STATUS="warning"
+      ISSUES="${ISSUES}${osu_security} parches de seguridad pendientes|"
+    fi
+    if [[ "$osu_reboot" == "true" ]] && (( $(days_since "$osu_reboot_since") >= 7 )); then
+      [ "$STATUS" = "success" ] && STATUS="warning"
+      ISSUES="${ISSUES}Reinicio pendiente hace $(days_since "$osu_reboot_since") días|"
+    fi
+  fi
+fi
+
+ISSUES=$(printf '%s' "$ISSUES" | sed -E 's/[[:space:]]*\|[[:space:]]*$//; s/[[:space:]]*\|[[:space:]]*/ · /g; s/^[[:space:]]+//')
+[ -z "$ISSUES" ] && ISSUES="Normal"
+
 # ---------- Payload ----------
 PAYLOAD=$(jq -n \
   --arg service_id "$SERVICE_ID" \
@@ -496,6 +556,7 @@ PAYLOAD=$(jq -n \
   --arg uptime_str "$UPTIME_STR" \
   --argjson uptime_secs "$UPTIME_SECS" \
   --arg issues "$ISSUES" \
+  --argjson os_updates "$OS_UPDATES_JSON" \
   --argjson smb_count "$SMB_SESSION_COUNT" \
   --argjson smb_sessions "$SMB_SESSIONS_JSON" \
   --argjson disk_mounts "$DISK_MOUNTS_JSON" \
@@ -523,6 +584,7 @@ PAYLOAD=$(jq -n \
       uptime_str: $uptime_str,
       uptime_seconds: $uptime_secs,
       issues: $issues,
+      os_updates: $os_updates,
       smb_session_count: $smb_count,
       smb_sessions: $smb_sessions,
       disk_mounts: $disk_mounts,
