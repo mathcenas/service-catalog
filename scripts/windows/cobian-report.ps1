@@ -206,6 +206,11 @@ if (-not (Test-Path $logPath)) {
 
 $content = Get-Content $logPath -Raw -Encoding UTF8
 
+if ([string]::IsNullOrWhiteSpace($content)) {
+    Write-Log "Log de hoy existe pero está vacío: $logPath — backup aún no ejecutado"
+    exit 0
+}
+
 # Separar en bloques por task (cada "** Backup for the task" abre uno)
 $blocks = [regex]::Matches($content, '(?s)(?=\*\* Backup for the task).*?(?=\*\* Backup for the task|\z)')
 
