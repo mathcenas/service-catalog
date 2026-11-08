@@ -78,12 +78,12 @@ function Send-BackupReport($status, $jobName, $tasks, $totalBytes, $totalSeconds
 }
 
 function Parse-TaskBlock($block) {
-    # Nombre de la task
-    $taskNameMatch = [regex]::Match($block, '\*\* Backup for the task "([^"]+)"')
+    # Nombre de la task — aparece al inicio: Backing up the task "Files-task"
+    $taskNameMatch = [regex]::Match($block, 'Backing up the task "([^"]+)"')
     $taskName = if ($taskNameMatch.Success) { $taskNameMatch.Groups[1].Value } else { "Unknown" }
 
     # Timestamp de inicio
-    $startMatch = [regex]::Match($block, '(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \*\* Backup for the task')
+    $startMatch = [regex]::Match($block, '(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) Backing up the task')
     $backedUpAt = if ($startMatch.Success) {
         [datetime]::ParseExact($startMatch.Groups[1].Value, 'yyyy-MM-dd HH:mm:ss', $null).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     } else {
@@ -111,7 +111,7 @@ function Parse-TaskBlock($block) {
         [int]$errMatch.Groups[2].Value * 3600 + [int]$errMatch.Groups[3].Value * 60 + [int]$errMatch.Groups[4].Value
     } else { 0 }
 
-    $hasEnded = $block -match 'The backup has ended\.'
+    $hasEnded = $block -match '\*\* Backup for the task .+ has ended \*\*'
 
     # ── Parsear por destino ──────────────────────────────────────────────────
     # Cada destino aparece como: Backing up "..." to "X:\ruta\..."
@@ -120,25 +120,24 @@ function Parse-TaskBlock($block) {
         ForEach-Object { $_.Groups[1].Value.ToUpper() } |
         Select-Object -Unique
 
-    # Destinos que fallaron por ruta no encontrada: "M:\Respaldo-B"
-    $failedDrives = [regex]::Matches($block, "couldn't be created.*?\[([A-Za-z]):\\") |
-        ForEach-Object { $_.Groups[1].Value.ToUpper() }
+    # Destinos con errores de creación de directorio (disco lleno, ruta no existe, etc.)
+    # Formato: "V:\ruta" couldn't be created: (112) mensaje: [V:\ruta]
+    $failedDrives = [regex]::Matches($block, '"([A-Za-z]):\\[^"]*" couldn''t be created') |
+        ForEach-Object { $_.Groups[1].Value.ToUpper() } |
+        Select-Object -Unique
 
-    # Archivos con acceso denegado por destino
-    $deniedByDrive = @{}
-    [regex]::Matches($block, 'An error occurred while copying "[^"]+" to "([A-Za-z]):\\[^"]*": Acceso denegado') |
-        ForEach-Object {
-            $d = $_.Groups[1].Value.ToUpper()
-            $deniedByDrive[$d] = ($deniedByDrive[$d] ?? 0) + 1
-        }
+    # Errores de acceso denegado (copia o listado de directorio fuente)
+    # Se asocian a los destinos del bloque completo ya que ocurren al leer la fuente
+    $accessDeniedCount = ([regex]::Matches($block, 'Acceso denegado|Access is denied|\(5\) Acceso') | Measure-Object).Count
 
-    # Disco lleno por destino
-    $diskFullDrives = [regex]::Matches($block, '(?:Espacio en disco insuficiente|insufficient disk space|not enough space).*?"([A-Za-z]):\\') |
-        ForEach-Object { $_.Groups[1].Value.ToUpper() }
+    # Disco lleno por destino — línea: "V:\ruta..." couldn't be created: (112) Espacio en disco insuficiente
+    $diskFullDrives = [regex]::Matches($block, '"([A-Za-z]):\\[^"]*" couldn''t be created:[^`n]*(?:Espacio en disco insuficiente|insufficient disk space|not enough space|112)') |
+        ForEach-Object { $_.Groups[1].Value.ToUpper() } |
+        Select-Object -Unique
 
     # Si no se detectaron destinos, caer en modo legacy (un solo reporte global)
     if ($destDrives.Count -eq 0) {
-        $diskFull = $block -match 'Espacio en disco insuficiente|insufficient disk space|not enough space'
+        $diskFull = $block -match 'Espacio en disco insuficiente|insufficient disk space|not enough space|\(112\)'
         $pathFail = $block -match "couldn't be created.*?\(3\)|El sistema no puede encontrar la ruta"
         $status = if (-not $hasEnded) { "failed" }
                   elseif ($diskFull)  { "failed" }
@@ -161,23 +160,22 @@ function Parse-TaskBlock($block) {
     # Construir un resultado por destino
     $results = @()
     foreach ($drive in ($destDrives + $failedDrives | Select-Object -Unique | Sort-Object)) {
-        $isFailed  = $failedDrives -contains $drive
+        $isFailed   = $failedDrives -contains $drive
         $isDiskFull = $diskFullDrives -contains $drive
-        $deniedCount = $deniedByDrive[$drive] ?? 0
-        $wasAttempted = $destDrives -contains $drive
 
         $destStatus = if (-not $hasEnded) { "failed" }
-                      elseif ($isFailed -or $isDiskFull) { "failed" }
-                      elseif ($deniedCount -gt 0) { "warning" }
+                      elseif ($isDiskFull) { "failed" }
+                      elseif ($isFailed)   { "warning" }
+                      elseif ($accessDeniedCount -gt 0) { "warning" }
                       else { "success" }
 
-        # Tamaño: solo el destino que completó tiene datos reales; los fallidos van en 0
-        $destSize = if ($isFailed) { 0 } else { [long]($totalSizeBytes / [math]::Max($destDrives.Count, 1)) }
+        # Tamaño: destinos fallidos (disco lleno) no transfirieron datos
+        $destSize = if ($isDiskFull) { 0 } else { [long]($totalSizeBytes / [math]::Max(($destDrives | Where-Object { $diskFullDrives -notcontains $_ }).Count, 1)) }
 
-        $destDetails = if ($isFailed -and $isDiskFull) { "Disco lleno — destino no disponible" }
-                       elseif ($isFailed)              { "Destino no disponible (unidad desconectada o ruta no encontrada)" }
-                       elseif ($deniedCount -gt 0)     { "$backedUpFiles archivos copiados — $deniedCount archivo(s) con acceso denegado" }
-                       else                            { "$backedUpFiles archivos copiados" }
+        $destDetails = if ($isDiskFull)                  { "Disco lleno — backup no completado ($errorCount errores)" }
+                       elseif ($isFailed)                { "Destino con errores de escritura" }
+                       elseif ($accessDeniedCount -gt 0) { "$backedUpFiles archivos copiados — $accessDeniedCount archivo(s) con acceso denegado" }
+                       else                              { "$backedUpFiles archivos copiados" }
 
         $results += [PSCustomObject]@{
             TaskName        = $taskName
@@ -206,8 +204,14 @@ if (-not (Test-Path $logPath)) {
 
 $content = Get-Content $logPath -Raw -Encoding UTF8
 
-# Separar en bloques por task (cada "** Backup for the task" abre uno)
-$blocks = [regex]::Matches($content, '(?s)(?=\*\* Backup for the task).*?(?=\*\* Backup for the task|\z)')
+if ([string]::IsNullOrWhiteSpace($content)) {
+    Write-Log "Log de hoy existe pero está vacío: $logPath — backup aún no ejecutado"
+    exit 0
+}
+
+# Separar en bloques por task (cada "Backing up the task" abre uno)
+# El cierre es la línea "** Backup for the task ... has ended **" + las dos líneas de stats
+$blocks = [regex]::Matches($content, '(?s)(?=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} Backing up the task).*?(?=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} Backing up the task|\z)')
 
 if ($blocks.Count -eq 0) {
     Write-Log "No se encontraron bloques de tarea en el log"
