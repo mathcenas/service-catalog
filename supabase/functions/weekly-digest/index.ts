@@ -104,7 +104,8 @@ Deno.serve(async (req: Request) => {
       const svc = serviceList.find((s: any) => s.id === h.service_id);
       const disk = h.payload?.disk_pct != null ? `Disk ${h.payload.disk_pct}%` : '';
       const ram = h.payload?.ram_pct != null ? `RAM ${h.payload.ram_pct}%` : '';
-      const color = h.status === 'ok' ? '#22c55e' : h.status === 'warning' ? '#f59e0b' : '#ef4444';
+      // Linux scripts report success/failed, older Windows ones ok/error.
+      const color = h.status === 'ok' || h.status === 'success' ? '#22c55e' : h.status === 'warning' ? '#f59e0b' : '#ef4444';
       return `<tr>
         <td style="padding:5px 8px;font-size:12px;color:#1e293b;">${svc?.business_name || svc?.name || h.service_id}</td>
         <td style="padding:5px 8px;font-size:12px;color:${color};">${h.status.toUpperCase()}</td>

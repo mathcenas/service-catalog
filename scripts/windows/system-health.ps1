@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.6.2"
+$SCRIPT_VERSION = "1.7.0"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -214,6 +214,34 @@ try {
     }
 } catch {}
 
+# ---------- Uptime / issues (mismo formato que system-health.sh) ----------
+$uptimeStr = $null; $uptimeSecs = $null
+try {
+    $boot       = (Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).LastBootUpTime
+    $up         = (Get-Date) - $boot
+    $uptimeSecs = [int][math]::Floor($up.TotalSeconds)
+    $uptimeStr  = if ($up.Days -gt 0) { "$($up.Days)d $($up.Hours)h" } else { "$($up.Hours)h" }
+} catch {}
+
+$issueList = @()
+if     ($cpuUsage   -gt 80) { $issueList += "CPU alta ($cpuUsage%)" }
+if     ($ramUsePct  -gt 80) { $issueList += "RAM alta ($ramUsePct%)" }
+if     ($diskUsePct -gt 90) { $issueList += "Disco C lleno ($diskUsePct%)" }
+elseif ($diskUsePct -gt 75) { $issueList += "Disco C alto ($diskUsePct%)" }
+foreach ($d in $diskSmartList) {
+    if ($d.status -eq 'ok') { continue }
+    $why = @()
+    if ($d.smart_health -and $d.smart_health -ne 'Healthy') { $why += $d.smart_health }
+    if ($null -ne $d.temp_c -and $d.temp_c -gt 55)     { $why += "$($d.temp_c)°C" }
+    if ($null -ne $d.pct_used -and $d.pct_used -gt 75) { $why += "desgaste $($d.pct_used)%" }
+    if ($d.uncorrectable_errors -gt 0)                 { $why += "$($d.uncorrectable_errors) errores de lectura/escritura" }
+    $issueList += "Disco $($d.model): $(if ($why) { $why -join ', ' } else { $d.smart_health })"
+}
+foreach ($r in $raidList) {
+    if ($r.status -ne 'ok') { $issueList += "Volumen $($r.name): $($r.health)" }
+}
+$issues = if ($issueList.Count -gt 0) { $issueList -join ' ' } else { 'Normal' }
+
 $hwBody = @{
     service_id = $SERVICE_ID
     source     = "system-health"
@@ -229,6 +257,9 @@ $hwBody = @{
         ram_total_gb   = $ramTotalGB
         disk_pct       = $diskUsePct
         disk_free_gb   = $diskFreeGB
+        uptime_str     = $uptimeStr
+        uptime_seconds = $uptimeSecs
+        issues         = $issues
         disk_smart     = $diskSmartList
         disk_raid      = $raidList
         public_ip      = $publicIp
