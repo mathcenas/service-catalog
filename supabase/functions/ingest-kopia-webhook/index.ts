@@ -1,113 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { B, EMAIL_FONT, emailMeta } from "../_shared/emailBrand.ts";
-import { canSendNotification } from "../_shared/notificationLock.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, X-Ingest-Secret, X-Service-Id",
 };
-
-function formatBytes(b: number): string {
-  if (b >= 1073741824) return `${(b / 1073741824).toFixed(2)} GB`;
-  if (b >= 1048576)    return `${(b / 1048576).toFixed(1)} MB`;
-  if (b >= 1024)       return `${(b / 1024).toFixed(0)} KB`;
-  return `${b} B`;
-}
-
-function formatDuration(secs: number): string {
-  if (secs >= 3600) return `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
-  if (secs >= 60)   return `${Math.floor(secs / 60)}m ${secs % 60}s`;
-  return `${secs}s`;
-}
-
-function buildEmailHtml(opts: {
-  companyName: string;
-  logoUrl?: string | null;
-  status: string;
-  hostname: string;
-  source: string;
-  started: string;
-  duration: string;
-  totalSize: string;
-  totalFiles: string;
-  totalDirs: string;
-  failedEntriesHtml: string;
-  generatedAt: string;
-  kopiaVersion: string;
-  serviceName: string;
-}): string {
-  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-  const statusMap: Record<string, { label: string; bg: string; border: string; text: string }> = {
-    success: { label: "EXITOSO",          bg: "#ECFDF5", border: "#A7F3D0", text: "#059669" },
-    warning: { label: "CON ADVERTENCIAS", bg: "#FFFBEB", border: "#FDE68A", text: "#B45309" },
-    failed:  { label: "FALLIDO",          bg: "#FEF2F2", border: "#FECACA", text: "#DC2626" },
-  };
-  const st = statusMap[opts.status] || statusMap.warning;
-
-  const logoHtml = opts.logoUrl
-    ? `<img src="${opts.logoUrl}" alt="${esc(opts.companyName)}" style="max-height:32px;max-width:140px;display:block;border:0;" />`
-    : `<div style="background:${B.primary};padding:5px 11px;border-radius:6px;display:inline-block;"><span style="color:${B.accent};font-size:10px;font-weight:700;letter-spacing:.5px;">${esc(opts.companyName.toUpperCase())}</span></div>`;
-
-  const row = (label: string, value: string) => `
-    <tr>
-      <td style="padding:7px 12px;background:${B.bg};border:1px solid ${B.border};font-size:11px;color:${B.textMid};width:140px;white-space:nowrap;">${label}</td>
-      <td style="padding:7px 12px;border:1px solid ${B.border};font-size:13px;color:${B.textMain};">${value}</td>
-    </tr>`;
-
-  return `
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;font-family:${EMAIL_FONT};">
-    <tr><td align="center" style="padding:32px 24px;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;background:#ffffff;border-radius:12px;border:1px solid ${B.border};">
-    <tr><td style="padding:24px 28px;">
-
-      <!-- Header -->
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid ${B.border};">
-        <tr>
-          <td valign="middle">
-            ${logoHtml}
-            <div style="font-size:15px;font-weight:700;color:${B.primary};margin-top:6px;">Backup Kopia — ${esc(opts.serviceName)}</div>
-          </td>
-          <td valign="middle" align="right">
-            <table role="presentation" cellpadding="0" cellspacing="0" style="background:${st.bg};border:1px solid ${st.border};border-radius:8px;">
-              <tr><td style="padding:5px 14px;">
-                <span style="color:${st.text};font-size:11px;font-weight:700;letter-spacing:.5px;">${st.label}</span>
-              </td></tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-
-      <!-- Details table -->
-      <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
-        ${row("Servidor", esc(opts.hostname))}
-        ${row("Fuente", esc(opts.source))}
-        ${row("Inicio", esc(opts.started))}
-        ${row("Duración", esc(opts.duration))}
-        ${row("Tamaño total", esc(opts.totalSize))}
-        ${row("Archivos", esc(opts.totalFiles))}
-        ${row("Directorios", esc(opts.totalDirs))}
-        ${opts.kopiaVersion ? row("Kopia", esc(opts.kopiaVersion)) : ""}
-      </table>
-
-      ${opts.failedEntriesHtml ? `
-      <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:14px;margin-bottom:18px;">
-        <p style="color:#DC2626;font-size:12px;font-weight:700;margin:0 0 8px;">Entradas con error</p>
-        <ul style="margin:0;padding-left:18px;color:#7F1D1D;font-size:12px;line-height:1.6;">${opts.failedEntriesHtml}</ul>
-      </div>` : ""}
-
-      <p style="color:${B.textSoft};font-size:11px;margin:0;text-align:center;">
-        Generado: ${esc(opts.generatedAt)}
-      </p>
-      ${emailMeta(opts.companyName)}
-
-    </td></tr>
-    </table>
-    </td></tr>
-  </table>`;
-}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -156,14 +54,8 @@ Deno.serve(async (req: Request) => {
     let durationSeconds: number | null = null;
     const backedUpAt = new Date().toISOString();
 
-    // Fields for email
     let hostname = "";
     let sourcePath = "";
-    let startedStr = "";
-    let totalFiles = "";
-    let totalDirs = "";
-    let failedEntriesHtml = "";
-    let kopiaVersion = "";
 
     if (contentType.includes("application/json")) {
       try {
@@ -178,23 +70,13 @@ Deno.serve(async (req: Request) => {
         else if (hostname) jobName = `Kopia - ${hostname}`;
 
         sizeBytes = body.stats?.totalSize ?? body.totalSize ?? null;
-        totalFiles = body.stats?.numFiles != null ? String(body.stats.numFiles) : "";
-        totalDirs  = body.stats?.numDirectories != null ? String(body.stats.numDirectories) : "";
 
         const startTime = body.startTime ? new Date(body.startTime).getTime() : null;
         const endTime   = body.endTime   ? new Date(body.endTime).getTime()   : null;
         if (startTime && endTime) durationSeconds = Math.round((endTime - startTime) / 1000);
-        if (body.startTime) startedStr = new Date(body.startTime).toLocaleString("es-UY", { dateStyle: "medium", timeStyle: "short" });
 
-        kopiaVersion = body.kopiaVersion || body.buildInfo?.version || "";
-
-        if (Array.isArray(body.failedEntries) && body.failedEntries.length > 0) {
-          if (status === "success") status = "warning";
-          failedEntriesHtml = body.failedEntries
-            .slice(0, 20)
-            .map((e: { path?: string; error?: string }) =>
-              `<li>${(e.path || "").replace(/&/g, "&amp;").replace(/</g, "&lt;")}: ${(e.error || "error").replace(/&/g, "&amp;").replace(/</g, "&lt;")}</li>`
-            ).join("");
+        if (Array.isArray(body.failedEntries) && body.failedEntries.length > 0 && status === "success") {
+          status = "warning";
         }
       } catch { /* fallthrough to HTML */ }
     }
@@ -265,94 +147,8 @@ Deno.serve(async (req: Request) => {
       await supabase.from("services").update(update).eq("id", serviceId);
     }
 
-    // Send email notification via Resend
-    // Rate limiting: fallos cada 15 min, éxitos cada 60 min por service_id
-    const emailEventType = `kopia_${status}`;
-    const emailCooldown  = status === "success" ? 60 : 15;
-    const emailAllowed   = await canSendNotification(supabase, serviceId, emailEventType, emailCooldown);
-
-    const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-
-    if (RESEND_API_KEY && emailAllowed) {
-      try {
-        // Build recipient list: client contacts + service notification_email + env fallback
-        const recipients = new Set<string>();
-
-        // 1. Contacts of the client that owns this service
-        const { data: svcWithClient } = await supabase
-          .from("services")
-          .select("client_id")
-          .eq("id", serviceId)
-          .maybeSingle();
-
-        if (svcWithClient?.client_id) {
-          const { data: client } = await supabase
-            .from("clients")
-            .select("email, alt_email, cc_emails")
-            .eq("id", svcWithClient.client_id)
-            .maybeSingle();
-          if (client?.email) recipients.add(client.email);
-          if (client?.alt_email) recipients.add(client.alt_email);
-          if (client?.cc_emails) {
-            client.cc_emails.split(",").map((e: string) => e.trim()).filter(Boolean).forEach((e: string) => recipients.add(e));
-          }
-        }
-
-        // 2. Per-service override
-        if (service.notification_email) recipients.add(service.notification_email);
-
-        // 3. Global fallback if nothing found
-        if (recipients.size === 0) {
-          const fallback = Deno.env.get("RESEND_KOPIA_TO") || Deno.env.get("RESEND_REPLY_TO");
-          if (fallback) recipients.add(fallback);
-        }
-
-        if (recipients.size === 0) throw new Error("No recipients configured");
-
-        const [settings] = await Promise.all([
-          supabase.from("user_settings").select("company_name, logo_url").eq("user_id", service.user_id).maybeSingle().then(r => r.data),
-        ]);
-
-        const companyName = settings?.company_name || "Cenas IT";
-        const serviceName = service.business_name || service.name || "Backup";
-        const generatedAt = new Date().toLocaleString("es-UY", { dateStyle: "medium", timeStyle: "short" });
-
-        const htmlBody = buildEmailHtml({
-          companyName,
-          logoUrl: settings?.logo_url,
-          status,
-          hostname: hostname || jobName,
-          source: sourcePath || jobName,
-          started: startedStr || generatedAt,
-          duration: durationSeconds != null ? formatDuration(durationSeconds) : "—",
-          totalSize: sizeBytes != null ? formatBytes(sizeBytes) : "—",
-          totalFiles: totalFiles || "—",
-          totalDirs: totalDirs || "—",
-          failedEntriesHtml,
-          generatedAt,
-          kopiaVersion,
-          serviceName,
-        });
-
-        const statusLabels: Record<string, string> = { success: "✅ OK", warning: "⚠️ Advertencia", failed: "❌ FALLIDO" };
-        const subject = `[Backup Kopia] ${statusLabels[status] || "⚠️"} — ${serviceName}${hostname ? ` (${hostname})` : ""}`;
-
-        await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${RESEND_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            from: Deno.env.get("RESEND_KOPIA_FROM") || "Cenas IT Backups <backups@updates.cenas.uy>",
-            ...(Deno.env.get("RESEND_KOPIA_REPLY_TO") ? { reply_to: Deno.env.get("RESEND_KOPIA_REPLY_TO") } : {}),
-            to: Array.from(recipients),
-            subject,
-            html: htmlBody,
-          }),
-        });
-      } catch { /* non-fatal: DB insert already succeeded */ }
-    }
+    // No per-event email: backup-alert-digest sends one daily summary per client
+    // when there are failed/warning backups, same as ingest-backup.
 
     return new Response(JSON.stringify({ success: true }), {
       status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" },
