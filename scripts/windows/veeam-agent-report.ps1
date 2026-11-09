@@ -6,7 +6,7 @@
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"
-$SCRIPT_VERSION = "1.1.3"
+$SCRIPT_VERSION = "1.1.4"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
@@ -84,11 +84,15 @@ if (-not $events -or $events.Count -eq 0) {
     exit
 }
 
+# Servicio al que se reportan los backups (VEEAM_SERVICE_ID en config.ps1; vacío = $SERVICE_ID)
+$BackupServiceId    = if ($VEEAM_SERVICE_ID)    { $VEEAM_SERVICE_ID }    else { $SERVICE_ID }
+$BackupIngestSecret = if ($VEEAM_INGEST_SECRET) { $VEEAM_INGEST_SECRET } else { $INGEST_SECRET }
+
 $headers = @{
     "Content-Type"    = "application/json"
     "apikey"          = $ANON_KEY
     "Authorization"   = "Bearer $ANON_KEY"
-    "X-Ingest-Secret" = $INGEST_SECRET
+    "X-Ingest-Secret" = $BackupIngestSecret
 }
 
 $reported = 0
@@ -114,7 +118,7 @@ foreach ($ev in $events) {
     $backedUpAt = $ev.TimeCreated.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 
     $body = @{
-        service_id       = $SERVICE_ID
+        service_id       = $BackupServiceId
         job_name         = $jobName
         status           = $status
         size_bytes       = 0

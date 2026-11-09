@@ -2,7 +2,7 @@
 # config.ps1 - Configuracion por cliente/servidor
 # Copiar este archivo por cada cliente y ajustar los valores
 # =============================================================
-$SCRIPT_VERSION = "1.4.0"
+$SCRIPT_VERSION = "1.5.0"
 
 $INGEST_URL    = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-backup"
 $HEARTBEAT_URL = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-heartbeat"
@@ -27,6 +27,13 @@ $SMB_PATH          = ""   # Ruta local de la carpeta compartida, ej: C:\Comparti
 # Ventana de busqueda para veeam-agent-report.ps1
 # Diario: 25  |  Semanal: 170  (7 dias + 2 hs de margen)
 $VEEAM_LOOKBACK_HOURS = 25
+
+# Servicio al que reportan veeam-report.ps1 y veeam-agent-report.ps1 (vacio = $SERVICE_ID).
+# Para que los backups de Veeam figuren en el servicio de la carpeta compartida:
+#   $VEEAM_SERVICE_ID    = $SMB_SERVICE_ID
+#   $VEEAM_INGEST_SECRET = $SMB_INGEST_SECRET
+$VEEAM_SERVICE_ID    = ""
+$VEEAM_INGEST_SECRET = ""
 
 # IP privada de Tailscale del servidor de destino (cloud del cliente)
 # Si se configura, kopia-report.ps1 verifica conectividad antes de reportar

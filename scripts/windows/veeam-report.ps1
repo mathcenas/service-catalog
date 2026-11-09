@@ -17,7 +17,7 @@ if ($PSVersionTable.PSEdition -eq 'Core') {
 
 $_scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 . "$_scriptDir\config.ps1"
-$SCRIPT_VERSION = "1.0.8"
+$SCRIPT_VERSION = "1.0.9"
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
@@ -66,11 +66,15 @@ if (-not $sessions) {
     exit
 }
 
+# Servicio al que se reportan los backups (VEEAM_SERVICE_ID en config.ps1; vacío = $SERVICE_ID)
+$BackupServiceId    = if ($VEEAM_SERVICE_ID)    { $VEEAM_SERVICE_ID }    else { $SERVICE_ID }
+$BackupIngestSecret = if ($VEEAM_INGEST_SECRET) { $VEEAM_INGEST_SECRET } else { $INGEST_SECRET }
+
 $headers = @{
     "Content-Type"    = "application/json"
     "apikey"          = $ANON_KEY
     "Authorization"   = "Bearer $ANON_KEY"
-    "X-Ingest-Secret" = $INGEST_SECRET
+    "X-Ingest-Secret" = $BackupIngestSecret
 }
 
 # ---------- Paso 1: registrar cada job individualmente (sin email) ----------
@@ -109,7 +113,7 @@ foreach ($session in $sessions) {
     }
 
     $body = @{
-        service_id       = $SERVICE_ID
+        service_id       = $BackupServiceId
         job_name         = $jobName
         status           = $status
         size_bytes       = $sizeBytes
@@ -135,7 +139,7 @@ $sessionCount = @($sessions).Count
 $summaryText  = $summaryLines | ConvertTo-Json -Compress
 
 $summaryBody = @{
-    service_id       = $SERVICE_ID
+    service_id       = $BackupServiceId
     job_name         = "Veeam - Resumen diario ($sessionCount jobs)"
     status           = $globalStatus
     size_bytes       = $totalBytes
