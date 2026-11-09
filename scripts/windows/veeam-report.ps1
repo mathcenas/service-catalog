@@ -5,9 +5,19 @@
 # schedulear en Task Scheduler una vez por día
 # =============================================================
 
+# El módulo de Veeam Backup & Replication no carga en PowerShell 7 ("SSslOptions threw an
+# exception"): si arrancó en pwsh, relanzar el mismo script en Windows PowerShell 5.1.
+if ($PSVersionTable.PSEdition -eq 'Core') {
+    $ps51 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    if (Test-Path $ps51) {
+        & $ps51 -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @args
+        exit $LASTEXITCODE
+    }
+}
+
 $_scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 . "$_scriptDir\config.ps1"
-$SCRIPT_VERSION = "1.0.7"
+$SCRIPT_VERSION = "1.0.8"
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 

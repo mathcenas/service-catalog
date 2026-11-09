@@ -5,10 +5,20 @@
 # Requiere: config.ps1 en la misma carpeta
 # =============================================================
 
+# El módulo de Veeam Backup & Replication no carga en PowerShell 7 ("SSslOptions threw an
+# exception"): si arrancó en pwsh, relanzar el mismo script en Windows PowerShell 5.1.
+if ($PSVersionTable.PSEdition -eq 'Core') {
+    $ps51 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    if (Test-Path $ps51) {
+        & $ps51 -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @args
+        exit $LASTEXITCODE
+    }
+}
+
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.0.0"
+$SCRIPT_VERSION = "1.0.1"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
