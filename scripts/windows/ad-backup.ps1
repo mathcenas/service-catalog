@@ -1,10 +1,10 @@
-# ==========================================
-# ad-backup.ps1 v1.1.0
+﻿# ==========================================
+# ad-backup.ps1 v1.1.1
 # Backup AD + LDIF + GPO + Supabase Telemetry
 # Windows Server 2022
 # ==========================================
 
-$SCRIPT_VERSION = "1.1.0"
+$SCRIPT_VERSION = "1.1.1"
 
 # ---------------------------
 # 1. Cargar config.ps1
@@ -193,9 +193,16 @@ try { $null = $body | ConvertFrom-Json } catch {
 # ==========================================
 $headers = @{
     "Content-Type"    = "application/json"
+    "apikey"          = $ANON_KEY
+    "Authorization"   = "Bearer $ANON_KEY"
     "X-Ingest-Secret" = $INGEST_SECRET
 }
 
-Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body -TimeoutSec 30
+try {
+    Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body -TimeoutSec 30 | Out-Null
+    "Reportado al Service Catalog: $globalStatus" | Tee-Object -FilePath $LogFile -Append
+} catch {
+    "ERROR al reportar al Service Catalog: $($_.Exception.Message)" | Tee-Object -FilePath $LogFile -Append
+}
 
 "Backup completado. Estado: $globalStatus" | Tee-Object -FilePath $LogFile -Append
