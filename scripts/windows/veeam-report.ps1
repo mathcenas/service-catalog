@@ -5,19 +5,52 @@
 # schedulear en Task Scheduler una vez por día
 # =============================================================
 
-# El módulo de Veeam Backup & Replication no carga en PowerShell 7 ("SSslOptions threw an
-# exception"): si arrancó en pwsh, relanzar el mismo script en Windows PowerShell 5.1.
-if ($PSVersionTable.PSEdition -eq 'Core') {
-    $ps51 = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    if (Test-Path $ps51) {
-        & $ps51 -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @args
+# El módulo de Veeam pide una versión concreta de PowerShell: Veeam 12 usa Windows PowerShell 5.1
+# (en pwsh falla con "SSslOptions threw an exception") y Veeam 13 exige PowerShell 7.6 o superior.
+# Se lee lo que pide el módulo instalado y, si la sesión actual no sirve, se relanza el script.
+function Find-VeeamManifest {
+    $m = Get-Module -ListAvailable -Name Veeam.Backup.PowerShell -ErrorAction SilentlyContinue |
+         Sort-Object Version -Descending | Select-Object -First 1
+    if ($m) { return $m.Path }
+    foreach ($p in @(
+        "$env:ProgramFiles\Veeam\Backup and Replication\Console\Veeam.Backup.PowerShell\Veeam.Backup.PowerShell.psd1",
+        "$env:ProgramFiles\Veeam\Backup and Replication\Console\Veeam.Backup.PowerShell.psd1")) {
+        if (Test-Path $p) { return $p }
+    }
+    return $null
+}
+
+if (-not $env:SC_VEEAM_RELAUNCHED) {
+    $veeamRequired = $null
+    $veeamManifest = Find-VeeamManifest
+    if ($veeamManifest) {
+        try { $veeamRequired = [version](Import-PowerShellDataFile $veeamManifest).PowerShellVersion } catch {}
+    }
+    $relaunchWith = $null
+    if ($veeamRequired -and $PSVersionTable.PSVersion -lt $veeamRequired) {
+        $pwsh = (Get-Command pwsh -ErrorAction SilentlyContinue).Source
+        if (-not $pwsh) { $pwsh = "$env:ProgramFiles\PowerShell\7\pwsh.exe" }
+        $pwshVersion = $null
+        if (Test-Path $pwsh) {
+            try { $pwshVersion = [version]((& $pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()') -replace '-.*$', '') } catch {}
+        }
+        if (-not $pwshVersion -or $pwshVersion -lt $veeamRequired) {
+            throw "El módulo de Veeam requiere PowerShell $veeamRequired o superior (instalado: $(if ($pwshVersion) { $pwshVersion } else { 'ninguno' })). Actualizar con: winget upgrade Microsoft.PowerShell (o winget install Microsoft.PowerShell)"
+        }
+        $relaunchWith = $pwsh
+    } elseif ($PSVersionTable.PSEdition -eq 'Core' -and (-not $veeamRequired -or $veeamRequired.Major -lt 7)) {
+        $relaunchWith = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    }
+    if ($relaunchWith) {
+        $env:SC_VEEAM_RELAUNCHED = '1'
+        & $relaunchWith -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @args
         exit $LASTEXITCODE
     }
 }
 
 $_scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 . "$_scriptDir\config.ps1"
-$SCRIPT_VERSION = "1.0.9"
+$SCRIPT_VERSION = "1.1.0"
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
@@ -35,20 +68,10 @@ function Write-Log($msg) {
 }
 Get-ChildItem "$LogDir\veeam-report-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) } | Remove-Item -Force
 
-# Veeam 12+: módulo PowerShell — forzar TLS12 antes de cargar para evitar SSslOptions error
-$veeamModule = Get-Module -ListAvailable -Name Veeam.Backup.PowerShell -ErrorAction SilentlyContinue
-if ($veeamModule) {
-    try {
-        Import-Module Veeam.Backup.PowerShell -ErrorAction Stop
-    } catch {
-        # Fallback: cargar desde ruta absoluta (BR 12 en Program Files)
-        $veeamPsd = "C:\Program Files\Veeam\Backup and Replication\Console\Veeam.Backup.PowerShell.psd1"
-        if (Test-Path $veeamPsd) {
-            Import-Module $veeamPsd -ErrorAction Stop
-        } else {
-            throw "No se pudo cargar el módulo de Veeam: $_"
-        }
-    }
+$veeamManifest = Find-VeeamManifest
+if ($veeamManifest) {
+    try { Import-Module $veeamManifest -ErrorAction Stop }
+    catch { throw "No se pudo cargar el módulo de Veeam ($veeamManifest): $_" }
 } else {
     Add-PSSnapin VeeamPSSnapIn -ErrorAction SilentlyContinue
 }
