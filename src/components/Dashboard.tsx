@@ -710,7 +710,9 @@ function DailyOpsPanel({
       });
     }
 
-    // 2. Equipos con telemetría activada sin heartbeat de system-health en 2h
+    // 2. Servicios con telemetría activada sin ningún heartbeat en 2h. Cuenta cualquier
+    //    fuente (system-health, smb-check, mikrotik…): un share SMB o un router no
+    //    corren system-health, su señal es el script que los chequea.
     const hbCutoff = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString();
     const monitored = active.filter(s => s.telemetry_enabled);
     if (monitored.length > 0) {
@@ -718,7 +720,6 @@ function DailyOpsPanel({
         .from('service_heartbeats')
         .select('service_id')
         .in('service_id', monitored.map(s => s.id))
-        .eq('source', 'system-health')
         .gte('received_at', hbCutoff);
       const alive = new Set((recentHb ?? []).map(h => h.service_id));
       const silent = monitored.filter(s => !alive.has(s.id));
@@ -726,7 +727,6 @@ function DailyOpsPanel({
         supabase.from('service_heartbeats')
           .select('received_at')
           .eq('service_id', s.id)
-          .eq('source', 'system-health')
           .order('received_at', { ascending: false })
           .limit(1)
           .maybeSingle()

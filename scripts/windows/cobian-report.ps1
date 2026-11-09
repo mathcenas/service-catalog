@@ -6,14 +6,24 @@
 # (ej: 5 minutos después de la hora programada del backup):
 #   pwsh.exe -NonInteractive -ExecutionPolicy Bypass -File "C:\Scripts\cobian-report.ps1"
 #
+# Reporta TODAS las tasks del log del día (ej: Respaldo-DiscoK y
+# Respaldo-DiscoV) en un único resumen. Si al correr hay una task
+# todavía en curso, espera (cada 5 min, hasta -MaxWaitMinutes) a que
+# termine antes de reportar, así se puede schedulear a la misma hora
+# que arranca Cobian sin que una copia larga quede como "failed".
+#
 # Requiere: config.ps1 en la misma carpeta con $SMB_SERVICE_ID y
 # $SMB_INGEST_SECRET configurados.
 # =============================================================
 
+param(
+    [int]$MaxWaitMinutes = 600
+)
+
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.2.0"
+$SCRIPT_VERSION = "1.3.0"
 
 if (-not (Get-Command Invoke-Kuma -ErrorAction SilentlyContinue)) {
     function Invoke-Kuma { param([string]$Status, [string]$Msg) }
@@ -203,6 +213,25 @@ if (-not (Test-Path $logPath)) {
 }
 
 $content = Get-Content $logPath -Raw -Encoding UTF8
+
+# Si la última task del log todavía no terminó, esperar. Durante una copia larga
+# Cobian no escribe nada en el log por horas, así que no se puede usar la fecha
+# de modificación del archivo para decidir: se espera hasta MaxWaitMinutes.
+$waited = 0
+while (-not [string]::IsNullOrWhiteSpace($content)) {
+    $lastStart = [regex]::Matches($content, 'Backing up the task "([^"]+)"') | Select-Object -Last 1
+    if (-not $lastStart) { break }
+    $tail = $content.Substring($lastStart.Index)
+    if ($tail -match '\*\* Backup for the task .+ has ended \*\*') { break }
+    if ($waited -ge $MaxWaitMinutes) {
+        Write-Log "La task '$($lastStart.Groups[1].Value)' sigue sin terminar después de $waited min — se reporta como fallida"
+        break
+    }
+    Write-Log "Task '$($lastStart.Groups[1].Value)' en curso — esperando 5 min ($waited/$MaxWaitMinutes)"
+    Start-Sleep -Seconds 300
+    $waited += 5
+    $content = Get-Content $logPath -Raw -Encoding UTF8
+}
 
 if ([string]::IsNullOrWhiteSpace($content)) {
     Write-Log "Log de hoy existe pero está vacío: $logPath — backup aún no ejecutado"
