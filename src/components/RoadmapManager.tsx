@@ -143,7 +143,7 @@ export function RoadmapManager({ clients, services }: Props) {
           project_id:  draftTtProjectId,
           title:       draft.title.trim(),
           description: draft.description.trim() || undefined,
-          status:      'todo',
+          status:      'not_started',
           priority:    draft.category === 'problem' ? 'high' : 'medium',
           hours,
           due_date:    draft.scheduled_date || undefined,

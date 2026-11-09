@@ -129,8 +129,20 @@ Deno.serve(async (_req: Request) => {
   const TT_BASE    = Deno.env.get("TASK_TRACKER_URL");
   let ttPushed = 0;
   if (TT_API_KEY && TT_BASE) {
+    // One task per service per day: skip services that already got one in the last 20h
+    // (manual runs, retries). 20h instead of 24h so the next day's cron is never skipped.
+    const since20h = new Date(Date.now() - 20 * 3600 * 1000).toISOString();
+    const { data: recentTasks } = await supabase
+      .from("task_tracker_log")
+      .select("title")
+      .eq("source", "alert-backup-stale")
+      .eq("status", "ok")
+      .gte("created_at", since20h);
+    const alreadyPushed = new Set((recentTasks || []).map((t: any) => t.title));
+
     for (const s of services as any[]) {
       if (!s.client_id) continue;
+      if (alreadyPushed.has(`Backup vencido — ${s.business_name || s.name}`)) continue;
       const proj = await resolveDefaultProject(supabase, s.client_id);
       if (!proj) continue;
       const hrsAgo = Math.floor((Date.now() - new Date(s.last_backup_at).getTime()) / 3600000);
