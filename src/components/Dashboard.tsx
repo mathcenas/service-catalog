@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings, Clock, CheckCircle2, AlertTriangle, Wrench, XCircle, Globe, MonitorSmartphone, Mail, Menu, X, Network, Bell, ShieldAlert, WifiOff, HardDrive, BookOpen } from 'lucide-react';
 import { supabase, Client, Service, Project, ServiceType } from '../lib/supabase';
+import { backupMaxAgeHours } from '../lib/backupSchedule';
 import { useAuth } from '../contexts/AuthContext';
 import { ClientList } from './ClientList';
 import { ServiceList } from './ServiceList';
@@ -645,7 +646,8 @@ function DailyOpsPanel({
     const failedIds = new Set<string>();
     for (const svc of active) {
       const fail = latestFail[svc.id];
-      if (!fail || (svc.last_backup_at && svc.last_backup_at > fail.created_at)) continue;
+      if (!fail || backupMaxAgeHours(svc) === null) continue;
+      if (svc.last_backup_at && svc.last_backup_at > fail.created_at) continue;
       failedIds.add(svc.id);
       result.push({
         id: `backup-fail-${svc.id}`,
@@ -656,10 +658,12 @@ function DailyOpsPanel({
       });
     }
 
-    // 1b. Sin backup en 26h — mismo criterio que el mail de alert-backup-stale.
-    const backupCutoff = new Date(now.getTime() - 26 * 60 * 60 * 1000).toISOString();
+    // 1b. Sin backup dentro de la frecuencia esperada del servicio — mismo criterio
+    //     que el mail de alert-backup-stale.
     for (const svc of active) {
-      if (!svc.last_backup_at || svc.last_backup_at >= backupCutoff || failedIds.has(svc.id)) continue;
+      const maxAge = backupMaxAgeHours(svc);
+      if (maxAge === null || !svc.last_backup_at || failedIds.has(svc.id)) continue;
+      if (now.getTime() - new Date(svc.last_backup_at).getTime() < maxAge * 3_600_000) continue;
       result.push({
         id: `backup-stale-${svc.id}`,
         kind: 'backup_fail',

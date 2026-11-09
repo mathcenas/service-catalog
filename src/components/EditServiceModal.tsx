@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, Copy, Check, RefreshCw } from 'lucide-react';
 import { Service, Client, ServiceType, Project, MANAGED_ROLES, ManagedRole, OPERATIONAL_STATUSES, OperationalStatus, PAID_BY_OPTIONS, PaidBy, supabase } from '../lib/supabase';
+import { BACKUP_SCHEDULE_OPTIONS } from '../lib/backupSchedule';
 import { DynamicServiceFields } from './DynamicServiceFields';
 import { getFieldsForType, COLUMN_FIELD_KEYS, EXCLUDED_SERVICE_TYPE_NAMES } from '../lib/serviceFields';
 
@@ -30,6 +31,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
     cloud_backup_enabled: service.cloud_backup_enabled ?? false,
     cloud_backup_retention_days: service.cloud_backup_retention_days?.toString() || '',
     telemetry_enabled: service.telemetry_enabled ?? false,
+    backup_max_age_hours: service.backup_max_age_hours == null ? '' : String(service.backup_max_age_hours),
     business_name: service.business_name || '',
     business_description: service.business_description || '',
     sla_level: service.sla_level || '',
@@ -159,6 +161,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
         cloud_backup_enabled: formData.cloud_backup_enabled,
         cloud_backup_retention_days: formData.cloud_backup_retention_days ? parseInt(formData.cloud_backup_retention_days) : null,
         telemetry_enabled: formData.telemetry_enabled,
+        backup_max_age_hours: formData.backup_max_age_hours === '' ? null : parseInt(formData.backup_max_age_hours),
         provider: columnUpdates.provider,
         server_ip: columnUpdates.server_ip,
         login_url: columnUpdates.login_url,
@@ -461,6 +464,14 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
                   <span className="text-sm text-gray-700">Monitor in Telemetry</span>
                 </label>
                 <p className="text-xs text-gray-400 mt-1">Uncheck for domains, one-time payments, or services with no agent</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Expected Backup Frequency</label>
+                <select value={formData.backup_max_age_hours} onChange={e => set('backup_max_age_hours', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+                  {BACKUP_SCHEDULE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                <p className="text-xs text-gray-400 mt-1">When a missing backup shows up in the dashboard and the daily alert email</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Paid By</label>
