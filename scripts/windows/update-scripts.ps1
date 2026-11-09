@@ -26,7 +26,7 @@ param(
   [switch]$Force
 )
 
-$SCRIPT_VERSION = "1.2.4"
+$SCRIPT_VERSION = "1.2.5"
 
 $ErrorActionPreference = "SilentlyContinue"
 
@@ -50,6 +50,7 @@ $Scripts = [ordered]@{
   "veeam-report.ps1"              = "scripts/windows/veeam-report.ps1"
   "veeam-restore-test-report.ps1" = "scripts/windows/veeam-restore-test-report.ps1"
   "kopia-report.ps1"              = "scripts/windows/kopia-report.ps1"
+  "ad-backup.ps1"                 = "scripts/windows/ad-backup.ps1"
   "report-smb-acl.ps1"            = "scripts/windows/report-smb-acl.ps1"
   "smb-check.ps1"                 = "scripts/windows/smb-check.ps1"
   "device-report.ps1"             = "scripts/windows/device-report.ps1"
@@ -214,7 +215,9 @@ foreach ($scriptName in $Scripts.Keys) {
     Ok "${scriptName}: $localVer -> $remoteVer | sha256: $($sha.Substring(0,16))..."
     $updated++
 
-    if ($SafeToRun -contains $scriptName) {
+    # Solo correr scripts que ya estaban instalados: uno recién bajado nunca se configuró
+    # ni se programó en este equipo (ej: system-health-server.ps1 en una estación de trabajo).
+    if ($SafeToRun -contains $scriptName -and $localVer -gt [version]"0.0.0") {
       $scriptsToRun.Add($dest)
     }
 
