@@ -57,9 +57,13 @@ function cardStaleLevel(latest: ServiceHeartbeat | undefined): 'none' | 'warn' |
   return 'none';
 }
 
+/** Abre la vista enfocada en un servicio (desde el tablero "Para hoy"). nonce fuerza re-aplicar el mismo foco. */
+export type TelemetryFocus = { serviceId: string; view: 'cards' | 'backups'; nonce: number };
+
 type Props = {
   services: Service[];
   clients: Client[];
+  focus?: TelemetryFocus;
 };
 
 interface DiskRaidEntry {
@@ -327,7 +331,7 @@ function SourceIcon({ source }: { source: string }) {
   return <Icon className="w-3.5 h-3.5" />;
 }
 
-export function TelemetryDashboard({ services, clients }: Props) {
+export function TelemetryDashboard({ services, clients, focus }: Props) {
   const [heartbeats, setHeartbeats] = useState<ServiceHeartbeat[]>([]);
   const [backups, setBackups] = useState<ServiceBackup[]>([]);
   const [aclSnapshots, setAclSnapshots] = useState<AclSnapshot[]>([]);
@@ -343,6 +347,26 @@ export function TelemetryDashboard({ services, clients }: Props) {
   const [showAllBackups, setShowAllBackups] = useState(false);
   const [viewMode, setViewMode] = useState<'cards' | 'log' | 'backups' | 'acl' | 'sessions'>('cards');
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!focus) return;
+    const svc = services.find(s => s.id === focus.serviceId);
+    if (!svc) return;
+    const name = svc.business_name || svc.name;
+    if (focus.view === 'backups') {
+      setBackupClientFilter('all');
+      setBackupSearch(name);
+      setShowAllBackups(false);
+    } else {
+      setClientFilter('all');
+      setStatusFilter('all');
+      setSearch(name);
+      setExpandedId(null);
+    }
+    setViewMode(focus.view);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.nonce]);
   const [companyName, setCompanyName] = useState<string>('Cenas-Support');
   const [sendingReview, setSendingReview] = useState<string | null>(null);
   const [reviewLinks, setReviewLinks] = useState<Record<string, string>>({});
