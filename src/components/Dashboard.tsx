@@ -15,6 +15,7 @@ const ImportModal = lazy(() => import('./ImportModal').then(m => ({ default: m.I
 const PaymentsView = lazy(() => import('./PaymentsView').then(m => ({ default: m.PaymentsView })));
 const RoadmapManager = lazy(() => import('./RoadmapManager').then(m => ({ default: m.RoadmapManager })));
 const LicenseManager = lazy(() => import('./LicenseManager').then(m => ({ default: m.LicenseManager })));
+import type { TelemetryFocus } from './TelemetryDashboard';
 const TelemetryDashboard = lazy(() => import('./TelemetryDashboard').then(m => ({ default: m.TelemetryDashboard })));
 const DataExportImport = lazy(() => import('./DataExportImport').then(m => ({ default: m.DataExportImport })));
 const SettingsPanel = lazy(() => import('./SettingsPanel').then(m => ({ default: m.SettingsPanel })));
@@ -56,6 +57,7 @@ export function Dashboard() {
   const [showAddProject, setShowAddProject] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [focusClientId, setFocusClientId] = useState<string | undefined>();
+  const [telemetryFocus, setTelemetryFocus] = useState<TelemetryFocus | undefined>();
 
   useEffect(() => {
     supabase.from('user_settings').select('logo_url').maybeSingle()
@@ -245,7 +247,15 @@ export function Dashboard() {
 
         {activeTab === 'dashboard' && (
           <div className="space-y-8">
-            <DailyOpsPanel services={services} clients={clients} onNavigate={setActiveTab} />
+            <DailyOpsPanel
+              services={services}
+              clients={clients}
+              onNavigate={setActiveTab}
+              onOpenTelemetry={(serviceId, view) => {
+                setTelemetryFocus({ serviceId, view, nonce: Date.now() });
+                setActiveTab('telemetry');
+              }}
+            />
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -509,7 +519,7 @@ export function Dashboard() {
         )}
 
         {activeTab === 'telemetry' && (
-          <TelemetryDashboard services={services} clients={clients} />
+          <TelemetryDashboard services={services} clients={clients} focus={telemetryFocus} />
         )}
 
         {activeTab === 'infrastructure' && (
@@ -580,6 +590,7 @@ type DailyOpsSeverity = 'urgent' | 'high' | 'normal';
 
 type DailyOpsItem = {
   id: string;
+  serviceId: string;
   kind: DailyOpsKind;
   severity: DailyOpsSeverity;
   serviceName: string;
@@ -629,10 +640,12 @@ function DailyOpsPanel({
   services,
   clients,
   onNavigate,
+  onOpenTelemetry,
 }: {
   services: Service[];
   clients: Client[];
   onNavigate: (tab: typeof activeTabValues[number]) => void;
+  onOpenTelemetry: (serviceId: string, view: 'cards' | 'backups') => void;
 }) {
   const [items, setItems] = useState<DailyOpsItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -647,6 +660,7 @@ function DailyOpsPanel({
     const now = new Date();
     const active = services.filter(s => s.status === 'Active');
     const base = (svc: Service) => ({
+      serviceId: svc.id,
       serviceName: svc.business_name || svc.name,
       clientName: clientMap[svc.client_id]?.company_name ?? '',
     });
@@ -817,7 +831,13 @@ function DailyOpsPanel({
                   return (
                     <button
                       key={item.id}
-                      onClick={() => onNavigate(meta.tab)}
+                      onClick={() => {
+                        if (item.kind === 'backup' || item.kind === 'signal') {
+                          onOpenTelemetry(item.serviceId, item.kind === 'backup' ? 'backups' : 'cards');
+                        } else {
+                          onNavigate(meta.tab);
+                        }
+                      }}
                       className="w-full text-left bg-white rounded-xl border border-gray-200 hover:border-gray-300 hover:shadow-sm transition p-3.5"
                     >
                       <p className="text-sm font-semibold text-gray-900 truncate">{item.serviceName}</p>
