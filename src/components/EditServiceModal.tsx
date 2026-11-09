@@ -658,7 +658,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
             />
           </div>
 
-          <IngestSecretPanel serviceId={service.id} currentSecret={service.ingest_secret} />
+          <IngestSecretPanel serviceId={service.id} serviceName={service.business_name || service.name} currentSecret={service.ingest_secret} />
 
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose}
@@ -832,12 +832,32 @@ function MikroTikSetupPanel({ service }: { service: Service }) {
   );
 }
 
-function IngestSecretPanel({ serviceId, currentSecret }: { serviceId: string; currentSecret?: string }) {
-  const [secret, setSecret] = useState(currentSecret || '');
+function CopyRow({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
   const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(value)
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })
+      .catch(() => {});
+  };
+  return (
+    <div>
+      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <div className="flex items-start gap-2 bg-gray-50 rounded-md px-3 py-2">
+        <code className={`flex-1 min-w-0 text-xs text-gray-600 break-all ${mono ? 'font-mono' : ''}`}>{value}</code>
+        <button type="button" onClick={copy} title="Copy" className="shrink-0 text-gray-400 hover:text-gray-600">
+          {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function IngestSecretPanel({ serviceId, serviceName, currentSecret }: { serviceId: string; serviceName: string; currentSecret?: string }) {
+  const [secret, setSecret] = useState(currentSecret || '');
   const [rotating, setRotating] = useState(false);
 
   const rotate = async () => {
+    if (secret && !window.confirm('Scripts using the current secret will stop reporting until they are updated. Rotate anyway?')) return;
     setRotating(true);
     const newSecret = Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, '0')).join('');
     const { error } = await supabase.from('services').update({ ingest_secret: newSecret }).eq('id', serviceId);
@@ -845,31 +865,30 @@ function IngestSecretPanel({ serviceId, currentSecret }: { serviceId: string; cu
     setRotating(false);
   };
 
-  const copy = () => {
-    navigator.clipboard.writeText(secret);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  if (!secret) return null;
+  const psName = serviceName.replace(/"/g, "'");
 
   return (
-    <div className="border border-gray-200 rounded-lg p-4">
-      <div className="flex items-center justify-between mb-2">
-        <label className="text-sm font-medium text-gray-700">Ingest Secret</label>
+    <div className="border border-gray-200 rounded-lg p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <label className="text-sm font-medium text-gray-700">Script credentials</label>
         <button type="button" onClick={rotate} disabled={rotating}
           className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 disabled:opacity-50">
           <RefreshCw className={`w-3.5 h-3.5 ${rotating ? 'animate-spin' : ''}`} />
-          Rotate
+          {secret ? 'Rotate secret' : 'Generate secret'}
         </button>
       </div>
-      <div className="flex items-center gap-2 bg-gray-50 rounded-md px-3 py-2">
-        <code className="flex-1 text-xs font-mono text-gray-600 truncate">{secret}</code>
-        <button type="button" onClick={copy} className="shrink-0 text-gray-400 hover:text-gray-600">
-          {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
-        </button>
-      </div>
-      <p className="text-xs text-gray-400 mt-2">Used to authenticate ingest scripts. Store in the server's <code className="bg-gray-100 px-1 rounded">.env</code> file as <code className="bg-gray-100 px-1 rounded">SERVICE_CATALOG_SECRET</code>.</p>
+      <CopyRow label="Service ID (SERVICE_ID)" value={serviceId} />
+      {secret ? (
+        <>
+          <CopyRow label="Ingest Secret (INGEST_SECRET)" value={secret} />
+          <CopyRow
+            label="As an extra service on another host — Windows config.ps1, inside $EXTRA_HEALTH_SERVICES = @( … )"
+            value={`@{ Name = "${psName}"; ServiceId = "${serviceId}"; IngestSecret = "${secret}" }`}
+          />
+        </>
+      ) : (
+        <p className="text-xs text-gray-500">No ingest secret yet — generate one so scripts can report to this service.</p>
+      )}
     </div>
   );
 }
