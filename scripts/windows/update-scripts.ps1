@@ -26,7 +26,7 @@ param(
   [switch]$Force
 )
 
-$SCRIPT_VERSION = "1.2.5"
+$SCRIPT_VERSION = "1.2.6"
 
 $ErrorActionPreference = "SilentlyContinue"
 
@@ -50,6 +50,7 @@ $Scripts = [ordered]@{
   "veeam-report.ps1"              = "scripts/windows/veeam-report.ps1"
   "veeam-restore-test-report.ps1" = "scripts/windows/veeam-restore-test-report.ps1"
   "kopia-report.ps1"              = "scripts/windows/kopia-report.ps1"
+  "cobian-report.ps1"             = "scripts/windows/cobian-report.ps1"
   "ad-backup.ps1"                 = "scripts/windows/ad-backup.ps1"
   "report-smb-acl.ps1"            = "scripts/windows/report-smb-acl.ps1"
   "smb-check.ps1"                 = "scripts/windows/smb-check.ps1"
