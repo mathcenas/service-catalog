@@ -4,7 +4,8 @@ import { B, EMAIL_FONT, emailMeta } from "../_shared/emailBrand.ts";
 import { pushTaskToTracker, resolveDefaultProject } from "../_shared/taskTracker.ts";
 
 // Runs via pg_cron (no JWT). Sends ONE email to the operator when a service
-// that has backup history hasn't reported a backup in the last 26 hours.
+// that has backup history hasn't reported a backup within its expected frequency
+// (services.backup_max_age_hours: NULL = 26 h, 0 = not monitored).
 // Never sends to clients — this is an internal ops alert.
 
 Deno.serve(async (_req: Request) => {
@@ -21,17 +22,22 @@ Deno.serve(async (_req: Request) => {
     return new Response(JSON.stringify({ error: "Missing RESEND_API_KEY or OPS_ALERT_EMAIL" }), { status: 500 });
   }
 
-  const since26h = new Date(Date.now() - 26 * 3600 * 1000).toISOString();
+  const DEFAULT_MAX_AGE_HOURS = 26;
 
-  // Services that have ever had a backup but haven't reported one in 26h
-  const { data: services } = await supabase
+  // Services that have ever had a backup but haven't reported one within their expected frequency
+  const { data: candidates } = await supabase
     .from("services")
-    .select("id, name, business_name, client_id, last_backup_at, user_id")
+    .select("id, name, business_name, client_id, last_backup_at, user_id, backup_max_age_hours")
     .eq("status", "Active")
-    .not("last_backup_at", "is", null)
-    .lt("last_backup_at", since26h);
+    .not("last_backup_at", "is", null);
 
-  if (!services || services.length === 0) {
+  const maxAgeHours = (s: any) => s.backup_max_age_hours ?? DEFAULT_MAX_AGE_HOURS;
+  const services = (candidates || []).filter((s: any) =>
+    s.backup_max_age_hours !== 0 &&
+    Date.now() - new Date(s.last_backup_at).getTime() > maxAgeHours(s) * 3600 * 1000
+  );
+
+  if (services.length === 0) {
     return new Response(JSON.stringify({ sent: 0, reason: "All backups current" }), { status: 200 });
   }
 
@@ -48,7 +54,7 @@ Deno.serve(async (_req: Request) => {
   const rows = services.map((s: any) => {
     const daysAgo = Math.floor((Date.now() - new Date(s.last_backup_at).getTime()) / 86400000);
     const hrsAgo  = Math.floor((Date.now() - new Date(s.last_backup_at).getTime()) / 3600000);
-    const color   = hrsAgo <= 48 ? "#f59e0b" : "#ef4444";
+    const color   = hrsAgo <= maxAgeHours(s) * 2 ? "#f59e0b" : "#ef4444";
     const age     = daysAgo >= 2 ? `${daysAgo}d` : `${hrsAgo}h`;
     return `<tr>
       <td style="padding:6px 8px;font-size:12px;color:#1e293b;">${s.business_name || s.name}</td>
@@ -82,7 +88,7 @@ Deno.serve(async (_req: Request) => {
       </table>
 
       <h2 style="font-size:17px;font-weight:700;color:${B.primary};margin:0 0 6px;">
-        ${services.length} servicio${services.length > 1 ? "s" : ""} sin backup en las últimas 26 horas
+        ${services.length} servicio${services.length > 1 ? "s" : ""} sin backup dentro de su frecuencia esperada
       </h2>
       <p style="font-size:12px;color:#64748b;margin:0 0 20px;">
         Estos servicios tienen historial de backup pero no reportaron uno reciente.
@@ -136,7 +142,7 @@ Deno.serve(async (_req: Request) => {
         description: `El servicio "${svcName}" no reportó backup en las últimas ${hrsAgo}h. Último backup: ${new Date(s.last_backup_at).toLocaleString("es-UY", { timeZone: "America/Montevideo" })}.`,
         type:        "request",
         status:      "not_started",
-        priority:    hrsAgo > 48 ? "high" : "medium",
+        priority:    hrsAgo > maxAgeHours(s) * 2 ? "high" : "medium",
       }, TT_API_KEY, TT_BASE, supabase, { source: "alert-backup-stale", clientId: s.client_id });
       if (taskId) ttPushed++;
     }

@@ -182,6 +182,7 @@ export type Service = {
   cloud_backup_enabled?: boolean;
   cloud_backup_retention_days?: number;
   telemetry_enabled?: boolean;
+  backup_max_age_hours?: number | null;
   allocated_hours?: number;
   extra_hour_rate?: number;
   paid_by?: PaidBy;

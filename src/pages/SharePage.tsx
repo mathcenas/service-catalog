@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapItemUpdate, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat, ClientApp, ServiceIncident } from '../lib/supabase';
 import { BackupMetricsModal } from '../components/BackupMetricsModal';
+import { backupMaxAgeHours } from '../lib/backupSchedule';
 
 type Props = { token: string };
 type Section = 'overview' | 'services' | 'licenses' | 'changes' | 'hours' | 'support' | 'tickets';
@@ -774,16 +775,21 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
   // All offline copies across all services, most recent first
   const offlineCopies = backups.filter(b => isOfflineBackup(b.job_name)).slice(0, 3);
 
-  function jobDotColor(status: string, hoursOld: number) {
+  // maxAge: expected backup frequency of the service in hours (null = not monitored)
+  function ageLevel(hoursOld: number, maxAge: number | null) {
+    if (maxAge === null) return 'ok';
+    return hoursOld > maxAge * 2 ? 'late' : hoursOld > maxAge ? 'due' : 'ok';
+  }
+  function jobDotColor(status: string, hoursOld: number, maxAge: number | null) {
     if (status === 'failed') return 'bg-red-500';
     if (status === 'warning') return 'bg-amber-500';
-    if (hoursOld > 48) return 'bg-red-500';
-    if (hoursOld > 24) return 'bg-amber-500';
-    return 'bg-emerald-500';
+    const age = ageLevel(hoursOld, maxAge);
+    return age === 'late' ? 'bg-red-500' : age === 'due' ? 'bg-amber-500' : 'bg-emerald-500';
   }
-  function jobTextColor(status: string, hoursOld: number) {
-    if (status === 'failed' || hoursOld > 48) return 'text-red-400';
-    if (status === 'warning' || hoursOld > 24) return 'text-amber-400';
+  function jobTextColor(status: string, hoursOld: number, maxAge: number | null) {
+    const age = ageLevel(hoursOld, maxAge);
+    if (status === 'failed' || age === 'late') return 'text-red-400';
+    if (status === 'warning' || age === 'due') return 'text-amber-400';
     return 'text-slate-400';
   }
 
@@ -814,14 +820,14 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
             const hoursOld = (Date.now() - new Date(s.last_backup_at!).getTime()) / 3600000;
             return (
               <div key={s.id} className="px-4 py-3 flex items-center gap-3">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${jobDotColor('success', hoursOld)}`} />
+                <span className={`w-2 h-2 rounded-full shrink-0 ${jobDotColor('success', hoursOld, backupMaxAgeHours(s))}`} />
                 <span className="text-sm font-medium text-white flex-1">{s.business_name || s.name}</span>
                 {s.last_backup_size_bytes != null && (
                   <span className="text-xs text-slate-400 bg-[#0B192C] px-2 py-0.5 rounded-full font-medium">
                     {formatBytes(s.last_backup_size_bytes)}
                   </span>
                 )}
-                <span className={`text-xs font-medium ${jobTextColor('success', hoursOld)}`}>
+                <span className={`text-xs font-medium ${jobTextColor('success', hoursOld, backupMaxAgeHours(s))}`}>
                   {formatTimeAgo(s.last_backup_at!)}
                 </span>
               </div>
@@ -854,7 +860,7 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
                 return (
                   <div key={jobName} className={multiJob ? 'ml-3' : ''}>
                     <div className="flex items-center gap-3">
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${jobDotColor(last.status, hoursOld)}`} />
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${jobDotColor(last.status, hoursOld, backupMaxAgeHours(s))}`} />
                       <div className="flex-1 min-w-0">
                         {!multiJob && (
                           <span className="text-sm font-medium text-white mr-2">{s.business_name || s.name}</span>
@@ -871,7 +877,7 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
                             {formatBytes(last.size_bytes)}
                           </span>
                         )}
-                        <span className={`text-xs font-medium ${jobTextColor(last.status, hoursOld)}`}>
+                        <span className={`text-xs font-medium ${jobTextColor(last.status, hoursOld, backupMaxAgeHours(s))}`}>
                           {formatTimeAgo(last.backed_up_at)}
                         </span>
                         {!multiJob && (
