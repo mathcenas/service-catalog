@@ -50,8 +50,10 @@ if (-not $env:SC_VEEAM_RELAUNCHED) {
 
 $_scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 . "$_scriptDir\config.ps1"
-$SCRIPT_VERSION = "1.1.0"
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+$SCRIPT_VERSION = "1.1.1"
+# Agregar TLS 1.2 sin quitar los protocolos ya habilitados: dejar solo TLS 1.2 puede romper la
+# inicialización SSL del módulo de Veeam 13 ("SSslOptions threw an exception").
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
