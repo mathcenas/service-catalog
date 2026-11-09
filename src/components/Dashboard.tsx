@@ -620,75 +620,86 @@ function DailyOpsPanel({
     const result: DailyOpsItem[] = [];
     const now = new Date();
 
-    // 1. Backups fallidos o sin reporte en las últimas 26h
-    const backupCutoff = new Date(now.getTime() - 26 * 60 * 60 * 1000).toISOString();
-    const { data: backups } = await supabase
+    const active = services.filter(s => s.status === 'Active');
+    const ageLabel = (iso: string) => {
+      const h = Math.round((now.getTime() - new Date(iso).getTime()) / 3_600_000);
+      return h >= 48 ? `${Math.floor(h / 24)} días` : `${h}h`;
+    };
+
+    // 1a. Backup fallido en las últimas 48h sin uno bueno después (last_backup_at
+    //     solo avanza con success/warning). Traer todo el historial chocaba con el
+    //     límite de 1000 filas y dejaba afuera a los servicios más atrasados.
+    const failCutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+    const { data: recentFails } = await supabase
       .from('service_backups')
-      .select('service_id, job_name, status, created_at')
+      .select('service_id, job_name, created_at')
       .in('service_id', activeIds)
+      .in('status', ['failed', 'error'])
+      .gte('created_at', failCutoff)
       .order('created_at', { ascending: false });
 
-    if (backups) {
-      // Agrupar por servicio: último backup por servicio
-      const latestByService: Record<string, typeof backups[0]> = {};
-      for (const b of backups) {
-        if (!latestByService[b.service_id]) latestByService[b.service_id] = b;
-      }
-      // Solo evaluar servicios que ya tienen historial de backups
-      const servicesWithBackups = services.filter(s => s.status === 'Active' && latestByService[s.id]);
-      for (const svc of servicesWithBackups) {
-        const latest = latestByService[svc.id];
-        const clientName = clientMap[svc.client_id]?.company_name ?? '';
-        if (latest.status === 'failed' || latest.status === 'error') {
-          result.push({
-            id: `backup-fail-${svc.id}`,
-            kind: 'backup_fail',
-            serviceName: svc.business_name || svc.name,
-            clientName,
-            detail: `Último backup fallido — ${latest.job_name ?? ''}`,
-          });
-        } else if (latest.created_at < backupCutoff) {
-          const hoursAgo = Math.round((now.getTime() - new Date(latest.created_at).getTime()) / 3_600_000);
-          result.push({
-            id: `backup-stale-${svc.id}`,
-            kind: 'backup_fail',
-            serviceName: svc.business_name || svc.name,
-            clientName,
-            detail: `Sin backup hace ${hoursAgo}h`,
-          });
-        }
-      }
+    const latestFail: Record<string, { job_name: string | null; created_at: string }> = {};
+    for (const b of recentFails ?? []) {
+      if (!latestFail[b.service_id]) latestFail[b.service_id] = b;
+    }
+    const failedIds = new Set<string>();
+    for (const svc of active) {
+      const fail = latestFail[svc.id];
+      if (!fail || (svc.last_backup_at && svc.last_backup_at > fail.created_at)) continue;
+      failedIds.add(svc.id);
+      result.push({
+        id: `backup-fail-${svc.id}`,
+        kind: 'backup_fail',
+        serviceName: svc.business_name || svc.name,
+        clientName: clientMap[svc.client_id]?.company_name ?? '',
+        detail: `Último backup fallido — ${fail.job_name ?? ''}`,
+      });
     }
 
-    // 2. Heartbeats vencidos (servidor sin reporte en 2h)
-    const hbCutoff = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString();
-    const { data: heartbeats } = await supabase
-      .from('service_heartbeats')
-      .select('service_id, received_at, source')
-      .in('service_id', activeIds)
-      .eq('source', 'health')
-      .order('received_at', { ascending: false });
+    // 1b. Sin backup en 26h — mismo criterio que el mail de alert-backup-stale.
+    const backupCutoff = new Date(now.getTime() - 26 * 60 * 60 * 1000).toISOString();
+    for (const svc of active) {
+      if (!svc.last_backup_at || svc.last_backup_at >= backupCutoff || failedIds.has(svc.id)) continue;
+      result.push({
+        id: `backup-stale-${svc.id}`,
+        kind: 'backup_fail',
+        serviceName: svc.business_name || svc.name,
+        clientName: clientMap[svc.client_id]?.company_name ?? '',
+        detail: `Sin backup hace ${ageLabel(svc.last_backup_at)}`,
+      });
+    }
 
-    if (heartbeats) {
-      const latestHb: Record<string, string> = {};
-      for (const hb of heartbeats) {
-        if (!latestHb[hb.service_id]) latestHb[hb.service_id] = hb.received_at;
-      }
-      for (const svc of services.filter(s => s.status === 'Active' && s.specifications)) {
-        // Solo servicios que tienen historial de heartbeat (ya enviaron alguno)
-        if (!latestHb[svc.id]) continue;
-        if (latestHb[svc.id] < hbCutoff) {
-          const hoursAgo = Math.round((now.getTime() - new Date(latestHb[svc.id]).getTime()) / 3_600_000);
-          const clientName = clientMap[svc.client_id]?.company_name ?? '';
-          result.push({
-            id: `no-hb-${svc.id}`,
-            kind: 'no_heartbeat',
-            serviceName: svc.business_name || svc.name,
-            clientName,
-            detail: `Sin señal hace ${hoursAgo}h`,
-          });
-        }
-      }
+    // 2. Equipos con telemetría activada sin heartbeat de system-health en 2h
+    const hbCutoff = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString();
+    const monitored = active.filter(s => s.telemetry_enabled);
+    if (monitored.length > 0) {
+      const { data: recentHb } = await supabase
+        .from('service_heartbeats')
+        .select('service_id')
+        .in('service_id', monitored.map(s => s.id))
+        .eq('source', 'system-health')
+        .gte('received_at', hbCutoff);
+      const alive = new Set((recentHb ?? []).map(h => h.service_id));
+      const silent = monitored.filter(s => !alive.has(s.id));
+      const lastSeen = await Promise.all(silent.map(s =>
+        supabase.from('service_heartbeats')
+          .select('received_at')
+          .eq('service_id', s.id)
+          .eq('source', 'system-health')
+          .order('received_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+          .then(r => r.data?.received_at ?? null)
+      ));
+      silent.forEach((svc, i) => {
+        result.push({
+          id: `no-hb-${svc.id}`,
+          kind: 'no_heartbeat',
+          serviceName: svc.business_name || svc.name,
+          clientName: clientMap[svc.client_id]?.company_name ?? '',
+          detail: lastSeen[i] ? `Sin señal hace ${ageLabel(lastSeen[i]!)}` : 'Nunca reportó',
+        });
+      });
     }
 
     // 3. Servicios degradados/caídos (ya cubierto en OperationalStatusPanel pero resumido aquí)
