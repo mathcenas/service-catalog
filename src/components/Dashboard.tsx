@@ -1,28 +1,30 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Users, Server, DollarSign, AlertCircle, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings, Clock, CheckCircle2, AlertTriangle, Wrench, XCircle, Globe, MonitorSmartphone, Mail, Menu, X, Network, Bell, ShieldAlert, WifiOff, HardDrive, BookOpen } from 'lucide-react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import { Users, Server, DollarSign, Plus, LogOut, Upload, FolderOpen, CreditCard, Rocket, FileText, Activity, Database, Settings, Clock, CheckCircle2, AlertTriangle, Wrench, XCircle, Globe, MonitorSmartphone, Mail, Menu, X, Network, Bell, ShieldAlert, WifiOff, HardDrive, BookOpen, CalendarDays, Flag } from 'lucide-react';
 import { supabase, Client, Service, Project, ServiceType } from '../lib/supabase';
 import { backupMaxAgeHours } from '../lib/backupSchedule';
 import { useAuth } from '../contexts/AuthContext';
-import { ClientList } from './ClientList';
-import { ServiceList } from './ServiceList';
-import { ProjectList } from './ProjectList';
 import { AddClientModal } from './AddClientModal';
 import { AddServiceModal } from './AddServiceModal';
 import { AddProjectModal } from './AddProjectModal';
-import { ImportModal } from './ImportModal';
-import { PaymentsView } from './PaymentsView';
-import { RoadmapManager } from './RoadmapManager';
-import { LicenseManager } from './LicenseManager';
-import { TelemetryDashboard } from './TelemetryDashboard';
-import { DataExportImport } from './DataExportImport';
-import { SettingsPanel } from './SettingsPanel';
-import { SupportHoursManager } from './SupportHoursManager';
-import { InfrastructureView } from './InfrastructureView';
-import { SoftwareInventoryView } from './SoftwareInventoryView';
-import { EmailAuditAdminView } from './EmailAuditAdminView';
-import { MonthlySummaryView } from './MonthlySummaryView';
-import NetworkTopologyPage from '../pages/NetworkTopologyPage';
-import { NotificationCenterView } from './NotificationCenterView';
+
+// Each tab loads its own code when it is first opened.
+const ClientList = lazy(() => import('./ClientList').then(m => ({ default: m.ClientList })));
+const ServiceList = lazy(() => import('./ServiceList').then(m => ({ default: m.ServiceList })));
+const ProjectList = lazy(() => import('./ProjectList').then(m => ({ default: m.ProjectList })));
+const ImportModal = lazy(() => import('./ImportModal').then(m => ({ default: m.ImportModal })));
+const PaymentsView = lazy(() => import('./PaymentsView').then(m => ({ default: m.PaymentsView })));
+const RoadmapManager = lazy(() => import('./RoadmapManager').then(m => ({ default: m.RoadmapManager })));
+const LicenseManager = lazy(() => import('./LicenseManager').then(m => ({ default: m.LicenseManager })));
+const TelemetryDashboard = lazy(() => import('./TelemetryDashboard').then(m => ({ default: m.TelemetryDashboard })));
+const DataExportImport = lazy(() => import('./DataExportImport').then(m => ({ default: m.DataExportImport })));
+const SettingsPanel = lazy(() => import('./SettingsPanel').then(m => ({ default: m.SettingsPanel })));
+const SupportHoursManager = lazy(() => import('./SupportHoursManager').then(m => ({ default: m.SupportHoursManager })));
+const InfrastructureView = lazy(() => import('./InfrastructureView').then(m => ({ default: m.InfrastructureView })));
+const SoftwareInventoryView = lazy(() => import('./SoftwareInventoryView').then(m => ({ default: m.SoftwareInventoryView })));
+const EmailAuditAdminView = lazy(() => import('./EmailAuditAdminView').then(m => ({ default: m.EmailAuditAdminView })));
+const MonthlySummaryView = lazy(() => import('./MonthlySummaryView').then(m => ({ default: m.MonthlySummaryView })));
+const NotificationCenterView = lazy(() => import('./NotificationCenterView').then(m => ({ default: m.NotificationCenterView })));
+const NetworkTopologyPage = lazy(() => import('../pages/NetworkTopologyPage'));
 
 type Stats = {
   totalClients: number;
@@ -30,7 +32,6 @@ type Stats = {
   totalServices: number;
   activeServices: number;
   monthlyRevenue: number;
-  expiringServices: number;
 };
 
 export function Dashboard() {
@@ -43,7 +44,6 @@ export function Dashboard() {
     totalServices: 0,
     activeServices: 0,
     monthlyRevenue: 0,
-    expiringServices: 0,
   });
   const [clients, setClients] = useState<Client[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -110,21 +110,12 @@ export function Dashboard() {
         return sum + perMonth;
       }, 0);
 
-    const today = new Date();
-    const thirtyDaysFromNow = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
-    const expiringServices = services.filter(s => {
-      if (!s.next_renewal_date || s.status !== 'Active') return false;
-      const renewalDate = new Date(s.next_renewal_date);
-      return renewalDate >= today && renewalDate <= thirtyDaysFromNow;
-    }).length;
-
     setStats({
       totalClients: clients.length,
       activeClients,
       totalServices: services.length,
       activeServices,
       monthlyRevenue,
-      expiringServices,
     });
 
     setLoading(false);
@@ -246,9 +237,16 @@ export function Dashboard() {
           </span>
         </div>
         <div className="max-w-6xl mx-auto px-4 py-6 md:px-6 md:py-8">
+        <Suspense fallback={
+          <div className="flex justify-center py-16">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+          </div>
+        }>
 
         {activeTab === 'dashboard' && (
           <div className="space-y-8">
+            <DailyOpsPanel services={services} clients={clients} onNavigate={setActiveTab} />
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -292,28 +290,10 @@ export function Dashboard() {
               </div>
             </div>
 
-            {stats.expiringServices > 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-6">
-                <div className="flex items-start gap-4">
-                  <AlertCircle className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h3 className="font-semibold text-amber-900 mb-1">
-                      {stats.expiringServices} Service{stats.expiringServices !== 1 ? 's' : ''} Expiring Soon
-                    </h3>
-                    <p className="text-sm text-amber-800">
-                      You have services that will expire within the next 30 days. Review them in the Services tab.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* Operational Status Overview — only when there's something worth flagging */}
             {services.some(s => s.status === 'Active' && (s.operational_status === 'Degraded' || s.operational_status === 'Down' || s.operational_status === 'Maintenance')) && (
               <OperationalStatusPanel services={services} clients={clients} />
             )}
-
-            <DailyOpsPanel services={services} clients={clients} onNavigate={setActiveTab} />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -559,6 +539,7 @@ export function Dashboard() {
         {activeTab === 'settings' && (
           <SettingsPanel />
         )}
+        </Suspense>
         </div>
       </div>
 
@@ -579,11 +560,13 @@ export function Dashboard() {
       )}
 
       {showImport && (
+        <Suspense fallback={null}>
         <ImportModal
           onClose={() => setShowImport(false)}
           onSuccess={() => { setShowImport(false); fetchData(); }}
           clients={clients}
         />
+        </Suspense>
       )}
     </div>
   );
@@ -592,13 +575,55 @@ export function Dashboard() {
 
 // ── Daily Ops Panel ──────────────────────────────────────────────────────────
 
+type DailyOpsKind = 'backup' | 'signal' | 'operation' | 'renewal';
+type DailyOpsSeverity = 'urgent' | 'high' | 'normal';
+
 type DailyOpsItem = {
   id: string;
-  kind: 'backup_fail' | 'no_heartbeat' | 'degraded';
+  kind: DailyOpsKind;
+  severity: DailyOpsSeverity;
   serviceName: string;
   clientName: string;
   detail: string;
+  /** ISO date the problem started (past) or is due (renewals, future) */
+  when?: string;
+  /** Short extra fact shown as a chip: job name, expected frequency, billing cycle… */
+  tag?: string;
 };
+
+const SEVERITY_ORDER: Record<DailyOpsSeverity, number> = { urgent: 0, high: 1, normal: 2 };
+
+const SEVERITY_META: Record<DailyOpsSeverity, { label: string; cls: string }> = {
+  urgent: { label: 'Urgente', cls: 'text-red-600 bg-red-50 border-red-100' },
+  high:   { label: 'Alta',    cls: 'text-amber-600 bg-amber-50 border-amber-100' },
+  normal: { label: 'Normal',  cls: 'text-blue-600 bg-blue-50 border-blue-100' },
+};
+
+const KIND_META: Record<DailyOpsKind, { label: string; dot: string; icon: typeof HardDrive; tab: typeof activeTabValues[number] }> = {
+  backup:    { label: 'Backups',       dot: 'bg-orange-500', icon: HardDrive,   tab: 'telemetry' },
+  signal:    { label: 'Sin señal',     dot: 'bg-red-500',    icon: WifiOff,     tab: 'telemetry' },
+  operation: { label: 'Operación',     dot: 'bg-amber-500',  icon: ShieldAlert, tab: 'infrastructure' },
+  renewal:   { label: 'Renovaciones',  dot: 'bg-blue-500',   icon: CalendarDays, tab: 'services' },
+};
+
+const FREQUENCY_LABEL: Record<number, string> = { 26: 'Diario', 74: 'Días hábiles', 194: 'Semanal' };
+
+const BILLING_CYCLE_ES: Record<string, string> = {
+  Monthly: 'Mensual', Quarterly: 'Trimestral', 'Semi-Annually': 'Semestral',
+  Annually: 'Anual', Biennially: 'Bienal', 'One-Time': 'Pago único',
+};
+
+function relativeEs(iso: string, now: Date): string {
+  const diffH = (new Date(iso).getTime() - now.getTime()) / 3_600_000;
+  const abs = Math.abs(diffH);
+  if (diffH >= 0) {
+    const days = Math.ceil(diffH / 24);
+    return days <= 0 ? 'hoy' : days === 1 ? 'mañana' : `en ${days} días`;
+  }
+  if (abs < 1) return 'hace minutos';
+  if (abs < 48) return `hace ${Math.round(abs)} h`;
+  return `hace ${Math.floor(abs / 24)} días`;
+}
 
 function DailyOpsPanel({
   services,
@@ -620,12 +645,11 @@ function DailyOpsPanel({
     setLoading(true);
     const result: DailyOpsItem[] = [];
     const now = new Date();
-
     const active = services.filter(s => s.status === 'Active');
-    const ageLabel = (iso: string) => {
-      const h = Math.round((now.getTime() - new Date(iso).getTime()) / 3_600_000);
-      return h >= 48 ? `${Math.floor(h / 24)} días` : `${h}h`;
-    };
+    const base = (svc: Service) => ({
+      serviceName: svc.business_name || svc.name,
+      clientName: clientMap[svc.client_id]?.company_name ?? '',
+    });
 
     // 1a. Backup fallido en las últimas 48h sin uno bueno después (last_backup_at
     //     solo avanza con success/warning). Traer todo el historial chocaba con el
@@ -650,11 +674,10 @@ function DailyOpsPanel({
       if (svc.last_backup_at && svc.last_backup_at > fail.created_at) continue;
       failedIds.add(svc.id);
       result.push({
-        id: `backup-fail-${svc.id}`,
-        kind: 'backup_fail',
-        serviceName: svc.business_name || svc.name,
-        clientName: clientMap[svc.client_id]?.company_name ?? '',
-        detail: `Último backup fallido — ${fail.job_name ?? ''}`,
+        id: `backup-fail-${svc.id}`, kind: 'backup', severity: 'urgent', ...base(svc),
+        detail: 'Último backup fallido',
+        when: fail.created_at,
+        tag: fail.job_name ?? undefined,
       });
     }
 
@@ -663,13 +686,13 @@ function DailyOpsPanel({
     for (const svc of active) {
       const maxAge = backupMaxAgeHours(svc);
       if (maxAge === null || !svc.last_backup_at || failedIds.has(svc.id)) continue;
-      if (now.getTime() - new Date(svc.last_backup_at).getTime() < maxAge * 3_600_000) continue;
+      const ageH = (now.getTime() - new Date(svc.last_backup_at).getTime()) / 3_600_000;
+      if (ageH < maxAge) continue;
       result.push({
-        id: `backup-stale-${svc.id}`,
-        kind: 'backup_fail',
-        serviceName: svc.business_name || svc.name,
-        clientName: clientMap[svc.client_id]?.company_name ?? '',
-        detail: `Sin backup hace ${ageLabel(svc.last_backup_at)}`,
+        id: `backup-stale-${svc.id}`, kind: 'backup', severity: ageH > maxAge * 2 ? 'urgent' : 'high', ...base(svc),
+        detail: 'Sin backup reciente',
+        when: svc.last_backup_at,
+        tag: FREQUENCY_LABEL[maxAge] ?? `Cada ${maxAge} h`,
       });
     }
 
@@ -696,28 +719,46 @@ function DailyOpsPanel({
           .then(r => r.data?.received_at ?? null)
       ));
       silent.forEach((svc, i) => {
+        const seen = lastSeen[i];
+        const ageH = seen ? (now.getTime() - new Date(seen).getTime()) / 3_600_000 : null;
         result.push({
-          id: `no-hb-${svc.id}`,
-          kind: 'no_heartbeat',
-          serviceName: svc.business_name || svc.name,
-          clientName: clientMap[svc.client_id]?.company_name ?? '',
-          detail: lastSeen[i] ? `Sin señal hace ${ageLabel(lastSeen[i]!)}` : 'Nunca reportó',
+          id: `no-hb-${svc.id}`, kind: 'signal', ...base(svc),
+          severity: ageH === null ? 'normal' : ageH > 24 ? 'urgent' : 'high',
+          detail: seen ? 'Dejó de reportar' : 'Telemetría activada, nunca reportó',
+          when: seen ?? undefined,
         });
       });
     }
 
-    // 3. Servicios degradados/caídos (ya cubierto en OperationalStatusPanel pero resumido aquí)
-    for (const svc of services.filter(s => s.status === 'Active' && (s.operational_status === 'Down' || s.operational_status === 'Degraded'))) {
-      const clientName = clientMap[svc.client_id]?.company_name ?? '';
+    // 3. Servicios caídos o degradados
+    for (const svc of active.filter(s => s.operational_status === 'Down' || s.operational_status === 'Degraded')) {
       result.push({
-        id: `ops-${svc.id}`,
-        kind: 'degraded',
-        serviceName: svc.business_name || svc.name,
-        clientName,
+        id: `ops-${svc.id}`, kind: 'operation', ...base(svc),
+        severity: svc.operational_status === 'Down' ? 'urgent' : 'high',
         detail: svc.operational_status === 'Down' ? 'Servicio caído' : 'Servicio degradado',
       });
     }
 
+    // 4. Renovaciones en los próximos 30 días
+    const in30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    for (const svc of active) {
+      if (!svc.next_renewal_date) continue;
+      const due = new Date(svc.next_renewal_date + 'T00:00:00');
+      if (due < new Date(now.toDateString()) || due > in30) continue;
+      const days = (due.getTime() - now.getTime()) / 86_400_000;
+      result.push({
+        id: `renewal-${svc.id}`, kind: 'renewal', ...base(svc),
+        severity: days <= 7 ? 'high' : 'normal',
+        detail: 'Renovación',
+        when: due.toISOString(),
+        tag: svc.billing_cycle ? (BILLING_CYCLE_ES[svc.billing_cycle] ?? svc.billing_cycle) : undefined,
+      });
+    }
+
+    result.sort((a, b) =>
+      SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] ||
+      (a.when && b.when ? a.when.localeCompare(b.when) : 0)
+    );
     setItems(result);
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -725,79 +766,90 @@ function DailyOpsPanel({
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 px-5 py-4 text-sm text-gray-400">
+        Revisando backups, señal y renovaciones…
+      </div>
+    );
+  }
 
-  const kindMeta = {
-    backup_fail:  { icon: HardDrive,   color: 'text-orange-600', bg: 'bg-orange-50',  border: 'border-orange-200', tab: 'telemetry'      as typeof activeTabValues[number] },
-    no_heartbeat: { icon: WifiOff,     color: 'text-red-600',    bg: 'bg-red-50',     border: 'border-red-200',    tab: 'telemetry'      as typeof activeTabValues[number] },
-    degraded:     { icon: ShieldAlert, color: 'text-amber-600',  bg: 'bg-amber-50',   border: 'border-amber-200',  tab: 'infrastructure' as typeof activeTabValues[number] },
-  };
-
-  // All clear
   if (items.length === 0) {
     return (
       <div className="flex items-center gap-3 px-5 py-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-800">
         <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
         <span className="font-medium">Todo en orden</span>
-        <span className="text-emerald-600">· Backups, heartbeats y servicios sin alertas</span>
+        <span className="text-emerald-600">· Backups, señal, operación y renovaciones sin pendientes</span>
       </div>
     );
   }
 
-  const grouped: Record<DailyOpsItem['kind'], DailyOpsItem[]> = {
-    backup_fail:  items.filter(i => i.kind === 'backup_fail'),
-    no_heartbeat: items.filter(i => i.kind === 'no_heartbeat'),
-    degraded:     items.filter(i => i.kind === 'degraded'),
-  };
-
-  const sectionLabels: Record<DailyOpsItem['kind'], string> = {
-    backup_fail:  'Backups',
-    no_heartbeat: 'Sin señal',
-    degraded:     'Operación',
-  };
+  const now = new Date();
+  const kinds = (['backup', 'signal', 'operation', 'renewal'] as DailyOpsKind[])
+    .filter(kind => items.some(i => i.kind === kind));
+  const urgent = items.filter(i => i.severity === 'urgent').length;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
-        <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-        <span className="text-sm font-semibold text-gray-900">Para hoy</span>
-        <span className="ml-auto text-xs text-gray-400">{items.length} {items.length === 1 ? 'alerta' : 'alertas'}</span>
+    <section>
+      <div className="flex items-baseline gap-2 mb-3">
+        <h2 className="text-lg font-semibold text-gray-900">Para hoy</h2>
+        <span className="text-sm text-gray-400">{items.length} pendiente{items.length === 1 ? '' : 's'}</span>
+        {urgent > 0 && <span className="text-sm font-medium text-red-600">· {urgent} urgente{urgent === 1 ? '' : 's'}</span>}
       </div>
-      <div className="divide-y divide-gray-50">
-        {(['backup_fail', 'no_heartbeat', 'degraded'] as DailyOpsItem['kind'][])
-          .filter(kind => grouped[kind].length > 0)
-          .map(kind => {
-            const meta = kindMeta[kind];
-            const Icon = meta.icon;
-            const list = grouped[kind];
-            return (
-              <div key={kind}>
-                <button
-                  onClick={() => onNavigate(meta.tab)}
-                  className="w-full flex items-center gap-2 px-5 py-2 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
-                >
-                  <Icon className={`w-3.5 h-3.5 ${meta.color}`} />
-                  <span className={`text-xs font-semibold uppercase tracking-wide ${meta.color}`}>{sectionLabels[kind]}</span>
-                  <span className={`ml-auto text-xs font-medium px-1.5 py-0.5 rounded-full ${meta.bg} ${meta.color} border ${meta.border}`}>
-                    {list.length}
-                  </span>
-                </button>
-                <ul className="divide-y divide-gray-50">
-                  {list.map(item => (
-                    <li key={item.id} className="px-5 py-2.5 flex items-start gap-3">
-                      <div className="flex-1 min-w-0">
-                        <span className="text-sm font-medium text-gray-900">{item.serviceName}</span>
-                        {item.clientName && <span className="text-xs text-gray-400 ml-1.5">· {item.clientName}</span>}
-                        <p className="text-xs text-gray-500 mt-0.5">{item.detail}</p>
+      <div className={`grid gap-4 grid-cols-1 sm:grid-cols-2 ${kinds.length === 3 ? 'xl:grid-cols-3' : kinds.length >= 4 ? 'xl:grid-cols-4' : ''}`}>
+        {kinds.map(kind => {
+          const meta = KIND_META[kind];
+          const list = items.filter(i => i.kind === kind);
+          return (
+            <div key={kind} className="min-w-0">
+              <button
+                onClick={() => onNavigate(meta.tab)}
+                className="flex items-center gap-2 mb-2 px-1 text-sm font-semibold text-gray-800 hover:text-gray-950"
+              >
+                <span className={`w-2 h-2 rounded-full ${meta.dot}`} />
+                {meta.label}
+                <span className="font-normal text-gray-400">{list.length}</span>
+              </button>
+              <div className="space-y-2">
+                {list.map(item => {
+                  const sev = SEVERITY_META[item.severity];
+                  const isFuture = item.when ? new Date(item.when) > now : false;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => onNavigate(meta.tab)}
+                      className="w-full text-left bg-white rounded-xl border border-gray-200 hover:border-gray-300 hover:shadow-sm transition p-3.5"
+                    >
+                      <p className="text-sm font-semibold text-gray-900 truncate">{item.serviceName}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 truncate">
+                        {item.detail}{item.clientName && <> · {item.clientName}</>}
+                      </p>
+                      <div className="flex flex-wrap gap-1.5 mt-2.5">
+                        {item.when && (
+                          <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium ${
+                            item.severity === 'urgent' && !isFuture ? 'border-red-100 text-red-600' : 'border-gray-200 text-gray-600'
+                          }`}>
+                            <Clock className="w-3 h-3" />{relativeEs(item.when, now)}
+                          </span>
+                        )}
+                        {item.tag && (
+                          <span className="inline-flex items-center rounded-md border border-gray-200 px-1.5 py-0.5 text-[11px] text-gray-600 max-w-full truncate">
+                            {item.tag}
+                          </span>
+                        )}
+                        <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium ${sev.cls}`}>
+                          <Flag className="w-3 h-3" />{sev.label}
+                        </span>
                       </div>
-                    </li>
-                  ))}
-                </ul>
+                    </button>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          );
+        })}
       </div>
-    </div>
+    </section>
   );
 }
 

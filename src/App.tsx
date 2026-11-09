@@ -1,11 +1,13 @@
+import { lazy, Suspense } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { Dashboard } from './components/Dashboard';
-import { SharePage } from './pages/SharePage';
-import { AclReviewPage } from './pages/AclReviewPage';
-import { EmailAuditPage } from './pages/EmailAuditPage';
 import { AccessPage } from './pages/AccessPage';
-import { ContactPage } from './pages/ContactPage';
-import { PreferencesPage } from './pages/PreferencesPage';
+
+const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
+const SharePage = lazy(() => import('./pages/SharePage').then(m => ({ default: m.SharePage })));
+const AclReviewPage = lazy(() => import('./pages/AclReviewPage').then(m => ({ default: m.AclReviewPage })));
+const EmailAuditPage = lazy(() => import('./pages/EmailAuditPage').then(m => ({ default: m.EmailAuditPage })));
+const ContactPage = lazy(() => import('./pages/ContactPage').then(m => ({ default: m.ContactPage })));
+const PreferencesPage = lazy(() => import('./pages/PreferencesPage').then(m => ({ default: m.PreferencesPage })));
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -66,7 +68,13 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <Suspense fallback={
+        <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#06B6D4]"></div>
+        </div>
+      }>
+        <AppContent />
+      </Suspense>
     </AuthProvider>
   );
 }
