@@ -70,7 +70,7 @@ type EntraDevice = {
 function parseEntraCSV(text: string): EntraDevice[] {
   const lines = text.split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) return [];
-  const headers = lines[0].split(',').map(h => h.trim());
+  const headers = lines[0].replace(/^\uFEFF/, '').split(',').map(h => h.trim());
   const idx = (name: string) => headers.indexOf(name);
   const iDisplayName  = idx('displayName');
   const iOwner        = idx('owner');
@@ -216,7 +216,7 @@ function parseDeviceReportCSV(text: string): DeviceReportRow[] {
   const idx = (n: string) => headers.indexOf(n);
   const iHostname  = idx('Hostname');
   const iIp        = idx('IP');
-  const iLocal     = idx('LocalUser');
+  const iLocal     = idx('LocalUser') >= 0 ? idx('LocalUser') : idx('LoggedUser');
   const iM365      = idx('M365User');
   const iNas       = idx('NASUser');
   const iOs        = idx('OS');
@@ -247,10 +247,12 @@ function parseDeviceReportCSV(text: string): DeviceReportRow[] {
 
 // Auto-detect CSV type by headers
 function detectCSVType(text: string): 'managengine' | 'entra' | 'device_report' | 'unknown' {
-  const firstLine = text.split(/\r?\n/)[0] ?? '';
+  // Set-Content -Encoding UTF8 (PowerShell 5.1) deja un BOM al inicio
+  const firstLine = (text.split(/\r?\n/)[0] ?? '').replace(/^\uFEFF/, '');
   if (firstLine.includes('deviceId') && firstLine.includes('displayName')) return 'entra';
   if (firstLine.startsWith('Software Version') || firstLine.startsWith('Software Name,Software Version')) return 'managengine';
-  if (firstLine.startsWith('Timestamp,Hostname,IP,LoggedUser')) return 'device_report';
+  // device-report.ps1 escribe LocalUser (versiones viejas: LoggedUser)
+  if (firstLine.startsWith('Timestamp,Hostname,IP,') && firstLine.includes('M365User')) return 'device_report';
   return 'unknown';
 }
 
