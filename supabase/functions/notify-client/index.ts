@@ -250,55 +250,62 @@ Deno.serve(async (req: Request) => {
       </table>
     `;
 
-    // Create tracking record for read receipt
+    // Un envío por destinatario: cada uno con su propio registro en email_opens
+    // (píxel + resend_email_id), así aperturas y clics quedan atribuidos a quien
+    // corresponde en vez de todos al email principal.
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { data: trackRecord } = await supabaseAdmin
-      .from("email_opens")
-      .insert({
-        user_id: user.id,
-        roadmap_item_id: roadmap_item_id || null,
-        client_email,
-      })
-      .select("tracking_id")
-      .single();
-
-    let finalHtml = htmlBody;
-    if (trackRecord?.tracking_id) {
-      const pixelUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/track-open?t=${trackRecord.tracking_id}`;
-      finalHtml += `<img src="${pixelUrl}" width="1" height="1" style="display:none;" alt="" />`;
-    }
-
-    const recipients = [client_email];
-    if (alt_email && alt_email !== client_email) {
-      recipients.push(alt_email);
-    }
-    if (cc_emails) {
-      cc_emails.split(',').map(e => e.trim()).filter(e => e && e !== client_email && e !== alt_email).forEach(e => recipients.push(e));
+    const recipients: string[] = [];
+    const seenRecipients = new Set<string>();
+    for (const e of [client_email, alt_email, ...(cc_emails ? cc_emails.split(",") : [])]) {
+      const addr = (e || "").trim();
+      if (addr && !seenRecipients.has(addr.toLowerCase())) {
+        seenRecipients.add(addr.toLowerCase());
+        recipients.push(addr);
+      }
     }
 
     const replyTo = Deno.env.get("RESEND_REPLY_TO") || "mathias@cenas.uy";
+    const fromAddr = Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Alerts <alerts@updates.cenas.uy>";
 
-    const resendRes = await fetch("https://api.resend.com/emails", {
+    const tracked: { email: string; trackingId: string | null; html: string }[] = [];
+    for (const email of recipients) {
+      const { data: trackRecord } = await supabaseAdmin
+        .from("email_opens")
+        .insert({ user_id: user.id, roadmap_item_id: roadmap_item_id || null, client_email: email })
+        .select("tracking_id")
+        .single();
+      let html = htmlBody;
+      if (trackRecord?.tracking_id) {
+        const pixelUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/track-open?t=${trackRecord.tracking_id}`;
+        html += `<img src="${pixelUrl}" width="1" height="1" style="display:none;" alt="" />`;
+      }
+      tracked.push({ email, trackingId: trackRecord?.tracking_id ?? null, html });
+    }
+
+    // Batch API: un request, un email (y un email_id) por destinatario
+    const resendRes = await fetch("https://api.resend.com/emails/batch", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${RESEND_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        from: Deno.env.get("RESEND_FROM_EMAIL") || "Cenas-Support Alerts <alerts@updates.cenas.uy>",
+      body: JSON.stringify(tracked.map(t => ({
+        from: fromAddr,
         reply_to: replyTo,
-        to: recipients,
+        to: [t.email],
         subject,
-        html: finalHtml,
-      }),
+        html: t.html,
+      }))),
     });
 
     if (!resendRes.ok) {
       const errBody = await resendRes.text();
+      const failedIds = tracked.map(t => t.trackingId).filter(Boolean) as string[];
+      if (failedIds.length) await supabaseAdmin.from("email_opens").delete().in("tracking_id", failedIds);
       return new Response(
         JSON.stringify({ error: "Failed to send email", details: errBody }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -306,17 +313,17 @@ Deno.serve(async (req: Request) => {
     }
 
     const resendData = await resendRes.json();
+    const sent: { id: string }[] = Array.isArray(resendData?.data) ? resendData.data : [];
 
-    // Store Resend email_id for webhook correlation (clicks, bounces, delivered)
-    if (resendData.id && trackRecord?.tracking_id) {
-      await supabaseAdmin
-        .from("email_opens")
-        .update({ resend_email_id: resendData.id })
-        .eq("tracking_id", trackRecord.tracking_id);
-    }
+    // Guardar el email_id de Resend de cada envío (webhooks: delivered, clicks, bounces)
+    await Promise.all(tracked.map((t, i) =>
+      sent[i]?.id && t.trackingId
+        ? supabaseAdmin.from("email_opens").update({ resend_email_id: sent[i].id }).eq("tracking_id", t.trackingId)
+        : Promise.resolve()
+    ));
 
     return new Response(
-      JSON.stringify({ success: true, email_id: resendData.id }),
+      JSON.stringify({ success: true, sent: recipients.length, email_ids: sent.map(x => x.id) }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
