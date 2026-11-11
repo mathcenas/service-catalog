@@ -347,6 +347,10 @@ export function TelemetryDashboard({ services, clients, focus }: Props) {
   const [showAllBackups, setShowAllBackups] = useState(false);
   const [viewMode, setViewMode] = useState<'cards' | 'log' | 'backups' | 'acl' | 'sessions'>('cards');
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [liveDevices, setLiveDevices] = useState<Record<string, SoftwareImport[]>>({});
+  useEffect(() => {
+    if (viewMode === 'acl') fetchLiveDeviceImports().then(setLiveDevices);
+  }, [viewMode]);
 
   useEffect(() => {
     if (!focus) return;
@@ -1219,7 +1223,7 @@ export function TelemetryDashboard({ services, clients, focus }: Props) {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2 justify-end">
                             <button
-                              onClick={() => exportAclHtml(snap, svc?.business_name || svc?.name || 'NAS', client?.company_name || '', logoUrl, companyName, client?.id)}
+                              onClick={() => exportAclHtml(snap, svc?.business_name || svc?.name || 'NAS', client?.company_name || '', logoUrl, companyName, client?.id, client ? liveDevices[client.id] : [])}
                               className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-2 py-1 rounded-lg transition-colors"
                             >
                               <Download className="w-3 h-3" /> PDF
@@ -1493,10 +1497,32 @@ function buildDeviceReportMap(files: SoftwareImport[]): Map<string, DeviceReport
   return map;
 }
 
-function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: string, logoUrl: string | null, companyName: string, clientId?: string) {
+/** Equipos que reportan solos (device-report.ps1 v2 → device_reports), agrupados por cliente con la forma de un import */
+async function fetchLiveDeviceImports(): Promise<Record<string, SoftwareImport[]>> {
+  const { data } = await supabase
+    .from('device_reports')
+    .select('client_id, hostname, ip, local_user, m365_user, nas_user, os, office, has_copilot, reported_at');
+  const out: Record<string, SoftwareImport[]> = {};
+  for (const r of data ?? []) {
+    if (!out[r.client_id]) {
+      out[r.client_id] = [{
+        id: `live-${r.client_id}`, clientId: r.client_id, filename: 'Reporte automático',
+        importedAt: new Date().toISOString(), type: 'device_report', rows: [], deviceReportRows: [],
+      }];
+    }
+    out[r.client_id][0].deviceReportRows!.push({
+      hostname: r.hostname, ip: r.ip ?? '', localUser: r.local_user ?? '', m365User: r.m365_user ?? '',
+      nasUser: r.nas_user ?? '', os: r.os ?? '', office: r.office ?? '', hasCopilot: r.has_copilot,
+      timestamp: r.reported_at,
+    });
+  }
+  return out;
+}
+
+function exportAclHtml(snap: AclSnapshot, serviceName: string, clientName: string, logoUrl: string | null, companyName: string, clientId?: string, liveFiles: SoftwareImport[] = []) {
   const { shares, users, hostname, generated_at } = snap.snapshot;
   const dateStr = new Date(generated_at).toLocaleString('es-UY', { dateStyle: 'long', timeStyle: 'short' });
-  const softwareFiles  = loadSoftwareForClient(clientId);
+  const softwareFiles  = [...liveFiles, ...loadSoftwareForClient(clientId)];
   const ownerMap       = buildOwnerMapFromImports(softwareFiles);
   const suiteMap       = buildSuiteMapFromImports(softwareFiles);
   const deviceMap      = buildDeviceReportMap(softwareFiles);

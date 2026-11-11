@@ -1,6 +1,6 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Upload, Download, Monitor, Trash2, ChevronDown, User } from 'lucide-react';
-import type { Client } from '../lib/supabase';
+import { supabase, type Client } from '../lib/supabase';
 import { BRAND, pdfHeader, pdfSection, openPrintWindow } from '../lib/pdfBrand';
 
 // ─── ManageEngine parsing ────────────────────────────────────────────────────
@@ -70,7 +70,7 @@ type EntraDevice = {
 function parseEntraCSV(text: string): EntraDevice[] {
   const lines = text.split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) return [];
-  const headers = lines[0].split(',').map(h => h.trim());
+  const headers = lines[0].replace(/^\uFEFF/, '').split(',').map(h => h.trim());
   const idx = (name: string) => headers.indexOf(name);
   const iDisplayName  = idx('displayName');
   const iOwner        = idx('owner');
@@ -207,7 +207,55 @@ type DeviceReportRow = {
   office: string;
   hasCopilot: boolean;
   timestamp: string;
+  /** Solo en el reporte automático: fabricante + modelo, serie */
+  model?: string;
+  serial?: string;
 };
+
+/** Prefijo de id de las entradas que vienen de device_reports (no se borran desde acá). */
+const LIVE_PREFIX = 'live-';
+
+type DeviceReportDbRow = {
+  client_id: string; hostname: string; ip: string | null; local_user: string | null;
+  m365_user: string | null; nas_user: string | null; os: string | null; office: string | null;
+  has_copilot: boolean; reported_at: string;
+  hardware: { manufacturer?: string | null; model?: string | null; serial?: string | null } | null;
+};
+
+/** device_reports (device-report.ps1 v2) agrupado como un "archivo" por cliente */
+async function fetchLiveDeviceReports(): Promise<ImportedFile[]> {
+  const { data } = await supabase
+    .from('device_reports')
+    .select('client_id, hostname, ip, local_user, m365_user, nas_user, os, office, has_copilot, reported_at, hardware')
+    .order('hostname');
+  const byClient = new Map<string, DeviceReportDbRow[]>();
+  for (const r of (data ?? []) as DeviceReportDbRow[]) {
+    const list = byClient.get(r.client_id) ?? [];
+    list.push(r);
+    byClient.set(r.client_id, list);
+  }
+  return Array.from(byClient.entries()).map(([clientId, rows]) => ({
+    id: `${LIVE_PREFIX}${clientId}`,
+    clientId,
+    filename: 'Reporte automático',
+    importedAt: rows.reduce((max, r) => (r.reported_at > max ? r.reported_at : max), rows[0].reported_at),
+    type: 'device_report' as const,
+    rows: [],
+    deviceReportRows: rows.map(r => ({
+      hostname: r.hostname,
+      ip: r.ip ?? '',
+      localUser: r.local_user ?? '',
+      m365User: r.m365_user ?? '',
+      nasUser: r.nas_user ?? '',
+      os: r.os ?? '',
+      office: r.office ?? '',
+      hasCopilot: r.has_copilot,
+      timestamp: new Date(r.reported_at).toLocaleString('es-UY', { dateStyle: 'short', timeStyle: 'short' }),
+      model: [r.hardware?.manufacturer, r.hardware?.model].filter(Boolean).join(' ') || undefined,
+      serial: r.hardware?.serial || undefined,
+    })),
+  }));
+}
 
 function parseDeviceReportCSV(text: string): DeviceReportRow[] {
   const lines = text.split(/\r?\n/).filter(Boolean);
@@ -216,7 +264,7 @@ function parseDeviceReportCSV(text: string): DeviceReportRow[] {
   const idx = (n: string) => headers.indexOf(n);
   const iHostname  = idx('Hostname');
   const iIp        = idx('IP');
-  const iLocal     = idx('LocalUser');
+  const iLocal     = idx('LocalUser') >= 0 ? idx('LocalUser') : idx('LoggedUser');
   const iM365      = idx('M365User');
   const iNas       = idx('NASUser');
   const iOs        = idx('OS');
@@ -247,10 +295,12 @@ function parseDeviceReportCSV(text: string): DeviceReportRow[] {
 
 // Auto-detect CSV type by headers
 function detectCSVType(text: string): 'managengine' | 'entra' | 'device_report' | 'unknown' {
-  const firstLine = text.split(/\r?\n/)[0] ?? '';
+  // Set-Content -Encoding UTF8 (PowerShell 5.1) deja un BOM al inicio
+  const firstLine = (text.split(/\r?\n/)[0] ?? '').replace(/^\uFEFF/, '');
   if (firstLine.includes('deviceId') && firstLine.includes('displayName')) return 'entra';
   if (firstLine.startsWith('Software Version') || firstLine.startsWith('Software Name,Software Version')) return 'managengine';
-  if (firstLine.startsWith('Timestamp,Hostname,IP,LoggedUser')) return 'device_report';
+  // device-report.ps1 escribe LocalUser (versiones viejas: LoggedUser)
+  if (firstLine.startsWith('Timestamp,Hostname,IP,') && firstLine.includes('M365User')) return 'device_report';
   return 'unknown';
 }
 
@@ -351,6 +401,8 @@ type Props = { clients: Client[] };
 
 export function SoftwareInventoryView({ clients }: Props) {
   const [imports, setImports] = useState<ImportedFile[]>(loadFromStorage);
+  const [liveFiles, setLiveFiles] = useState<ImportedFile[]>([]);
+  useEffect(() => { fetchLiveDeviceReports().then(setLiveFiles); }, []);
   const [filterClient, setFilterClient] = useState<string>('all');
   const [assignClientId, setAssignClientId] = useState<string>('');
   const [dragOver, setDragOver] = useState(false);
@@ -381,7 +433,8 @@ export function SoftwareInventoryView({ clients }: Props) {
 
   const removeImport = (id: string) => persist(imports.filter(i => i.id !== id));
 
-  const filtered = filterClient === 'all' ? imports : imports.filter(i => i.clientId === filterClient);
+  const allFiles = [...liveFiles, ...imports];
+  const filtered = filterClient === 'all' ? allFiles : allFiles.filter(i => i.clientId === filterClient);
   const clientName = (id: string) => clients.find(c => c.id === id)?.company_name ?? id;
 
   return (
@@ -431,14 +484,14 @@ export function SoftwareInventoryView({ clients }: Props) {
       </div>
 
       {/* Filter */}
-      {imports.length > 0 && (
+      {allFiles.length > 0 && (
         <div className="flex items-center gap-3 mb-4">
           <span className="text-sm text-slate-500">Cliente:</span>
           <div className="relative">
             <select value={filterClient} onChange={e => setFilterClient(e.target.value)}
               className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 appearance-none bg-white pr-7 focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="all">Todos</option>
-              {Array.from(new Set(imports.map(i => i.clientId))).map(id => (
+              {Array.from(new Set(allFiles.map(i => i.clientId))).map(id => (
                 <option key={id} value={id}>{clientName(id)}</option>
               ))}
             </select>
@@ -522,16 +575,18 @@ export function SoftwareInventoryView({ clients }: Props) {
                   <div className="flex items-center gap-1.5">
                     <span className="font-semibold text-sm text-slate-800">{clientName(file.clientId)}</span>
                     <span className="text-slate-300 mx-1">·</span>
-                    <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">Inventario PowerShell</span>
+                    <span className="text-xs bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">{file.id.startsWith(LIVE_PREFIX) ? 'En vivo' : 'Inventario PowerShell'}</span>
                     <span className="text-slate-300 mx-1">·</span>
                     <span className="text-xs text-slate-500 font-mono">{file.filename}</span>
                     <span className="text-slate-300 mx-1">·</span>
                     <span className="text-xs text-slate-400">{drRows.length} equipos · {new Date(file.importedAt).toLocaleDateString('es-UY')}</span>
                   </div>
-                  <button onClick={() => removeImport(file.id)}
-                    className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {!file.id.startsWith(LIVE_PREFIX) && (
+                    <button onClick={() => removeImport(file.id)}
+                      className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse">
@@ -551,7 +606,12 @@ export function SoftwareInventoryView({ clients }: Props) {
                     <tbody>
                       {drRows.map(row => (
                         <tr key={row.hostname} className="border-t border-slate-50 hover:bg-slate-50/50">
-                          <td className="px-4 py-2.5 font-mono text-sm font-medium text-slate-700">{row.hostname}</td>
+                          <td className="px-4 py-2.5">
+                            <p className="font-mono text-sm font-medium text-slate-700">{row.hostname}</p>
+                            {(row.model || row.serial) && (
+                              <p className="text-[11px] text-slate-400 mt-0.5">{[row.model, row.serial && `S/N ${row.serial}`].filter(Boolean).join(' · ')}</p>
+                            )}
+                          </td>
                           <td className="px-4 py-2.5 text-sm text-slate-600 font-mono">{row.ip || <span className="text-slate-300">—</span>}</td>
                           <td className="px-4 py-2.5 text-sm text-slate-600">{row.localUser || <span className="text-slate-300 italic text-xs">—</span>}</td>
                           <td className="px-4 py-2.5 text-sm text-slate-600">{row.m365User || <span className="text-slate-300 italic text-xs">—</span>}</td>

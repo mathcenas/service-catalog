@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { Plus, Trash2, Eye, EyeOff, Save, Rocket, Sparkles, Database, CreditCard, Lightbulb, MapPin, User, Send, CalendarClock, BookOpen, Check, CheckCheck, CheckCircle2, AlertTriangle, AlertCircle, Wrench, RefreshCw, History } from 'lucide-react';
+import { Plus, Trash2, Eye, EyeOff, Save, Rocket, Sparkles, Database, CreditCard, Lightbulb, MapPin, User, Send, CalendarClock, BookOpen, Check, CheckCheck, CheckCircle2, AlertTriangle, AlertCircle, Wrench, RefreshCw, History, Users } from 'lucide-react';
 import { supabase, Client, Service, RoadmapItem, ROADMAP_STATUSES, RoadmapStatus, ROADMAP_CATEGORIES, RoadmapCategory, RoadmapItemUpdate } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -17,6 +17,39 @@ type Props = {
   services: Service[];
 };
 
+type RecipientOption = { email: string; label: string; source: string };
+type ContactRow = { client_id: string; name: string; email: string; role?: string | null };
+
+const splitEmails = (v?: string | null) => (v || '').split(',').map(e => e.trim()).filter(Boolean);
+
+/** Todas las direcciones posibles de un cliente: principal, alternativo, CC y lista de contactos */
+function recipientOptionsFor(client: Client | undefined, contacts: ContactRow[]): RecipientOption[] {
+  if (!client) return [];
+  const out: RecipientOption[] = [];
+  const seen = new Set<string>();
+  const add = (email: string, label: string, source: string) => {
+    const key = email.toLowerCase();
+    if (!email || seen.has(key)) return;
+    seen.add(key);
+    out.push({ email, label, source });
+  };
+  if (client.email) add(client.email, client.contact_name || client.company_name, 'Principal');
+  if (client.alt_email) add(client.alt_email, client.alt_email, 'Alternativo');
+  splitEmails(client.cc_emails).forEach(e => add(e, e, 'CC'));
+  contacts.filter(c => c.client_id === client.id).forEach(c => add(c.email, c.name, c.role || 'Contacto'));
+  return out;
+}
+
+/** Default histórico: principal + alternativo + CC */
+function defaultRecipients(client: Client | undefined): string[] {
+  if (!client) return [];
+  return Array.from(new Set([client.email, client.alt_email, ...splitEmails(client.cc_emails)].filter(Boolean) as string[]));
+}
+
+function recipientsFor(item: RoadmapItem, client: Client | undefined): string[] {
+  return item.notify_emails && item.notify_emails.length > 0 ? item.notify_emails : defaultRecipients(client);
+}
+
 export function RoadmapManager({ clients, services }: Props) {
   const { user } = useAuth();
   const [items, setItems] = useState<RoadmapItem[]>([]);
@@ -32,6 +65,7 @@ export function RoadmapManager({ clients, services }: Props) {
   const [filterCategory, setFilterCategory] = useState<RoadmapCategory | 'all'>('all');
   const [filterClientId, setFilterClientId] = useState<string>('all');
   const [notifying, setNotifying] = useState<string | null>(null);
+  const [contacts, setContacts] = useState<ContactRow[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | undefined>();
   const [webhookUrl, setWebhookUrl] = useState<string | undefined>();
   const [webhookToken, setWebhookToken] = useState<string | undefined>();
@@ -51,6 +85,8 @@ export function RoadmapManager({ clients, services }: Props) {
 
   useEffect(() => {
     load();
+    supabase.from('client_contacts').select('client_id, name, email, role').order('name')
+      .then(({ data }) => setContacts((data as ContactRow[]) || []));
     supabase.from('user_settings').select('logo_url, webhook_url, webhook_token').eq('user_id', user!.id).maybeSingle()
       .then(({ data }) => {
         if (data?.logo_url) setLogoUrl(data.logo_url);
@@ -184,7 +220,7 @@ export function RoadmapManager({ clients, services }: Props) {
 
     if (item.client_id) {
       const client = clients.find(c => c.id === item.client_id);
-      if (client?.email && window.confirm(`Notify ${client.company_name} about "${item.title}"?`)) {
+      if (client && recipientsFor(item, client).length > 0 && window.confirm(`Notify ${client.company_name} about "${item.title}"?`)) {
         const { data: tokens } = await supabase.from('client_share_tokens').select('token').eq('client_id', client.id).limit(1);
         const shareUrl = tokens?.[0]?.token ? `${window.location.origin}/share/${tokens[0].token}` : undefined;
         const { data: session } = await supabase.auth.getSession();
@@ -193,10 +229,7 @@ export function RoadmapManager({ clients, services }: Props) {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${session.session.access_token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              client_email: client.email,
-              alt_email: client.alt_email || undefined,
-              cc_emails: client.cc_emails || undefined,
-              client_name: client.contact_name || client.company_name,
+              ...recipientPayload(item, client),
               subject: `Publicado: ${item.title}`,
               title: item.title,
               description: item.description || undefined,
@@ -215,10 +248,21 @@ export function RoadmapManager({ clients, services }: Props) {
     }
   };
 
+  /** Campos de destinatarios para notify-client: el primero va como client_email y el resto como CC */
+  const recipientPayload = (item: RoadmapItem, client: Client) => {
+    const list = recipientsFor(item, client);
+    const single = list.length === 1 ? contacts.find(c => c.client_id === client.id && c.email.toLowerCase() === list[0].toLowerCase()) : undefined;
+    return {
+      client_email: list[0],
+      cc_emails: list.slice(1).join(',') || undefined,
+      client_name: single?.name || client.contact_name || client.company_name,
+    };
+  };
+
   const sendNotifyEmail = async (item: RoadmapItem, isUpdate = false, updateNote?: string) => {
     if (!item.client_id) return false;
     const client = clients.find(c => c.id === item.client_id);
-    if (!client?.email) return false;
+    if (!client || recipientsFor(item, client).length === 0) return false;
 
     const { data: tokens } = await supabase
       .from('client_share_tokens')
@@ -250,10 +294,7 @@ export function RoadmapManager({ clients, services }: Props) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        client_email: client.email,
-        alt_email: client.alt_email || undefined,
-        cc_emails: client.cc_emails || undefined,
-        client_name: client.contact_name || client.company_name,
+        ...recipientPayload(item, client),
         subject: `${subjectPrefix}: ${item.title}`,
         title: item.title,
         description: item.description,
@@ -340,7 +381,7 @@ export function RoadmapManager({ clients, services }: Props) {
 
     // 3. Email
     const client = item.client_id ? clients.find(c => c.id === item.client_id) : null;
-    if (client?.email) {
+    if (client && recipientsFor(item, client).length > 0) {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const { data: tokens } = await supabase.from('client_share_tokens').select('token').eq('client_id', client.id).limit(1);
@@ -350,10 +391,7 @@ export function RoadmapManager({ clients, services }: Props) {
             method: 'POST',
             headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              client_email: client.email,
-              alt_email: client.alt_email || undefined,
-              cc_emails: client.cc_emails || undefined,
-              client_name: client.contact_name || client.company_name,
+              ...recipientPayload(item, client),
               subject: `${item.category === 'problem' ? 'Incidente resuelto' : 'Cambio completado'}: ${item.title}`,
               title: item.title,
               description: item.description || undefined,
@@ -595,6 +633,8 @@ export function RoadmapManager({ clients, services }: Props) {
               services={services}
               notifying={notifying === item.id}
               emailOpen={emailOpens[item.id]}
+              recipientOptions={recipientOptionsFor(clients.find(c => c.id === item.client_id), contacts)}
+              recipients={recipientsFor(item, clients.find(c => c.id === item.client_id))}
               getClientName={getClientName}
               getServiceName={getServiceName}
               clientServices={clientServices}
@@ -613,12 +653,14 @@ export function RoadmapManager({ clients, services }: Props) {
   );
 }
 
-function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpdate, onDelete, onNotify, onSendUpdate, onMarkReleased, onClosePublish, closePublishResult }: {
+function RoadmapRow({ item, clients, notifying, emailOpen, recipientOptions, recipients, clientServices, onUpdate, onDelete, onNotify, onSendUpdate, onMarkReleased, onClosePublish, closePublishResult }: {
   item: RoadmapItem;
   clients: Client[];
   services: Service[];
   notifying: boolean;
   emailOpen?: { opened_at: string | null; open_count: number };
+  recipientOptions: RecipientOption[];
+  recipients: string[];
   getClientName: (id?: string) => string | null;
   getServiceName: (id?: string) => string | null;
   clientServices: (clientId?: string) => Service[];
@@ -633,7 +675,6 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
   const meta = CATEGORY_META[item.category] || CATEGORY_META.idea;
   const CatIcon = meta.icon;
   const canNotify = !!item.client_id && !notifying;
-  const client = clients.find(c => c.id === item.client_id);
   const isTicket = item.category === 'problem' || item.category === 'change_request';
   const isOpen = item.status !== 'Released';
 
@@ -798,12 +839,20 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
             />
             <BookOpen className="w-3 h-3" />
           </label>
+          {item.client_id && recipientOptions.length > 0 && (
+            <RecipientPicker
+              options={recipientOptions}
+              selected={recipients}
+              isCustom={!!item.notify_emails?.length}
+              onChange={list => onUpdate(item.id, { notify_emails: list.length ? list : null })}
+            />
+          )}
           {canNotify && !item.notified_at && (
             <button
               onClick={() => onNotify(item)}
               disabled={notifying}
               className="inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors text-blue-700 bg-blue-50 hover:bg-blue-100"
-              title={`Send notification to ${client?.email}`}
+              title={`Enviar a: ${recipients.join(', ')}`}
             >
               {notifying ? <span className="animate-pulse">Sending...</span> : <><Send className="w-3 h-3" /> Notify</>}
             </button>
@@ -982,6 +1031,79 @@ function RoadmapRow({ item, clients, notifying, emailOpen, clientServices, onUpd
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function RecipientPicker({ options, selected, isCustom, onChange }: {
+  options: RecipientOption[];
+  selected: string[];
+  isCustom: boolean;
+  onChange: (emails: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  const sel = new Set(selected.map(e => e.toLowerCase()));
+  const toggle = (email: string) => {
+    const next = sel.has(email.toLowerCase())
+      ? selected.filter(e => e.toLowerCase() !== email.toLowerCase())
+      : [...selected, email];
+    onChange(next);
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
+          isCustom ? 'text-violet-700 bg-violet-50 hover:bg-violet-100' : 'text-gray-500 hover:bg-gray-100'
+        }`}
+        title={`Destinatarios: ${selected.join(', ') || 'ninguno'}`}
+      >
+        <Users className="w-3 h-3" /> {selected.length}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-20 w-72 max-w-[90vw] bg-white border border-gray-200 rounded-lg shadow-lg p-2">
+          <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b border-gray-100">
+            <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Notificar a</span>
+            {isCustom && (
+              <button onClick={() => onChange([])} className="text-[11px] text-blue-600 hover:underline">
+                Volver al default
+              </button>
+            )}
+          </div>
+          <div className="max-h-64 overflow-y-auto">
+            {options.map(o => (
+              <label key={o.email} className="flex items-start gap-2 px-1 py-1.5 rounded hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sel.has(o.email.toLowerCase())}
+                  onChange={() => toggle(o.email)}
+                  className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="min-w-0">
+                  <span className="block text-xs text-gray-800 truncate">{o.label}</span>
+                  <span className="block text-[11px] text-gray-400 truncate">
+                    {o.label !== o.email && <>{o.email} · </>}{o.source}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+          {!isCustom && (
+            <p className="px-1 pt-1.5 mt-1 border-t border-gray-100 text-[11px] text-gray-400">
+              Default: principal + alternativo + CC del cliente.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,57 +1,52 @@
 ﻿param([switch]$Console)
 # =============================================================
-# device-report.ps1 — Reporte de equipo para Service Catalog
-# v1.0.0
+# device-report.ps1 — Inventario de equipo para Service Catalog
+# v2.0.0
 #
 # ── Qué hace ─────────────────────────────────────────────────
-# Recopila datos del equipo y los acumula en un CSV compartido:
-#   Timestamp, Hostname, IP LAN, LocalUser, M365User, NASUser,
-#   OS, Office/M365 (versión detectada), Copilot (true/false)
-# Cada ejecución actualiza la fila del equipo (por Hostname),
-# no duplica. El CSV se importa desde la app (Infraestructura →
-# Importar → device_report).
+# Junta los datos del equipo y del usuario logueado y los manda
+# directo al portal (pestaña Software → "Reporte automático"):
+#   Hostname, IP LAN, usuario Windows, usuario M365, usuario NAS,
+#   SO, Office/M365, Copilot, fabricante/modelo/serie, RAM, disco.
+# Cada equipo actualiza su propia fila (no duplica). Opcionalmente
+# también escribe el CSV compartido de la v1 ($CSV_DESTINO).
 #
-# ── NO usa config.ps1 ────────────────────────────────────────
-# Este script es autónomo — no llama a config.ps1 ni se conecta
-# a Supabase. Su destino es un CSV en carpeta de red (NAS o local).
-# Los demás scripts (system-health.ps1, veeam-agent-report.ps1,
-# kopia-report.ps1, etc.) sí usan config.ps1 para las credenciales
-# de Supabase ($ANON_KEY, $INGEST_SECRET, $SERVICE_ID).
-#
-# ── Despliegue recomendado ───────────────────────────────────
-#   A) GPO Logon Script → corre al iniciar sesión cada usuario
-#      (ideal: actualiza el CSV automáticamente para todos los equipos)
-#   B) Task Scheduler → cada hora o al inicio del sistema
-#   C) Manual → el admin lo corre y luego importa el CSV desde la app
+# ── Correr como el USUARIO, no como SYSTEM ───────────────────
+# M365, NAS y ubicaciones de confianza de Office se leen del perfil
+# del usuario (HKCU / cmdkey). Como SYSTEM salen vacíos.
+#   A) ManageEngine Endpoint Central → Custom Script → User,
+#      en cada inicio de sesión:
+#        powershell.exe -NoProfile -ExecutionPolicy Bypass -File device-report.ps1
+#   B) GPO → Logon Script del usuario
+#   C) Manual: .\device-report.ps1 -Console
 #
 # ── Configuración por cliente ────────────────────────────────
-# Editar las variables de la sección "CONFIGURAR POR CLIENTE":
-#   $CSV_DESTINO        — ruta UNC o local donde guardar el CSV
-#   $NAS_HOSTNAME       — nombre NetBIOS del NAS (para credenciales)
-#   $OFFICE_TRUSTED_PATHS — carpetas a agregar como Trusted en Office
-#                           (dejar @() para no tocar Office)
-#
-# ── Uso ──────────────────────────────────────────────────────
-#   .\device-report.ps1            # escribe CSV silenciosamente
-#   .\device-report.ps1 -Console   # además muestra la fila en pantalla
-#
-# ── Actualizar el script ─────────────────────────────────────
-#   update-scripts.ps1 lo descarga automáticamente desde GitHub.
-#   O manualmente:
-#   Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/windows/device-report.ps1" -OutFile "\\NAS\IT\device-report.ps1"
+# Editar "CONFIGURAR POR CLIENTE" más abajo, o dejar al lado un
+# device-report.config.ps1 con las mismas variables (pisa los valores
+# de acá y sobrevive a update-scripts.ps1).
+#   $PORTAL_URL / $ANON_KEY            — igual que en config.ps1
+#   $DEVICE_SERVICE_ID / $DEVICE_INGEST_SECRET
+#        Servicio del cliente al que se asocian los equipos. Usar uno
+#        dedicado ("Inventario de equipos"): el secret queda en todas
+#        las PCs, así no expone el de un server o backup.
+#   $NAS_HOSTNAME, $OFFICE_TRUSTED_PATHS, $CSV_DESTINO (opcional)
 # =============================================================
-$SCRIPT_VERSION = "1.0.0"
+
+$SCRIPT_VERSION = "2.0.0"
 
 # ╔══════════════════════════════════════════════════════════════╗
 # ║               CONFIGURAR POR CLIENTE                        ║
-# ╠══════════════════════════════════════════════════════════════╣
-# ║  Cambiar CSV_DESTINO segun donde guardar el archivo CSV.    ║
-# ║  Puede ser una carpeta del NAS, un disco local, o USB.      ║
 # ╚══════════════════════════════════════════════════════════════╝
 
-$CSV_DESTINO = "\\NAS\IT\device-report.csv"
-#$CSV_DESTINO = "\\SYNOLOGY\AdminShared\device-report.csv"
-#$CSV_DESTINO = "C:\Temp\device-report.csv"    # solo para prueba local
+# Portal (mismos valores que en config.ps1 de los servers)
+$PORTAL_URL           = "https://PROYECTO.supabase.co"
+$ANON_KEY             = ""
+$DEVICE_SERVICE_ID    = ""   # UUID del servicio "Inventario de equipos" del cliente
+$DEVICE_INGEST_SECRET = ""   # Ingest secret de ese servicio (Editar servicio → Telemetría)
+
+# CSV compartido (modo v1). Dejar vacío para reportar solo al portal.
+$CSV_DESTINO = ""
+#$CSV_DESTINO = "\\NAS\IT\device-report.csv"
 
 # Nombre NetBIOS del NAS (para detectar credenciales guardadas y para
 # agregar como ubicación de confianza en Office).
@@ -67,6 +62,9 @@ $OFFICE_TRUSTED_PATHS = @(
 )
 
 # ──────────────────────────────────────────────────────────────
+
+# Override local (no lo pisa update-scripts.ps1)
+if (Test-Path "$PSScriptRoot\device-report.config.ps1") { . "$PSScriptRoot\device-report.config.ps1" }
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "SilentlyContinue"
@@ -175,6 +173,52 @@ if (-not $hasCopilot) {
     $hasCopilot = [bool](Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'Copilot' })
 }
 
+# ── Hardware ─────────────────────────────────────────────────
+$cs   = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
+$bios = Get-CimInstance Win32_BIOS -ErrorAction SilentlyContinue
+$disk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$($env:SystemDrive)'" -ErrorAction SilentlyContinue
+$hardware = @{
+    manufacturer  = if ($cs)   { "$($cs.Manufacturer)".Trim() } else { "" }
+    model         = if ($cs)   { "$($cs.Model)".Trim() } else { "" }
+    serial        = if ($bios) { "$($bios.SerialNumber)".Trim() } else { "" }
+    ram_gb        = if ($cs -and $cs.TotalPhysicalMemory) { [math]::Round($cs.TotalPhysicalMemory / 1GB, 1) } else { $null }
+    disk_total_gb = if ($disk -and $disk.Size) { [math]::Round($disk.Size / 1GB, 1) } else { $null }
+    disk_free_gb  = if ($disk -and $disk.Size) { [math]::Round($disk.FreeSpace / 1GB, 1) } else { $null }
+    os_build      = if ($osInfo) { "$($osInfo.Version)" } else { "" }
+    last_boot     = if ($osInfo -and $osInfo.LastBootUpTime) { $osInfo.LastBootUpTime.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ") } else { "" }
+}
+
+# ── Enviar al portal ──────────────────────────────────────────
+if ($DEVICE_SERVICE_ID -and $DEVICE_INGEST_SECRET -and $ANON_KEY -and $PORTAL_URL -notmatch 'PROYECTO') {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $body = @{
+        service_id     = $DEVICE_SERVICE_ID
+        hostname       = $hostname
+        ip             = $lanIp
+        local_user     = $localUser
+        m365_user      = $m365User
+        nas_user       = $nasUser
+        os             = $os
+        office         = $officeVersion
+        has_copilot    = [bool]$hasCopilot
+        hardware       = $hardware
+        script_version = $SCRIPT_VERSION
+    } | ConvertTo-Json -Compress -Depth 4
+    $reqHeaders = @{
+        "apikey"          = $ANON_KEY
+        "Authorization"   = "Bearer $ANON_KEY"
+        "X-Ingest-Secret" = $DEVICE_INGEST_SECRET
+    }
+    try {
+        Invoke-RestMethod -Uri "$($PORTAL_URL.TrimEnd('/'))/functions/v1/ingest-device-report" -Method POST `
+            -Headers $reqHeaders -ContentType "application/json; charset=utf-8" `
+            -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ErrorAction Stop | Out-Null
+        Write-Host "[$hostname] reportado al portal" -ForegroundColor Green
+    } catch {
+        Write-Host "[$hostname] ERROR al reportar al portal: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
 # ── Construir fila ─────────────────────────────────────────────
 $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 
@@ -192,7 +236,8 @@ $row = [PSCustomObject]@{
 
 if ($Console) { $row | Format-Table -AutoSize }
 
-# ── Escribir CSV ───────────────────────────────────────────────
+# ── Escribir CSV (opcional, modo v1) ───────────────────────────
+if ($CSV_DESTINO) {
 $csvFile = $CSV_DESTINO
 $dir = Split-Path $csvFile -Parent
 if ($dir -and -not (Test-Path $dir)) {
@@ -212,6 +257,7 @@ if (Test-Path $csvFile) {
 }
 
 Write-Host "[$hostname] device-report actualizado: $csvFile" -ForegroundColor Green
+}
 
 # ── Ubicaciones de confianza en Office ────────────────────────
 #
