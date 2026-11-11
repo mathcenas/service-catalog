@@ -1041,13 +1041,32 @@ function RecipientPicker({ options, selected, isCustom, onChange }: {
   isCustom: boolean;
   onChange: (emails: string[]) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  // Posición fija: la lista del roadmap tiene overflow-hidden y recortaba un menú absoluto
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; right: number } | null>(null);
+  const open = pos !== null;
   const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const toggleOpen = () => {
+    if (open) { setPos(null); return; }
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const right = Math.max(8, window.innerWidth - r.right);
+    setPos(window.innerHeight - r.bottom < 340
+      ? { bottom: window.innerHeight - r.top + 4, right }
+      : { top: r.bottom + 4, right });
+  };
   useEffect(() => {
     if (!open) return;
-    const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setPos(null); };
+    const closeNow = () => setPos(null);
     document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    window.addEventListener('scroll', closeNow, true);
+    window.addEventListener('resize', closeNow);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      window.removeEventListener('scroll', closeNow, true);
+      window.removeEventListener('resize', closeNow);
+    };
   }, [open]);
 
   const sel = new Set(selected.map(e => e.toLowerCase()));
@@ -1061,7 +1080,8 @@ function RecipientPicker({ options, selected, isCustom, onChange }: {
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen(o => !o)}
+        ref={btnRef}
+        onClick={toggleOpen}
         className={`inline-flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
           isCustom ? 'text-violet-700 bg-violet-50 hover:bg-violet-100' : 'text-gray-500 hover:bg-gray-100'
         }`}
@@ -1069,8 +1089,9 @@ function RecipientPicker({ options, selected, isCustom, onChange }: {
       >
         <Users className="w-3 h-3" /> {selected.length}
       </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 z-20 w-72 max-w-[90vw] bg-white border border-gray-200 rounded-lg shadow-lg p-2">
+      {pos && (
+        <div style={{ top: pos.top, bottom: pos.bottom, right: pos.right }}
+          className="fixed z-50 w-72 max-w-[90vw] bg-white border border-gray-200 rounded-lg shadow-lg p-2">
           <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b border-gray-100">
             <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Notificar a</span>
             {isCustom && (

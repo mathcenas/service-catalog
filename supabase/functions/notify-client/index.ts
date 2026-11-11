@@ -73,7 +73,6 @@ Deno.serve(async (req: Request) => {
       share_url,
       share_url_label,
       portal_url,
-      sender_name,
       logo_url,
       roadmap_item_id,
       category,
@@ -151,7 +150,7 @@ Deno.serve(async (req: Request) => {
 
     const logoHtmlInner = logo_url
       ? `<img src="${logo_url}" alt="Logo" style="max-height:32px;max-width:140px;" />`
-      : emailLogo(sender_name || "Cenas IT");
+      : emailLogo("Cenas IT");
 
     const resolveHeaderLabel = (color: string): { bg: string; border: string; text: string } => {
       const map: Record<string, { bg: string; border: string; text: string }> = {
@@ -179,12 +178,7 @@ Deno.serve(async (req: Request) => {
               <td valign="middle">
                 <table role="presentation" cellpadding="0" cellspacing="0">
                   <tr>
-                    <td valign="middle" style="padding-right:10px;">${logoHtmlInner}</td>
-                    <td valign="middle">
-                      <div style="background:${B.primary};padding:7px 13px;border-radius:7px;display:inline-block;">
-                        <span style="color:${B.accent};font-size:11px;font-weight:700;letter-spacing:.5px;">${(sender_name || user.email || "Cenas IT").toUpperCase()}</span>
-                      </div>
-                    </td>
+                    <td valign="middle">${logoHtmlInner}</td>
                   </tr>
                 </table>
               </td>
@@ -241,7 +235,7 @@ Deno.serve(async (req: Request) => {
             ${meta.footer}
           </p>
 
-          ${emailPortalPanel({ companyName: sender_name || "Cenas IT", portalUrl: portal_url })}
+          ${emailPortalPanel({ companyName: "Cenas IT", portalUrl: portal_url })}
 
           <div style="margin-top:14px;text-align:center;">
             <a href="https://clientes.cenas-support.com/onboarding" style="display:inline-block;color:${B.accent};font-size:11px;text-decoration:none;border:1px solid ${B.border};border-radius:4px;padding:6px 14px;">
@@ -249,7 +243,7 @@ Deno.serve(async (req: Request) => {
             </a>
           </div>
 
-          ${emailMeta(sender_name || "Cenas IT")}
+          ${emailMeta("Cenas IT")}
         </td></tr>
         </table>
         </td></tr>
