@@ -9,9 +9,10 @@
 //   - wifi   : registration-table de /interface/wifi, wifiwave2, wireless o /caps-man
 //   - dhcp   : /ip dhcp-server lease
 //   - arp    : /ip arp
+//   - neighbor: /ip neighbor (nombre de switches, APs y otros equipos de red)
 
 export type MkRow = Record<string, string>;
-export type MkListKind = 'wifi' | 'dhcp' | 'arp' | 'unknown';
+export type MkListKind = 'wifi' | 'dhcp' | 'arp' | 'neighbor' | 'unknown';
 
 export type ParsedFile = { name: string; kind: MkListKind; rows: MkRow[] };
 
@@ -77,6 +78,7 @@ export function detectKind(rows: MkRow[]): MkListKind {
   if (!rows.length) return 'unknown';
   const keys = new Set(rows.flatMap(r => Object.keys(r)));
   const has = (k: string) => keys.has(k);
+  if (has('identity') && (has('platform') || has('board') || has('version'))) return 'neighbor';
   if (has('signal') || has('signal-strength') || has('rx-signal') || has('tx-ccq') || has('ap')
       || (has('uptime') && has('interface') && !has('address'))) return 'wifi';
   if (has('host-name') || has('server') || has('active-address') || has('expires-after') || has('lease-time')) return 'dhcp';
@@ -122,6 +124,9 @@ export function buildDevices(
   const wifi = files.filter(f => f.kind === 'wifi').flatMap(f => f.rows);
   const dhcp = files.filter(f => f.kind === 'dhcp').flatMap(f => f.rows);
   const arp = files.filter(f => f.kind === 'arp').flatMap(f => f.rows);
+  const neighbors = files.filter(f => f.kind === 'neighbor').flatMap(f => f.rows);
+  // Nombre anunciado por el equipo (MNDP/LLDP/CDP): switches, APs, otros MikroTik
+  const neighborByMac = new Map(neighbors.map(n => [normMac(n['mac-address']), n]));
 
   const leaseByMac = new Map(dhcp.map(r => [normMac(r['mac-address']), r]));
   const arpByMac = new Map(arp.map(r => [normMac(r['mac-address']), r.address]));
@@ -135,8 +140,9 @@ export function buildDevices(
   const base = (mac: string, l?: MkRow): ImportedDevice => ({
     mac,
     ip: nz(l?.['active-address']) ?? nz(l?.address) ?? nz(arpByMac.get(mac)),
-    hostname: nz(l?.['host-name']),
-    comment: nz(l?.comment),
+    hostname: nz(l?.['host-name']) ?? nz(neighborByMac.get(mac)?.identity),
+    comment: nz(l?.comment) ?? (neighborByMac.get(mac)
+      ? nz([neighborByMac.get(mac)!.platform, neighborByMac.get(mac)!.board].filter(Boolean).join(' ')) : null),
     ssid: null, interface: null, signal: null, tx_rate: null, rx_rate: null, uptime: null,
     last_seen: lastSeenFromLease(l),
     dhcp_server: nz(l?.server),
