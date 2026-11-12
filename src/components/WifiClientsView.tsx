@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Wifi, Download, Search, Smartphone } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Wifi, Download, Search, Smartphone, Upload, X } from 'lucide-react';
 import { supabase, type Service, type Client } from '../lib/supabase';
 import { BRAND, pdfHeader, pdfSection, openPrintWindow } from '../lib/pdfBrand';
+import { parseFile, buildDevices, type ParsedFile } from '../lib/mikrotikImport';
 
 type WifiClient = {
   id: string;
@@ -48,25 +49,27 @@ export function WifiClientsView({ services, clients, logoUrl }: { services: Serv
   const [range, setRange] = useState<Range>('7');
   const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
-      const [{ data }, { data: devs }] = await Promise.all([
-        supabase.from('wifi_clients')
-          .select('id, service_id, client_id, mac, ip, hostname, comment, ssid, signal, tx_rate, uptime, connected, first_seen, last_seen')
-          .gte('last_seen', since)
-          .order('last_seen', { ascending: false })
-          .limit(5000),
-        supabase.from('device_reports').select('hostname, ip, local_user, m365_user'),
-      ]);
-      const list = (data as WifiClient[]) || [];
-      setRows(list);
-      setOwners((devs as DeviceOwner[]) || []);
-      setServiceId(prev => prev || list[0]?.service_id || '');
-      setLoading(false);
-    })();
+  const [showImport, setShowImport] = useState(false);
+
+  const load = useCallback(async (selectService?: string) => {
+    setLoading(true);
+    const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    const [{ data }, { data: devs }] = await Promise.all([
+      supabase.from('wifi_clients')
+        .select('id, service_id, client_id, mac, ip, hostname, comment, ssid, signal, tx_rate, uptime, connected, first_seen, last_seen')
+        .gte('last_seen', since)
+        .order('last_seen', { ascending: false })
+        .limit(5000),
+      supabase.from('device_reports').select('hostname, ip, local_user, m365_user'),
+    ]);
+    const list = (data as WifiClient[]) || [];
+    setRows(list);
+    setOwners((devs as DeviceOwner[]) || []);
+    setServiceId(prev => selectService || prev || list[0]?.service_id || '');
+    setLoading(false);
   }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const routerIds = useMemo(() => Array.from(new Set(rows.map(r => r.service_id))), [rows]);
   const svc = services.find(s => s.id === serviceId);
@@ -151,7 +154,12 @@ export function WifiClientsView({ services, clients, logoUrl }: { services: Serv
       <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
         <Wifi className="w-10 h-10 text-gray-300 mx-auto mb-3" />
         <p className="text-gray-600 font-medium">Todavía no hay datos de Wi-Fi</p>
-        <p className="text-sm text-gray-400 mt-1">Corré <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">mk-wifi-report.sh</code> en el VPS de monitoreo (usa la misma config que mk-monitor).</p>
+        <p className="text-sm text-gray-400 mt-1">Corré <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">mk-wifi-report.sh</code> en el VPS de monitoreo, o importá los listados exportados del MikroTik.</p>
+        <button onClick={() => setShowImport(true)}
+          className="mt-4 inline-flex items-center gap-1.5 text-sm text-white bg-blue-600 hover:bg-blue-700 px-3 py-2 rounded-lg">
+          <Upload className="w-4 h-4" /> Importar desde MikroTik
+        </button>
+        {showImport && <ImportModal services={services} clients={clients} onClose={() => setShowImport(false)} onDone={sid => { setShowImport(false); load(sid); }} />}
       </div>
     );
   }
@@ -179,6 +187,10 @@ export function WifiClientsView({ services, clients, logoUrl }: { services: Serv
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
             {(Object.keys(RANGE_LABEL) as Range[]).map(r => <option key={r} value={r}>{RANGE_LABEL[r]}</option>)}
           </select>
+          <button onClick={() => setShowImport(true)}
+            className="flex items-center gap-1.5 text-sm text-gray-700 hover:text-gray-900 border border-gray-300 hover:border-gray-400 px-3 py-2 rounded-lg transition-colors bg-white">
+            <Upload className="w-4 h-4" /> Importar
+          </button>
           <button onClick={exportPdf}
             className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-2 rounded-lg transition-colors">
             <Download className="w-4 h-4" /> PDF
@@ -249,6 +261,143 @@ export function WifiClientsView({ services, clients, logoUrl }: { services: Serv
         El nombre sale del comentario del lease DHCP en el MikroTik o del nombre que informa el equipo. Para ponerle nombre a un dispositivo,
         agregá un comentario a su lease en el router. "Usuario" se cruza con el inventario de equipos (device-report).
       </p>
+      {showImport && <ImportModal services={services} clients={clients} defaultServiceId={serviceId} onClose={() => setShowImport(false)} onDone={sid => { setShowImport(false); load(sid); }} />}
+    </div>
+  );
+}
+
+const KIND_LABEL: Record<ParsedFile['kind'], string> = {
+  wifi: 'Tabla Wi-Fi', dhcp: 'Leases DHCP', arp: 'ARP', unknown: 'No reconocido',
+};
+
+/** Importa listados exportados del MikroTik (print terse o JSON de la API) a wifi_clients */
+function ImportModal({ services, clients, defaultServiceId, onClose, onDone }: {
+  services: Service[];
+  clients: Client[];
+  defaultServiceId?: string;
+  onClose: () => void;
+  onDone: (serviceId: string) => void;
+}) {
+  const [serviceId, setServiceId] = useState(defaultServiceId || '');
+  const [files, setFiles] = useState<ParsedFile[]>([]);
+  const [servers, setServers] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const options = useMemo(() => services
+    .filter(s => s.status !== 'Cancelled')
+    .map(s => ({ id: s.id, label: `${clients.find(c => c.id === s.client_id)?.company_name ?? 'Sin cliente'} — ${s.business_name || s.name}` }))
+    .sort((a, b) => a.label.localeCompare(b.label)), [services, clients]);
+
+  const addFiles = async (list: FileList | null) => {
+    if (!list) return;
+    const parsed = await Promise.all([...list].map(async f => parseFile(f.name, await f.text())));
+    setFiles(prev => {
+      const next = [...prev.filter(p => !parsed.some(n => n.name === p.name)), ...parsed];
+      // Por defecto, todos los servidores DHCP marcados
+      const all = new Set(next.filter(f => f.kind === 'dhcp').flatMap(f => f.rows.map(r => r.server || '')));
+      setServers(all);
+      return next;
+    });
+  };
+
+  const hasWifi = files.some(f => f.kind === 'wifi');
+  const dhcpServers = useMemo(
+    () => [...new Set(files.filter(f => f.kind === 'dhcp').flatMap(f => f.rows.map(r => r.server || '')))].sort(),
+    [files]);
+  const devices = useMemo(() => buildDevices(files, hasWifi ? undefined : servers), [files, servers, hasWifi]);
+
+  const save = async () => {
+    const svc = services.find(s => s.id === serviceId);
+    if (!svc || !devices.length) return;
+    setSaving(true);
+    setError('');
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setError('Sesión vencida'); setSaving(false); return; }
+    const rows = devices.map(d => ({
+      user_id: user.id,
+      client_id: svc.client_id ?? null,
+      service_id: svc.id,
+      mac: d.mac, ip: d.ip, hostname: d.hostname, comment: d.comment, ssid: d.ssid, interface: d.interface,
+      signal: d.signal, tx_rate: d.tx_rate, rx_rate: d.rx_rate, uptime: d.uptime,
+      // Es una foto: no queda como "conectado" para siempre
+      connected: false,
+      last_seen: d.last_seen,
+    }));
+    const { error: err } = await supabase.from('wifi_clients').upsert(rows, { onConflict: 'service_id,mac' });
+    setSaving(false);
+    if (err) setError(err.message);
+    else onDone(svc.id);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onMouseDown={onClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 text-left" onMouseDown={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-gray-900">Importar desde MikroTik</h3>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600"><X className="w-4 h-4" /></button>
+        </div>
+
+        <label className="block mb-3">
+          <span className="text-xs font-medium text-gray-600">Router (servicio)</span>
+          <select value={serviceId} onChange={e => setServiceId(e.target.value)}
+            className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+            <option value="">Elegí el servicio del MikroTik…</option>
+            {options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+        </label>
+
+        <label className="block mb-3">
+          <span className="text-xs font-medium text-gray-600">Archivos (.txt de <code>print terse file=…</code> o JSON de la API)</span>
+          <input type="file" multiple accept=".txt,.rsc,.json,text/plain,application/json"
+            onChange={e => { addFiles(e.target.files); e.target.value = ''; }}
+            className="mt-1 block w-full text-sm text-gray-600 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200" />
+        </label>
+
+        {files.length > 0 && (
+          <ul className="mb-3 space-y-1">
+            {files.map(f => (
+              <li key={f.name} className="flex items-center justify-between text-xs bg-gray-50 rounded-lg px-3 py-1.5">
+                <span className="font-mono text-gray-700 truncate">{f.name}</span>
+                <span className={f.kind === 'unknown' ? 'text-red-600' : 'text-gray-500'}>{KIND_LABEL[f.kind]} · {f.rows.length}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {!hasWifi && dhcpServers.length > 0 && (
+          <div className="mb-3">
+            <p className="text-xs text-gray-600 mb-1">
+              Sin tabla Wi-Fi: se toman los leases DHCP. Marcá solo los servidores de la red Wi-Fi para no mezclar equipos cableados.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {dhcpServers.map(sv => (
+                <label key={sv || '_'} className="inline-flex items-center gap-1.5 text-xs border border-gray-200 rounded-lg px-2 py-1">
+                  <input type="checkbox" checked={servers.has(sv)}
+                    onChange={() => setServers(prev => { const n = new Set(prev); if (n.has(sv)) n.delete(sv); else n.add(sv); return n; })} />
+                  {sv || '(sin servidor)'}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {files.length > 0 && (
+          <p className="text-sm text-gray-700 mb-3">
+            <strong>{devices.length}</strong> dispositivo{devices.length === 1 ? '' : 's'} para importar
+            {hasWifi ? ' (de la tabla Wi-Fi, con IP y nombre de DHCP/ARP).' : ' (de los leases DHCP).'}
+          </p>
+        )}
+        {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
+          <button onClick={save} disabled={!serviceId || !devices.length || saving}
+            className="px-3 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-40">
+            {saving ? 'Importando…' : 'Importar'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

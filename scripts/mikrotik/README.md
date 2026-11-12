@@ -25,3 +25,19 @@ curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scri
 - `SITE_N_WIFI="false"` en la config saltea un router sin Wi-Fi.
 - El usuario `monitor` de solo lectura (`setup.rsc`) alcanza.
 
+### Importar a mano (routers sin acceso desde el VPS)
+
+En la terminal del router (Winbox → New Terminal). Los archivos quedan en **Files**; arrastralos a la PC y subilos en Telemetría → Wi-Fi → Importar.
+
+```
+/ip dhcp-server lease print terse file=dhcp-leases
+/ip arp print terse file=arp
+# Tabla Wi-Fi: la que corresponda a tu RouterOS
+/interface wifi registration-table print terse file=wifi-clientes       # RouterOS 7.13+ (wifi)
+/interface wifiwave2 registration-table print terse file=wifi-clientes  # RouterOS 7 anteriores
+/interface wireless registration-table print terse file=wifi-clientes   # wireless clásico
+/caps-man registration-table print terse file=wifi-clientes             # CAPsMAN
+```
+
+Con la tabla Wi-Fi se importan solo los conectados al Wi-Fi (leases y ARP completan IP y nombre). Sin ella se usan los leases DHCP, eligiendo qué servidores DHCP son de la red Wi-Fi. También acepta el JSON de la REST API (`curl -k -u monitor:… https://ROUTER/rest/ip/dhcp-server/lease > leases.json`).
+
