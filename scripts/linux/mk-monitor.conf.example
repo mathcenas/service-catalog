@@ -29,6 +29,7 @@ SITE_1_ROUTER_USER="monitor"
 SITE_1_ROUTER_PASS="REEMPLAZAR"
 SITE_1_RDP_TARGET="192.168.88.150"
 SITE_1_KNOWN_IPS="192.168.88.0/24,10.0.0.1,1.2.3.4"
+# SITE_1_WIFI="false"   # mk-wifi-report.sh: poner en false si este router no tiene Wi-Fi
 
 # SITE_2_NAME="RegionalNorte"
 # SITE_2_SERVICE_ID="..."
