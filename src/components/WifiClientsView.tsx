@@ -15,6 +15,7 @@ type WifiClient = {
   /** Nombre puesto a mano en el portal (no lo pisa ninguna sincronización) */
   label: string | null;
   ssid: string | null;
+  interface: string | null;
   signal: number | null;
   tx_rate: string | null;
   uptime: string | null;
@@ -58,7 +59,7 @@ export function WifiClientsView({ services, clients, logoUrl }: { services: Serv
     const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
     const [{ data }, { data: devs }] = await Promise.all([
       supabase.from('wifi_clients')
-        .select('id, service_id, client_id, mac, ip, hostname, comment, label, ssid, signal, tx_rate, uptime, connected, first_seen, last_seen')
+        .select('id, service_id, client_id, mac, ip, hostname, comment, label, ssid, interface, signal, tx_rate, uptime, connected, first_seen, last_seen')
         .gte('last_seen', since)
         .order('last_seen', { ascending: false })
         .limit(5000),
@@ -279,7 +280,10 @@ export function WifiClientsView({ services, clients, logoUrl }: { services: Serv
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-gray-700">{r.ssid || '—'}</td>
+                    <td className="px-4 py-2.5 text-gray-700">
+                      {r.ssid || '—'}
+                      {r.interface && r.interface !== r.ssid && <div className="text-xs text-gray-400">{r.interface}</div>}
+                    </td>
                     <td className={`px-4 py-2.5 text-xs whitespace-nowrap ${sig.cls}`}>{sig.text}</td>
                     <td className="px-4 py-2.5 text-xs whitespace-nowrap">
                       {r.connected
