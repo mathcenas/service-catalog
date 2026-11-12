@@ -18,6 +18,14 @@
 #   $SMB_KUMA_PUSH_URL — Push monitor de Kuma para el share
 #   $SMB_PATH          — Ruta local de la carpeta, ej: C:\Compartidos\Ventas
 #                        o ruta UNC local: \\localhost\Ventas
+#
+# Carpeta de OTRO equipo (unidad de red Z: o \\nas\share):
+#   Solo hace el health check (heartbeat del servicio del NAS). El ACL NO se
+#   manda: este Windows no puede leer usuarios ni permisos del NAS, y antes
+#   terminaba reportando las carpetas del propio Windows. El ACL del NAS lo
+#   manda el NAS (scripts/nas/report-smb-acl.sh).
+#   En tareas programadas usá la ruta UNC (\\nas\share): las letras de unidad
+#   de red solo existen en la sesión del usuario que las mapeó.
 # =============================================================
 
 param([switch]$AclOnly)
@@ -25,7 +33,7 @@ param([switch]$AclOnly)
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.0.0"
+$SCRIPT_VERSION = "1.1.0"
 
 if (-not (Get-Command Invoke-Kuma -ErrorAction SilentlyContinue)) {
     function Invoke-Kuma { param([string]$Status, [string]$Msg) }
@@ -73,6 +81,31 @@ $headersAcl = @{
 }
 
 Write-Log "=== inicio smb-check | HOST=$env:COMPUTERNAME | AclOnly=$AclOnly ==="
+
+# ¿La carpeta es de otro equipo? (unidad de red mapeada o UNC a otro host)
+$SmbRemoteRoot = $null
+if ($SMB_PATH) {
+    if ($SMB_PATH -match '^\\\\([^\\]+)\\') {
+        $uncHost = $Matches[1]
+        if ($uncHost -notin @('localhost', '127.0.0.1', '.', $env:COMPUTERNAME)) { $SmbRemoteRoot = $SMB_PATH }
+    } elseif ($SMB_PATH -match '^([A-Za-z]):') {
+        $letter = $Matches[1]
+        $psd = Get-PSDrive -Name $letter -ErrorAction SilentlyContinue
+        if ($psd -and $psd.DisplayRoot -and $psd.DisplayRoot.StartsWith('\\')) {
+            $SmbRemoteRoot = $psd.DisplayRoot
+        } else {
+            $ld = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='${letter}:'" -ErrorAction SilentlyContinue
+            if ($ld -and $ld.DriveType -eq 4) { $SmbRemoteRoot = if ($ld.ProviderName) { $ld.ProviderName } else { "${letter}:" } }
+        }
+        # La letra no existe en esta sesión (tarea programada): un disco local siempre existe,
+        # así que es una unidad de red que no está montada para este usuario
+        if (-not $psd -and -not (Test-Path "${letter}:\")) {
+            $SmbRemoteRoot = "${letter}: (unidad de red no montada en esta sesión)"
+            Write-Log "WARN: la unidad ${letter}: no existe en esta sesión. En tareas programadas usá la ruta UNC (\\servidor\carpeta) en `$SMB_PATH."
+        }
+    }
+}
+if ($SmbRemoteRoot) { Write-Log "Carpeta remota: $SmbRemoteRoot — solo health check, el ACL lo reporta el equipo que la comparte" }
 
 # ==============================================================
 # PARTE 1 — HEALTH CHECK (omitir si -AclOnly)
@@ -160,6 +193,12 @@ if (-not $AclOnly) {
 # ==============================================================
 # PARTE 2 — ACL SNAPSHOT (siempre corre, o solo con -AclOnly)
 # ==============================================================
+if ($SmbRemoteRoot) {
+    Write-Log "ACL omitido: $SMB_PATH es de otro equipo ($SmbRemoteRoot). Get-SmbShare/Get-LocalUser leerían este Windows, no el NAS."
+    Write-Log "=== fin smb-check ==="
+    exit 0
+}
+
 Write-Log "Recopilando shares SMB y usuarios..."
 
 $shares = @()
