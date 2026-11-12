@@ -5,6 +5,7 @@ import { ServiceMetricsModal } from './ServiceMetricsModal';
 import { BackupMetricsModal } from './BackupMetricsModal';
 import { BRAND, pdfHeader, pdfSection, openPrintWindow } from '../lib/pdfBrand';
 import { WifiClientsView } from './WifiClientsView';
+import { AclReviewSendModal } from './AclReviewSendModal';
 
 interface ServiceBackup {
   id: string;
@@ -373,7 +374,7 @@ export function TelemetryDashboard({ services, clients, focus }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus?.nonce]);
   const [companyName, setCompanyName] = useState<string>('Cenas-Support');
-  const [sendingReview, setSendingReview] = useState<string | null>(null);
+  const [reviewSnap, setReviewSnap] = useState<AclSnapshot | null>(null);
   const [reviewLinks, setReviewLinks] = useState<Record<string, string>>({});
   const [latestVersions, setLatestVersions] = useState<Record<string, { windows?: string; windowsServer?: string; linux?: string }>>({});
   const [metricsModal, setMetricsModal]       = useState<{ serviceId: string; name: string } | null>(null);
@@ -418,75 +419,6 @@ export function TelemetryDashboard({ services, clients, focus }: Props) {
     const s = services.find(sv => sv.id === serviceId);
     if (!s) return null;
     return clients.find(c => c.id === s.client_id);
-  };
-
-  const sendReviewLink = async (snap: AclSnapshot) => {
-    setSendingReview(snap.id);
-    try {
-      const svc = services.find(s => s.id === snap.service_id);
-      const client = svc ? clients.find(c => c.id === svc.client_id) : null;
-
-      // Remove any previous unused token for this snapshot
-      await supabase
-        .from('acl_review_tokens')
-        .delete()
-        .eq('snapshot_id', snap.id)
-        .is('submitted_at', null);
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { data, error } = await supabase
-        .from('acl_review_tokens')
-        .insert({
-          snapshot_id: snap.id,
-          service_id: snap.service_id,
-          client_id: client?.id || null,
-          user_id: user.id,
-        })
-        .select('token')
-        .single();
-      if (error || !data) throw error ?? new Error('No token returned');
-      const link = `${window.location.origin}/acl-review/${data.token}`;
-      setReviewLinks(p => ({ ...p, [snap.id]: link }));
-
-      // Auto-send email to client with review link (disabled until endpoint is stable)
-      if (client?.email) {
-        const svcName = svc?.business_name || svc?.name || 'NAS';
-        // Find client's share token for portal link
-        const { data: shareToken } = await supabase
-          .from('share_tokens')
-          .select('token')
-          .eq('client_id', client.id)
-          .maybeSingle();
-        const portalUrl = shareToken?.token
-          ? `${window.location.origin}/share/${shareToken.token}`
-          : undefined;
-
-        const { error: notifyError } = await supabase.functions.invoke('notify-client', {
-          body: {
-            client_email: client.email,
-            alt_email: client.alt_email,
-            cc_emails: client.cc_emails,
-            client_name: client.contact_name || client.company_name,
-            subject: `Revisión de usuarios — ${svcName}`,
-            title: `Auditoría de accesos SMB — ${svcName}`,
-            description: `Le enviamos el siguiente enlace para que revise los usuarios con acceso a los archivos compartidos del servidor.\n\nPor favor indique para cada usuario si desea mantenerlo, eliminarlo o realizar algún cambio. El enlace tiene una validez de 15 días.\n\nEsta revisión se realiza cada 6 meses para garantizar que solo los usuarios correctos tengan acceso a sus archivos.`,
-            share_url: link,
-            share_url_label: 'Iniciar revisión →',
-            portal_url: portalUrl,
-            logo_url: logoUrl,
-            sender_name: companyName,
-            category: 'audit',
-          },
-        });
-        if (notifyError) console.error('notify-client error:', notifyError);
-      }
-    } catch {
-      alert('Error al generar el enlace de revisión.');
-    } finally {
-      setSendingReview(null);
-    }
   };
 
   // Normalize status values: backup scripts send "success"/"failed",
@@ -1233,22 +1165,21 @@ export function TelemetryDashboard({ services, clients, focus }: Props) {
                             >
                               <Download className="w-3 h-3" /> PDF
                             </button>
-                            {reviewLinks[snap.id] ? (
+                            {reviewLinks[snap.id] && (
                               <button
-                                onClick={() => navigator.clipboard.writeText(reviewLinks[snap.id])}
+                                onClick={() => navigator.clipboard.writeText(reviewLinks[snap.id]).catch(() => {})}
                                 className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 border border-emerald-200 hover:border-emerald-400 px-2 py-1 rounded-lg transition-colors"
                               >
                                 📋 Copiar enlace
                               </button>
-                            ) : (
-                              <button
-                                onClick={() => sendReviewLink(snap)}
-                                disabled={sendingReview === snap.id}
-                                className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 border border-violet-200 hover:border-violet-400 px-2 py-1 rounded-lg transition-colors disabled:opacity-50"
-                              >
-                                {sendingReview === snap.id ? '...' : '📨 Revisión'}
-                              </button>
                             )}
+                            <button
+                              onClick={() => setReviewSnap(snap)}
+                              className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 border border-violet-200 hover:border-violet-400 px-2 py-1 rounded-lg transition-colors"
+                              title="Vista previa: revisá destinatarios y mail antes de enviar"
+                            >
+                              📨 Revisión
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1258,6 +1189,17 @@ export function TelemetryDashboard({ services, clients, focus }: Props) {
             </table>
           </div>
         </div>
+      )}
+
+      {reviewSnap && (
+        <AclReviewSendModal
+          snap={reviewSnap}
+          service={services.find(s => s.id === reviewSnap.service_id)}
+          client={clients.find(c => c.id === services.find(s => s.id === reviewSnap.service_id)?.client_id) ?? null}
+          logoUrl={logoUrl}
+          onClose={() => setReviewSnap(null)}
+          onLink={link => setReviewLinks(p => ({ ...p, [reviewSnap.id]: link }))}
+        />
       )}
 
       {viewMode === 'wifi' && <WifiClientsView services={services} clients={clients} logoUrl={logoUrl} />}
