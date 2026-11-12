@@ -112,7 +112,13 @@ const nz = (v?: string) => (v && v.trim() ? v.trim() : null);
  * - Si hay listado Wi-Fi, esos son los dispositivos (los leases y ARP solo completan IP / nombre).
  * - Si no, se usan los leases DHCP de los servidores elegidos (ej: el de la red Wi-Fi).
  */
-export function buildDevices(files: ParsedFile[], dhcpServers?: Set<string>, now = new Date()): ImportedDevice[] {
+export function buildDevices(
+  files: ParsedFile[],
+  dhcpServers?: Set<string>,
+  now = new Date(),
+  /** Sin tabla Wi-Fi: sumar equipos que están en ARP pero no en DHCP (IP fija), de estas interfaces */
+  arpInterfaces?: Set<string>,
+): ImportedDevice[] {
   const wifi = files.filter(f => f.kind === 'wifi').flatMap(f => f.rows);
   const dhcp = files.filter(f => f.kind === 'dhcp').flatMap(f => f.rows);
   const arp = files.filter(f => f.kind === 'arp').flatMap(f => f.rows);
@@ -161,6 +167,30 @@ export function buildDevices(files: ParsedFile[], dhcpServers?: Set<string>, now
       d.ssid = nz(l.server);   // sin tabla Wi-Fi, la "red" es el servidor DHCP
       out.set(mac, d);
     }
+    if (arpInterfaces?.size) {
+      for (const a of arp) {
+        const mac = normMac(a['mac-address']);
+        if (!MAC_RE.test(mac) || mac === '00:00:00:00:00:00' || out.has(mac) || leaseByMac.has(mac)) continue;
+        if (!arpInterfaces.has(a.interface || '')) continue;
+        const d = base(mac);
+        d.ip = nz(a.address);
+        d.interface = nz(a.interface);
+        d.ssid = 'IP fija';
+        d.last_seen = now.toISOString();
+        out.set(mac, d);
+      }
+    }
   }
   return [...out.values()];
+}
+
+/** Interfaces del ARP y si conviene marcarlas por defecto (solo IPs privadas = LAN, no la WAN) */
+export function arpInterfacesOf(files: ParsedFile[]): { name: string; lan: boolean }[] {
+  const priv = (ip?: string) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip || '');
+  const byIf = new Map<string, boolean>();
+  for (const a of files.filter(f => f.kind === 'arp').flatMap(f => f.rows)) {
+    const k = a.interface || '';
+    byIf.set(k, (byIf.get(k) ?? true) && priv(a.address));
+  }
+  return [...byIf.entries()].map(([name, lan]) => ({ name, lan })).sort((a, b) => a.name.localeCompare(b.name));
 }

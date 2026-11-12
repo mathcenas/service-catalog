@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Wifi, Download, Search, Smartphone, Upload, X } from 'lucide-react';
 import { supabase, type Service, type Client } from '../lib/supabase';
 import { BRAND, pdfHeader, pdfSection, openPrintWindow } from '../lib/pdfBrand';
-import { parseFile, buildDevices, type ParsedFile } from '../lib/mikrotikImport';
+import { parseFile, buildDevices, arpInterfacesOf, type ParsedFile } from '../lib/mikrotikImport';
 
 type WifiClient = {
   id: string;
@@ -281,6 +281,7 @@ function ImportModal({ services, clients, defaultServiceId, onClose, onDone }: {
   const [serviceId, setServiceId] = useState(defaultServiceId || '');
   const [files, setFiles] = useState<ParsedFile[]>([]);
   const [servers, setServers] = useState<Set<string>>(new Set());
+  const [arpIfs, setArpIfs] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -297,6 +298,7 @@ function ImportModal({ services, clients, defaultServiceId, onClose, onDone }: {
       // Por defecto, todos los servidores DHCP marcados
       const all = new Set(next.filter(f => f.kind === 'dhcp').flatMap(f => f.rows.map(r => r.server || '')));
       setServers(all);
+      setArpIfs(new Set(arpInterfacesOf(next).filter(i => i.lan).map(i => i.name)));
       return next;
     });
   };
@@ -305,7 +307,11 @@ function ImportModal({ services, clients, defaultServiceId, onClose, onDone }: {
   const dhcpServers = useMemo(
     () => [...new Set(files.filter(f => f.kind === 'dhcp').flatMap(f => f.rows.map(r => r.server || '')))].sort(),
     [files]);
-  const devices = useMemo(() => buildDevices(files, hasWifi ? undefined : servers), [files, servers, hasWifi]);
+  const arpInterfaces = useMemo(() => arpInterfacesOf(files), [files]);
+  const devices = useMemo(
+    () => buildDevices(files, hasWifi ? undefined : servers, new Date(), hasWifi ? undefined : arpIfs),
+    [files, servers, hasWifi, arpIfs]);
+  const toggle = (set: Set<string>, v: string) => { const n = new Set(set); if (n.has(v)) n.delete(v); else n.add(v); return n; };
 
   const save = async () => {
     const svc = services.find(s => s.id === serviceId);
@@ -373,13 +379,34 @@ function ImportModal({ services, clients, defaultServiceId, onClose, onDone }: {
             <div className="flex flex-wrap gap-2">
               {dhcpServers.map(sv => (
                 <label key={sv || '_'} className="inline-flex items-center gap-1.5 text-xs border border-gray-200 rounded-lg px-2 py-1">
-                  <input type="checkbox" checked={servers.has(sv)}
-                    onChange={() => setServers(prev => { const n = new Set(prev); if (n.has(sv)) n.delete(sv); else n.add(sv); return n; })} />
+                  <input type="checkbox" checked={servers.has(sv)} onChange={() => setServers(prev => toggle(prev, sv))} />
                   {sv || '(sin servidor)'}
                 </label>
               ))}
             </div>
           </div>
+        )}
+
+        {!hasWifi && arpInterfaces.length > 0 && (
+          <div className="mb-3">
+            <p className="text-xs text-gray-600 mb-1">
+              Sumar equipos con IP fija (están en ARP pero no en DHCP) de estas interfaces. La WAN viene desmarcada.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {arpInterfaces.map(i => (
+                <label key={i.name || '_'} className="inline-flex items-center gap-1.5 text-xs border border-gray-200 rounded-lg px-2 py-1">
+                  <input type="checkbox" checked={arpIfs.has(i.name)} onChange={() => setArpIfs(prev => toggle(prev, i.name))} />
+                  {i.name || '(sin interfaz)'}{!i.lan && <span className="text-gray-400">· WAN</span>}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!hasWifi && files.some(f => f.kind === 'dhcp') && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3">
+            Sin la tabla Wi-Fi no se puede separar Wi-Fi de cableado: el reporte va a mostrar todos los equipos de la red elegida.
+          </p>
         )}
 
         {files.length > 0 && (
