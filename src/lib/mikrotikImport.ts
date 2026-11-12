@@ -127,6 +127,19 @@ export function buildDevices(
   const neighbors = files.filter(f => f.kind === 'neighbor').flatMap(f => f.rows);
   // Nombre anunciado por el equipo (MNDP/LLDP/CDP): switches, APs, otros MikroTik
   const neighborByMac = new Map(neighbors.map(n => [normMac(n['mac-address']), n]));
+  // Qué es el equipo según lo que anuncia (system-caps en RouterOS 6/7; platform/board en MikroTik)
+  const neighborWhat = (n?: MkRow): string | null => {
+    if (!n) return null;
+    const caps = (n['system-caps-enabled'] || n['system-caps'] || '').toLowerCase();
+    const role = /telephone/.test(caps) ? 'Teléfono IP'
+      : /wlan|wap/.test(caps) ? 'Access Point'
+      : /router/.test(caps) ? 'Router'
+      : /bridge|switch/.test(caps) ? 'Switch'
+      : '';
+    return nz([role, n.platform, n.board].filter(Boolean).join(' · '));
+  };
+  // Puerto físico del router por el que se ve (ej: "ether2,bridge" → ether2)
+  const neighborPort = (n?: MkRow) => nz((n?.interface || '').split(',').find(i => !/^bridge/i.test(i)));
 
   const leaseByMac = new Map(dhcp.map(r => [normMac(r['mac-address']), r]));
   const arpByMac = new Map(arp.map(r => [normMac(r['mac-address']), r.address]));
@@ -141,9 +154,8 @@ export function buildDevices(
     mac,
     ip: nz(l?.['active-address']) ?? nz(l?.address) ?? nz(arpByMac.get(mac)),
     hostname: nz(l?.['host-name']) ?? nz(neighborByMac.get(mac)?.identity),
-    comment: nz(l?.comment) ?? (neighborByMac.get(mac)
-      ? nz([neighborByMac.get(mac)!.platform, neighborByMac.get(mac)!.board].filter(Boolean).join(' ')) : null),
-    ssid: null, interface: null, signal: null, tx_rate: null, rx_rate: null, uptime: null,
+    comment: nz(l?.comment) ?? neighborWhat(neighborByMac.get(mac)),
+    ssid: null, interface: neighborPort(neighborByMac.get(mac)), signal: null, tx_rate: null, rx_rate: null, uptime: null,
     last_seen: lastSeenFromLease(l),
     dhcp_server: nz(l?.server),
   });
@@ -180,11 +192,21 @@ export function buildDevices(
         if (!arpInterfaces.has(a.interface || '')) continue;
         const d = base(mac);
         d.ip = nz(a.address);
-        d.interface = nz(a.interface);
+        d.interface = d.interface ?? nz(a.interface);
         d.ssid = 'IP fija';
         d.last_seen = now.toISOString();
         out.set(mac, d);
       }
+    }
+    // Equipos que solo se ven como vecinos (ej: base DECT sin IP en el router)
+    for (const n of neighbors) {
+      const mac = normMac(n['mac-address']);
+      if (!MAC_RE.test(mac) || out.has(mac) || leaseByMac.has(mac)) continue;
+      const d = base(mac);
+      d.ip = nz(n.address4) ?? nz(n.address);
+      d.ssid = 'Vecino';
+      d.last_seen = now.toISOString();
+      out.set(mac, d);
     }
   }
   return [...out.values()];
