@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Wifi, Download, Search, Smartphone, Upload, X } from 'lucide-react';
+import { Wifi, Download, Search, Smartphone, Upload, X, Pencil, Check } from 'lucide-react';
 import { supabase, type Service, type Client } from '../lib/supabase';
 import { BRAND, pdfHeader, pdfSection, openPrintWindow } from '../lib/pdfBrand';
 import { parseFile, buildDevices, arpInterfacesOf, type ParsedFile } from '../lib/mikrotikImport';
@@ -12,6 +12,8 @@ type WifiClient = {
   ip: string | null;
   hostname: string | null;
   comment: string | null;
+  /** Nombre puesto a mano en el portal (no lo pisa ninguna sincronización) */
+  label: string | null;
   ssid: string | null;
   signal: number | null;
   tx_rate: string | null;
@@ -56,7 +58,7 @@ export function WifiClientsView({ services, clients, logoUrl }: { services: Serv
     const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
     const [{ data }, { data: devs }] = await Promise.all([
       supabase.from('wifi_clients')
-        .select('id, service_id, client_id, mac, ip, hostname, comment, ssid, signal, tx_rate, uptime, connected, first_seen, last_seen')
+        .select('id, service_id, client_id, mac, ip, hostname, comment, label, ssid, signal, tx_rate, uptime, connected, first_seen, last_seen')
         .gte('last_seen', since)
         .order('last_seen', { ascending: false })
         .limit(5000),
@@ -75,11 +77,30 @@ export function WifiClientsView({ services, clients, logoUrl }: { services: Serv
   const svc = services.find(s => s.id === serviceId);
   const client = clients.find(c => c.id === svc?.client_id);
 
-  // Usuario del equipo según device-report.ps1 (por IP o por nombre)
-  const ownerOf = (r: WifiClient) => {
+  // Equipo del inventario (device-report.ps1), por IP o por nombre
+  const inventoryOf = (r: WifiClient) => {
     const host = (r.hostname || '').toUpperCase();
-    const o = owners.find(d => (r.ip && d.ip === r.ip) || (host && d.hostname === host));
+    return owners.find(d => (r.ip && d.ip === r.ip) || (host && d.hostname === host));
+  };
+  const ownerOf = (r: WifiClient) => {
+    const o = inventoryOf(r);
     return o ? (o.m365_user || o.local_user || '') : '';
+  };
+  /** Nombre a mostrar: el puesto a mano, el comentario del lease, el que informa el equipo, o el del inventario */
+  const nameOf = (r: WifiClient) => r.label || r.comment || r.hostname || inventoryOf(r)?.hostname || '';
+  /** Segunda línea: el nombre técnico, si no es el que ya se muestra */
+  const subOf = (r: WifiClient) => {
+    const tech = r.hostname || inventoryOf(r)?.hostname || '';
+    return tech && tech !== nameOf(r) ? tech : '';
+  };
+
+  const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
+  const saveLabel = async () => {
+    if (!editing) return;
+    const label = editing.value.trim() || null;
+    await supabase.from('wifi_clients').update({ label }).eq('id', editing.id);
+    setRows(prev => prev.map(x => x.id === editing.id ? { ...x, label } : x));
+    setEditing(null);
   };
 
   const visible = useMemo(() => {
@@ -88,7 +109,7 @@ export function WifiClientsView({ services, clients, logoUrl }: { services: Serv
     return rows
       .filter(r => r.service_id === serviceId)
       .filter(r => (range === 'now' ? r.connected : new Date(r.last_seen).getTime() >= cutoff))
-      .filter(r => !q || [r.hostname, r.comment, r.ip, r.mac, r.ssid].some(v => (v || '').toLowerCase().includes(q)))
+      .filter(r => !q || [r.label, r.hostname, r.comment, r.ip, r.mac, r.ssid].some(v => (v || '').toLowerCase().includes(q)))
       .sort((a, b) => Number(b.connected) - Number(a.connected) || b.last_seen.localeCompare(a.last_seen));
   }, [rows, serviceId, range, search]);
 
@@ -119,7 +140,7 @@ export function WifiClientsView({ services, clients, logoUrl }: { services: Serv
         </tr></thead>
         <tbody>
           ${list.map(r => `<tr>
-            <td ${td}><strong>${esc(r.comment || r.hostname || 'Sin nombre')}</strong>${r.comment && r.hostname ? `<br><span style="color:#94a3b8;font-size:10px;">${esc(r.hostname)}</span>` : ''}</td>
+            <td ${td}><strong>${esc(nameOf(r) || 'Sin nombre')}</strong>${subOf(r) ? `<br><span style="color:#94a3b8;font-size:10px;">${esc(subOf(r))}</span>` : ''}</td>
             <td ${td}>${esc(ownerOf(r)) || '<span style="color:#cbd5e1;">—</span>'}</td>
             <td ${tdMono()}>${esc(r.ip) || '—'}</td>
             <td ${tdMono(10)}>${esc(r.mac)}${isRandomMac(r.mac) ? '<br><span style="color:#94a3b8;">privada</span>' : ''}</td>
@@ -225,9 +246,28 @@ export function WifiClientsView({ services, clients, logoUrl }: { services: Serv
                 const owner = ownerOf(r);
                 return (
                   <tr key={r.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-2.5">
-                      <div className="font-medium text-gray-900">{r.comment || r.hostname || <span className="text-gray-400 italic">Sin nombre</span>}</div>
-                      {r.comment && r.hostname && <div className="text-xs text-gray-400">{r.hostname}</div>}
+                    <td className="px-4 py-2.5 group">
+                      {editing?.id === r.id ? (
+                        <form onSubmit={e => { e.preventDefault(); saveLabel(); }} className="flex items-center gap-1">
+                          <input autoFocus value={editing.value} onChange={e => setEditing({ id: r.id, value: e.target.value })}
+                            onKeyDown={e => { if (e.key === 'Escape') setEditing(null); }}
+                            placeholder="Nombre del equipo"
+                            className="w-44 px-2 py-1 border border-blue-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                          <button type="submit" className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="Guardar"><Check className="w-4 h-4" /></button>
+                        </form>
+                      ) : (
+                        <div className="flex items-start gap-1.5">
+                          <div className="min-w-0">
+                            <div className="font-medium text-gray-900">{nameOf(r) || <span className="text-gray-400 italic">Sin nombre</span>}</div>
+                            {subOf(r) && <div className="text-xs text-gray-400">{subOf(r)}</div>}
+                          </div>
+                          <button onClick={() => setEditing({ id: r.id, value: r.label || nameOf(r) })}
+                            className="p-0.5 text-gray-300 hover:text-blue-600 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                            title="Ponerle nombre (queda guardado aunque se vuelva a sincronizar)">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-2.5 text-gray-600">{owner || <span className="text-gray-300">—</span>}</td>
                     <td className="px-4 py-2.5 font-mono text-xs text-gray-700">{r.ip || '—'}</td>
@@ -258,8 +298,8 @@ export function WifiClientsView({ services, clients, logoUrl }: { services: Serv
         </div>
       </div>
       <p className="text-xs text-gray-400">
-        El nombre sale del comentario del lease DHCP en el MikroTik o del nombre que informa el equipo. Para ponerle nombre a un dispositivo,
-        agregá un comentario a su lease en el router. "Usuario" se cruza con el inventario de equipos (device-report).
+        El nombre sale, en este orden: el que le pongas acá (lápiz), el comentario del lease en el MikroTik, el nombre que informa el equipo
+        o el del inventario de equipos (device-report). "Usuario" también sale del inventario.
       </p>
       {showImport && <ImportModal services={services} clients={clients} defaultServiceId={serviceId} onClose={() => setShowImport(false)} onDone={sid => { setShowImport(false); load(sid); }} />}
     </div>
@@ -267,7 +307,7 @@ export function WifiClientsView({ services, clients, logoUrl }: { services: Serv
 }
 
 const KIND_LABEL: Record<ParsedFile['kind'], string> = {
-  wifi: 'Tabla Wi-Fi', dhcp: 'Leases DHCP', arp: 'ARP', unknown: 'No reconocido',
+  wifi: 'Tabla Wi-Fi', dhcp: 'Leases DHCP', arp: 'ARP', neighbor: 'Vecinos', unknown: 'No reconocido',
 };
 
 /** Importa listados exportados del MikroTik (print terse o JSON de la API) a wifi_clients */

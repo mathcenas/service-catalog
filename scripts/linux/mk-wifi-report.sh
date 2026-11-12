@@ -23,7 +23,7 @@
 # Requiere: curl, jq. El usuario "monitor" (setup.rsc) es de solo lectura y alcanza.
 # =============================================================
 
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.1.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONF_FILE="${1:-${SCRIPT_DIR}/mk-monitor.conf}"
 
@@ -78,16 +78,20 @@ report_site() {
   local leases arp
   leases=$(router_get "$ip" "$user" "$pass" "/ip/dhcp-server/lease")
   arp=$(router_get "$ip" "$user" "$pass" "/ip/arp")
+  # Vecinos (MNDP/LLDP/CDP): nombre de switches, APs y otros equipos de red
+  local neighbors
+  neighbors=$(router_get "$ip" "$user" "$pass" "/ip/neighbor")
 
   # Normalizar a: mac, ip, hostname, comment, ssid, interface, signal, tx_rate, rx_rate, uptime
   local clients
   clients=$(jq -n \
-    --argjson reg "$reg" --argjson ifaces "$ifaces" --argjson leases "$leases" --argjson arp "$arp" '
+    --argjson reg "$reg" --argjson ifaces "$ifaces" --argjson leases "$leases" --argjson arp "$arp" --argjson nb "$neighbors" '
     def up: ascii_upcase;
     def num: ((tostring | capture("(?<n>-?[0-9]+)") | .n | tonumber)? // null);
     ($ifaces | map({ key: .name, value: (.ssid // ."configuration.ssid" // null) }) | from_entries) as $ssidByIf
     | ($leases | map(select(."mac-address") | { key: (."mac-address" | up), value: . }) | from_entries) as $lease
     | ($arp | map(select(."mac-address") | { key: (."mac-address" | up), value: .address }) | from_entries) as $arpIp
+    | ($nb | map(select(."mac-address" and .identity) | { key: (."mac-address" | up), value: .identity }) | from_entries) as $nbName
     | $reg
     | map(select(."mac-address"))
     | map(
@@ -96,7 +100,7 @@ report_site() {
         | {
             mac:       $mac,
             ip:        ($l."active-address" // $l.address // $arpIp[$mac] // ."last-ip" // null),
-            hostname:  ($l."host-name" // null),
+            hostname:  ($l."host-name" // $nbName[$mac] // null),
             comment:   ($l.comment // .comment // null),
             ssid:      (.ssid // $ssidByIf[.interface] // null),
             interface: (.interface // null),

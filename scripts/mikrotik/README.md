@@ -32,12 +32,15 @@ En la terminal del router (Winbox → New Terminal). Los archivos quedan en **Fi
 ```
 /ip dhcp-server lease print terse file=dhcp-leases
 /ip arp print terse file=arp
+/ip neighbor print terse file=vecinos   # nombre de switches, APs y otros equipos de red
 # Tabla Wi-Fi: la que corresponda a tu RouterOS
 /interface wifi registration-table print terse file=wifi-clientes       # RouterOS 7.13+ (wifi)
 /interface wifiwave2 registration-table print terse file=wifi-clientes  # RouterOS 7 anteriores
 /interface wireless registration-table print terse file=wifi-clientes   # wireless clásico
 /caps-man registration-table print terse file=wifi-clientes             # CAPsMAN
 ```
+
+El ARP no trae nombres: los equipos con IP fija toman nombre de los vecinos (`/ip neighbor`), del inventario de equipos (device-report, por IP) o del nombre que les pongas en el portal (lápiz), que no se pisa al volver a importar.
 
 Con la tabla Wi-Fi se importan solo los conectados al Wi-Fi (leases y ARP completan IP y nombre). Sin ella se usan los leases DHCP, eligiendo qué servidores DHCP son de la red Wi-Fi. También acepta el JSON de la REST API (`curl -k -u monitor:… https://ROUTER/rest/ip/dhcp-server/lease > leases.json`).
 
