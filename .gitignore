@@ -21,3 +21,6 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Config local de deco-wifi-report.py
+scripts/linux/deco-report.env
