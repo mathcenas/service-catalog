@@ -14,9 +14,9 @@ Orden para un cliente nuevo: **1.** `setup.rsc` en el router → **2.** sitio de
 
 ## 1. `setup.rsc` — usuario de monitoreo y syslog
 
-Requiere RouterOS 7 con el servicio `www-ssl` (REST API) habilitado: **IP → Services → www-ssl**, con certificado, limitado a la IP del VPS en "Available From".
+Requiere RouterOS 7. **No lleva datos de ingest**: el router no le manda nada al portal, es el VPS el que lo consulta por REST. Los `SERVICE_ID` / `INGEST_SECRET` van en `mk-monitor.conf` del VPS.
 
-1. Editá las variables del principio: `IP_VPS`, `PASS_MONITOR` y `SYSLOG_PORT` (5140 por defecto).
+1. Editá las variables del principio: `IP_VPS`, `PASS_MONITOR` y `SYSLOG_PORT` (5140 por defecto). Nada más.
 2. Pegá el contenido en **New Terminal**.
 3. Verificá desde el VPS:
    ```bash
@@ -24,6 +24,7 @@ Requiere RouterOS 7 con el servicio `www-ssl` (REST API) habilitado: **IP → Se
    ```
 
 Qué crea:
+- REST API: habilita `www-ssl` (con un certificado propio `cenas-rest` si no tenía uno) y una regla al principio del firewall `input` que acepta el 443 **solo desde `IP_VPS`**. Si www-ssl ya tenía "Available From" cargado, le suma la IP del VPS.
 - Grupo `cenas-monitor` (solo lectura + API/REST, sin winbox/ssh/write) y usuario `monitor` que **solo puede entrar desde la IP del VPS**.
 - Acción de syslog `cenassyslog` hacia `IP_VPS:SYSLOG_PORT` con los temas `account` (logins) y `ppp,error`.
 
