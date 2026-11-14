@@ -17,11 +17,14 @@
 #   curl -fsSL https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/linux/mk-monitor.sh \
 #     -o /srv/network-monitor/mk-monitor.sh && chmod +x /srv/network-monitor/mk-monitor.sh
 #
-# Version: 1.0.0
+# Version: 1.1.0
+#
+# Además manda un heartbeat por router (source "mk-monitor") en cada corrida:
+# así el router aparece con su estado real en el mapa de red y en el dashboard.
 # =============================================================
 set -euo pipefail
 
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.1.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONF_FILE="${1:-${SCRIPT_DIR}/mk-monitor.conf}"
 
@@ -43,6 +46,7 @@ mkdir -p "$LOG_DIR" "$STATE_DIR"
 
 LOG_FILE="${LOG_DIR}/mk-monitor-$(date '+%Y-%m').log"
 EVENTS_URL="${SUPABASE_URL}/functions/v1/ingest-events"
+HEARTBEAT_URL="${SUPABASE_URL}/functions/v1/ingest-heartbeat"
 
 # Rotar log si pasa 5MB
 if [[ -f "$LOG_FILE" && "$(stat -c%s "$LOG_FILE" 2>/dev/null || echo 0)" -gt 5242880 ]]; then
@@ -122,6 +126,20 @@ send_event() {
   echo "$http_code"
 }
 
+# Heartbeat del router (estado actual, cada corrida)
+send_heartbeat() {
+  local service_id="$1" ingest_secret="$2" status="$3" message="$4" payload="$5"
+  local body
+  body=$(jq -n --arg sid "$service_id" --arg st "$status" --arg msg "$message" --argjson p "$payload" \
+    '{service_id: $sid, source: "mk-monitor", status: $st, message: $msg, payload: $p}')
+  curl -s -o /dev/null -w "%{http_code}" --max-time 15 -X POST "$HEARTBEAT_URL" \
+    -H "Content-Type: application/json" \
+    -H "apikey: ${SUPABASE_ANON_KEY}" \
+    -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+    -H "X-Ingest-Secret: $ingest_secret" \
+    -d "$body"
+}
+
 # ---------- Checks ----------
 
 check_rdp_ping() {
@@ -182,6 +200,8 @@ check_system_resource() {
 
   if [[ -z "$resp" ]] || ! echo "$resp" | jq -e '.uptime' >/dev/null 2>&1; then
     log "⚠️  [$site] /system/resource no responde — router fuera de línea?"
+    send_heartbeat "$service_id" "$secret" "error" "Router no responde por REST" \
+      "{\"router_ip\":\"${router_ip}\",\"script_version\":\"${SCRIPT_VERSION}\"}" >/dev/null
     return 0
   fi
 
@@ -261,6 +281,15 @@ check_system_resource() {
     write_state "${site}_cpu" "ok"
     log "✓ [$site] recursos OK | CPU: ${cpu_load}% | RAM: ${ram_pct}% | Up: ${uptime}"
   fi
+
+  local hb_status="ok" hb_msg="CPU ${cpu_load}% · RAM ${ram_pct}% · Up ${uptime}"
+  if [[ ( "$cpu_load" -ge 80 && "$cpu_count" -ge 3 ) || "$ram_pct" -ge 90 ]]; then hb_status="warning"; fi
+  local board version
+  board=$(echo "$resp" | jq -r '."board-name" // ""')
+  version=$(echo "$resp" | jq -r '.version // ""')
+  send_heartbeat "$service_id" "$secret" "$hb_status" "$hb_msg" \
+    "$(jq -n --argjson cpu "$cpu_load" --argjson ram "$ram_pct" --arg up "$uptime" --arg b "$board" --arg v "$version" --arg sv "$SCRIPT_VERSION" \
+      '{cpu_pct: $cpu, ram_pct: $ram, uptime: $up, board: $b, version: $v, script_version: $sv}')" >/dev/null
 }
 
 check_active_sessions() {

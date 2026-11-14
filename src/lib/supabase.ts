@@ -177,6 +177,8 @@ export type Service = {
   reverse_proxy_domain?: string;
   ip_internal?: string;
   ip_public?: string;
+  /** MAC del equipo: con ella el servicio "absorbe" al equipo que descubre el router en el mapa */
+  mac_address?: string | null;
   dns_record?: string;
   infrastructure_cost?: number;
   cloud_backup_enabled?: boolean;

@@ -47,6 +47,12 @@ Manda el router y todos sus vecinos (switches, APs, otros MikroTik que se anunci
 
 Requiere RouterOS 7 y salida a internet desde el router. Que los switches y APs tengan LLDP/CDP activado para aparecer como vecinos.
 
+**Cómo se ve en el mapa** (Infraestructura → Topología):
+- Cada vecino llega clasificado por lo que anuncia: router, switch, AP, teléfono IP o equipo final.
+- El mapa muestra solo la **infraestructura** (routers, switches, APs) y los enlaces con el puerto en cada punta. Teléfonos y PCs quedan en **"Descubiertos"**, donde podés mostrarlos u ocultar cualquier equipo.
+- Si un equipo descubierto es un **servicio que cargaste a mano** (misma MAC o misma IP), el servicio lo "absorbe": se ve un solo nodo, el del servicio, y el servicio completa la MAC y el modelo si no los tenía. También se puede vincular a mano desde "Descubiertos".
+- El estado del router sale del heartbeat que manda `mk-monitor.sh` (v1.1.0) cada 5 minutos, y si el servicio tiene página de Uptime Kuma, un monitor caído en Kuma lo marca en rojo.
+
 ## Reporte de dispositivos Wi-Fi
 
 `scripts/linux/mk-wifi-report.sh` corre en el VPS de monitoreo, al lado de `mk-monitor.sh`, y usa la misma `mk-monitor.conf`.

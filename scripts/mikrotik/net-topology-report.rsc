@@ -9,6 +9,7 @@
 #      On Event: /system/script/run net-topology-report
 #
 # Requiere: RouterOS 7.x, acceso a internet desde el router
+# v2: clasifica vecinos por system-caps (router / switch / AP / teléfono / equipo final)
 # ==============================================================
 
 # ── Configuración (editá estos valores) ──────────────────────
@@ -53,19 +54,35 @@
   :local nIp       ""
   :local nName     [/ip/neighbor/get $n identity]
   :local nPlatform ""
+  :local nBoard    ""
+  :local nCaps     ""
 
-  :do { :set nIp   [/ip/neighbor/get $n address]  } on-error={}
+  :do { :set nIp       [/ip/neighbor/get $n address]  } on-error={}
   :do { :set nPlatform [/ip/neighbor/get $n platform] } on-error={}
+  :do { :set nBoard    [/ip/neighbor/get $n board]    } on-error={}
+  :do { :set nCaps     [:tostr [/ip/neighbor/get $n system-caps-enabled]] } on-error={}
+  :if ($nCaps = "") do={ :do { :set nCaps [:tostr [/ip/neighbor/get $n system-caps]] } on-error={} }
+  :local hasName ($nName != "")
   :if ($nName = "") do={ :set nName $nMac }
 
-  # Determinar tipo de dispositivo por plataforma anunciada
-  :local nType "switch_unmanaged"
-  :if ([:find $nPlatform "MikroTik"] >= 0) do={ :set nType "router" }
-  :if ([:find $nPlatform "Cisco"]    >= 0) do={ :set nType "switch_managed" }
-  :if ([:find $nPlatform "Ubiquiti"] >= 0) do={ :set nType "switch_managed" }
-  :if ([:find $nPlatform "TP-Link"]  >= 0) do={ :set nType "switch_unmanaged" }
+  # Tipo de equipo según lo que anuncia (system-caps) y la plataforma/modelo.
+  # El portal muestra en el mapa solo infraestructura (router, switch, AP);
+  # teléfonos y PCs quedan en la lista de "descubiertos".
+  :local nType "endpoint"
+  :local all ("$nPlatform $nBoard")
+  :if ([:typeof [:find $nCaps "bridge"]] = "num" || [:typeof [:find $nCaps "switch"]] = "num") do={ :set nType "switch_managed" }
+  :if ([:typeof [:find $nCaps "router"]] = "num") do={ :set nType "router" }
+  :if ([:typeof [:find $nCaps "wlan"]] = "num" || [:typeof [:find $nCaps "wap"]] = "num") do={ :set nType "ap" }
+  :if ([:typeof [:find $nCaps "telephone"]] = "num") do={ :set nType "phone" }
+  :if ([:typeof [:find $all "MikroTik"]] = "num") do={ :set nType "router" }
+  :if ([:typeof [:find $all "CRS"]] = "num" || [:typeof [:find $all "CSS"]] = "num") do={ :set nType "switch_managed" }
+  :if ([:typeof [:find $all "cAP"]] = "num" || [:typeof [:find $all "wAP"]] = "num" || [:typeof [:find $all "UAP"]] = "num" || [:typeof [:find $all "U6"]] = "num" || [:typeof [:find $all "U7"]] = "num") do={ :set nType "ap" }
+  :if ([:typeof [:find $all "USW"]] = "num" || [:typeof [:find $all "US-"]] = "num") do={ :set nType "switch_managed" }
+  # Sin nombre ni capacidades: casi seguro una PC o un equipo final
+  :if (!$hasName && $nCaps = "" && $nPlatform = "") do={ :set nType "endpoint" }
 
-  :set devJson "$devJson,{\"name\":\"$nName\",\"device_type\":\"$nType\",\"ip_address\":\"$nIp\",\"mac_address\":\"$nMac\",\"model\":\"$nPlatform\",\"status\":\"online\"}"
+  :local nModel [:pick ("$nPlatform $nBoard") 0 80]
+  :set devJson "$devJson,{\"name\":\"$nName\",\"device_type\":\"$nType\",\"ip_address\":\"$nIp\",\"mac_address\":\"$nMac\",\"model\":\"$nModel\",\"status\":\"online\"}"
 }
 
 # ── Construir links (router → cada vecino LLDP) ──────────────

@@ -7,6 +7,8 @@ export interface PortEdgeData {
   targetPort?: string;
   /** Texto en el medio del enlace (IP del enlace, VLAN…) */
   midLabel?: string;
+  /** Detectado por el router (net_links): no está guardado en net_edges */
+  auto?: boolean;
   [key: string]: unknown;
 }
 
