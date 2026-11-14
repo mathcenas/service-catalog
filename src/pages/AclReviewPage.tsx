@@ -29,6 +29,8 @@ export function AclReviewPage({ token }: Props) {
   const [submitted, setSubmitted] = useState(false);
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.replace(/\/functions\/v1.*/, '');
+  // ?preview=1 — vista previa del técnico antes de mandarlo: no se puede enviar
+  const isPreview = new URLSearchParams(window.location.search).get('preview') === '1';
 
   useEffect(() => {
     fetch(`${supabaseUrl}/functions/v1/get-acl-review?token=${token}`, {
@@ -100,6 +102,11 @@ export function AclReviewPage({ token }: Props) {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {isPreview && (
+        <div className="sticky top-0 z-40 bg-sky-600 text-white text-center text-xs font-semibold py-2 px-4">
+          VISTA PREVIA — así lo verá el cliente. No se puede enviar desde acá.
+        </div>
+      )}
       {/* Watermark logo */}
       {logo_url && (
         <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-30 flex items-end justify-center px-4 pb-5">
@@ -268,9 +275,14 @@ export function AclReviewPage({ token }: Props) {
           </div>
         )}
 
+        {isPreview && (
+          <div className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 text-sm text-sky-800">
+            Vista previa: así lo va a ver el cliente. El botón de enviar está desactivado.
+          </div>
+        )}
         <button
           onClick={handleSubmit}
-          disabled={submitting}
+          disabled={submitting || isPreview}
           className="w-full flex items-center justify-center gap-2 bg-[#06B6D4] hover:bg-[#0891b2] disabled:opacity-60 text-[#0B192C] font-semibold py-3 rounded-xl transition-colors text-sm shadow-sm"
         >
           {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

@@ -74,6 +74,27 @@ Implementar sobre **Resend + Supabase** (webhooks nativos). No usar Mautic ni Ma
 
 ---
 
+## 📶 Reportes de red al cliente
+
+**Objetivo:** que el cliente reciba qué equipos usan su red (Wi-Fi e inventario) sin armarlo a mano.
+
+### Dispositivos Wi-Fi por marca de equipo
+- [x] **MikroTik** — `mk-wifi-report.sh` (VPS, REST API) + importador de `print terse` en Telemetría → Wi-Fi
+- [x] **TP-Link Deco** — `scripts/linux/deco-wifi-report.py` (API local vía `tplinkrouterc6u`; corre en Linux o Windows de la red del cliente)
+- [ ] **UniFi (UDM / UDM Pro / Cloud Gateway)** — script que lea los clientes de la API local de UniFi Network (API key de la Integration API en Network 9+, o usuario local de solo lectura) y los mande a `ingest-wifi-clients`. Trae SSID, AP, señal y si es cableado: es la fuente con mejores datos.
+- [ ] **Google Wifi / Nest Wifi** — no tiene API local ni exportación (solo app Google Home). Opción: ponerlo en modo bridge detrás del router del cliente (MikroTik/UDM) para que ese router vea los equipos por DHCP. En modo NAT los dispositivos quedan ocultos detrás del Google Wifi.
+
+### Inventario de equipos desde Zoho/ManageEngine Endpoint Central
+- [ ] Que el agente de Endpoint Central genere el device report. Dos caminos a evaluar:
+  - **Script por agente:** distribuir `device-report.ps1` (v2, reporta directo al portal) como Custom Script de tipo **User**, en cada inicio de sesión. Corre como el usuario, así salen M365, usuario NAS y Office.
+  - **API de Endpoint Central:** leer desde el servidor el inventario que ya junta el agente (hardware, software, último usuario logueado) y cargarlo en `device_reports`, sin tocar las PCs. No trae usuario M365 ni NAS.
+- [ ] Definir un servicio "Inventario de equipos" por cliente (su ingest secret queda en el script distribuido).
+
+### Entrega al cliente
+- [ ] Sumar Wi-Fi, mapa de red e inventario al portal del cliente, o un **informe mensual automático** en PDF que junte servicios, backups, accesos SMB, Wi-Fi e inventario.
+
+---
+
 ## 🔐 Portal de Login
 
 - [ ] Integrar el componente `PlatformLoginLanding` en el app (ya diseñado)

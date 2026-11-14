@@ -33,7 +33,7 @@ param([switch]$AclOnly)
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.1.0"
+$SCRIPT_VERSION = "1.1.1"
 
 if (-not (Get-Command Invoke-Kuma -ErrorAction SilentlyContinue)) {
     function Invoke-Kuma { param([string]$Status, [string]$Msg) }
@@ -148,11 +148,22 @@ if (-not $AclOnly) {
         $latestDate = if ($latest) { $latest.LastWriteTime } else { $null }
         $ageHours   = if ($latestDate) { [math]::Round(((Get-Date) - $latestDate).TotalHours, 1) } else { $null }
 
+        # Espacio libre: con \\localhost\Share se busca la carpeta real del share;
+        # con una ruta de otro equipo no se puede saber desde acá (queda vacío)
         $freeGB = $null
         try {
-            $drive  = Split-Path -Qualifier $SMB_PATH
-            $disk   = Get-PSDrive -Name $drive.TrimEnd(':') -ErrorAction SilentlyContinue
-            if ($disk -and $disk.Free) { $freeGB = [math]::Round($disk.Free / 1GB, 2) }
+            $localPath = $SMB_PATH
+            if ($SMB_PATH -match '^\\\\([^\\]+)\\([^\\]+)') {
+                $localPath = $null
+                if ($Matches[1] -in @('localhost', '127.0.0.1', '.', $env:COMPUTERNAME)) {
+                    $sh = Get-SmbShare -Name $Matches[2] -ErrorAction SilentlyContinue
+                    if ($sh) { $localPath = $sh.Path }
+                }
+            }
+            if ($localPath -and $localPath -match '^([A-Za-z]):') {
+                $disk = Get-PSDrive -Name $Matches[1] -ErrorAction SilentlyContinue
+                if ($disk -and $disk.Free) { $freeGB = [math]::Round($disk.Free / 1GB, 2) }
+            }
         } catch {}
 
         $status = "ok"
