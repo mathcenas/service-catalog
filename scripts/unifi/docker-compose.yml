@@ -1,0 +1,26 @@
+# Controladora UniFi Network para APs de clientes (adopción remota por L3).
+# Una sola controladora en el VPS para todos los clientes con APs UniFi sueltos.
+#
+#   cd /srv/unifi && docker compose up -d
+#   UI: https://VPS:8443  (primer ingreso: crear el admin)
+#
+# SEGURIDAD
+# - 8080/tcp (inform) es el único puerto que los APs necesitan: limitarlo con el
+#   firewall a las IP públicas de los clientes.
+# - 8443 (UI) no lo publiques abierto: dejalo detrás de NPM con acceso restringido,
+#   o accedé por VPN / túnel SSH (ssh -L 8443:localhost:8443 vps).
+# - Fijá la versión de la imagen (cambiá "latest" por la que instales) y actualizá a mano,
+#   después de un backup (Settings → System → Backup).
+services:
+  unifi:
+    image: jacobalberty/unifi:latest
+    container_name: unifi
+    restart: unless-stopped
+    environment:
+      TZ: America/Montevideo
+    volumes:
+      - ./data:/unifi
+    ports:
+      - "8080:8080"         # inform (los APs se reportan acá)
+      - "127.0.0.1:8443:8443"  # UI solo local: entrar por NPM o túnel SSH
+      - "3478:3478/udp"     # STUN (necesario para que los APs remotos respondan)
