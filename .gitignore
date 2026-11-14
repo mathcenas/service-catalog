@@ -25,3 +25,5 @@ dist-ssr
 # Config local de deco-wifi-report.py
 scripts/linux/deco-report.env
 __pycache__/
+scripts/unifi/unifi-report.json
+scripts/unifi/data/

@@ -1,0 +1,12 @@
+{
+  "controller": "https://localhost:8443",
+  "unifi_os": false,
+  "username": "reporte",
+  "password": "REEMPLAZAR",
+  "supabase_url": "https://PROYECTO.supabase.co",
+  "supabase_anon_key": "REEMPLAZAR",
+  "include_wired": false,
+  "sites": [
+    { "site": "default", "service_id": "REEMPLAZAR-UUID-SERVICIO", "ingest_secret": "REEMPLAZAR" }
+  ]
+}
