@@ -127,7 +127,9 @@ Deno.serve(async (req: Request) => {
 
     // source = "rdp" — persistir anydesk_id en specifications
     if (source === "rdp" && payload) {
-      const anydeskId = typeof payload.anydesk_id === "string" ? payload.anydesk_id.trim() : null;
+      // Solo IDs válidos (numérico o alias nombre@ad). Scripts < 1.9.3 mandaban "a" por un bug.
+      const raw = payload.anydesk_id != null ? String(payload.anydesk_id).replace(/\s/g, "") : "";
+      const anydeskId = /^(\d{6,12}|[\w.-]+@[\w.-]+)$/.test(raw) ? raw : null;
       if (anydeskId) {
         const existingSpecs = (service.specifications && typeof service.specifications === "object") ? service.specifications as Record<string, unknown> : {};
         if (existingSpecs.anydesk_id !== anydeskId) {

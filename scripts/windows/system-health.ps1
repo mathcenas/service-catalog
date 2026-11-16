@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.9.2"
+$SCRIPT_VERSION = "1.9.3"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -509,7 +509,8 @@ if ($CHECK_SPEEDTEST) {
 
 $CHECK_RDP = if (Get-Variable 'CHECK_RDP' -ErrorAction SilentlyContinue) { $CHECK_RDP } else { $true }
 
-if ($CHECK_RDP) {
+# AnyDesk: el ID se busca siempre, no depende de CHECK_RDP. ". { }" corre en este mismo scope.
+. {
     # AnyDesk — leer ID con múltiples estrategias (v6, v7, por usuario, CLI)
     $anydeskId = $null
 
@@ -531,7 +532,7 @@ if ($CHECK_RDP) {
             if (Test-Path $c) {
                 # Soporta "ad.anynet.id=XXX" (v6) y "id=XXX" bajo sección [identity] (v7)
                 $adLine = Get-Content $c -ErrorAction SilentlyContinue | Where-Object { $_ -match '^(ad\.anynet\.id|id)\s*=' }
-                if ($adLine) { $anydeskId = ($adLine[0] -replace '^(ad\.anynet\.id|id)\s*=\s*', '').Trim() }
+                if ($adLine) { $anydeskId = (@($adLine)[0] -replace '^(ad\.anynet\.id|id)\s*=\s*', '').Trim() }
             }
         }
     }
@@ -550,7 +551,7 @@ if ($CHECK_RDP) {
                 if ($anydeskId) { break }
                 if (Test-Path $c) {
                     $adLine = Get-Content $c -ErrorAction SilentlyContinue | Where-Object { $_ -match '^(ad\.anynet\.id|id)\s*=' }
-                    if ($adLine) { $anydeskId = ($adLine[0] -replace '^(ad\.anynet\.id|id)\s*=\s*', '').Trim() }
+                    if ($adLine) { $anydeskId = (@($adLine)[0] -replace '^(ad\.anynet\.id|id)\s*=\s*', '').Trim() }
                 }
             }
         }
@@ -567,16 +568,25 @@ if ($CHECK_RDP) {
             if ($anydeskId) { break }
             if (Test-Path $adExe) {
                 try {
-                    $rawId = & $adExe --get-id 2>$null
-                    if ($rawId -match '^\d+$') { $anydeskId = $rawId.Trim() }
+                    $rawId = (& $adExe --get-id 2>$null | Out-String).Trim()
+                    if ($rawId -match '^\d+$') { $anydeskId = $rawId }
                 } catch {}
             }
         }
     }
 
-    # AnyDesk — reiniciar si esta caido
+    # Solo IDs válidos: numérico (con o sin espacios) o alias tipo nombre@ad
+    if ($anydeskId) { $anydeskId = ([string]$anydeskId -replace '\s', '') }
+    if ($anydeskId -and $anydeskId -notmatch '^(\d{6,12}|[\w.-]+@[\w.-]+)$') {
+        Write-Log "⚠️ AnyDesk: ID con formato raro ignorado: '$anydeskId'"
+        $anydeskId = $null
+    }
     $adService = Get-Service -Name "AnyDesk" -ErrorAction SilentlyContinue
     $adStatus  = if ($adService) { $adService.Status.ToString() } else { "NotFound" }
+}
+
+if ($CHECK_RDP) {
+    # AnyDesk — reiniciar si esta caido
     if ($adService -and $adService.Status -ne 'Running') {
         try {
             Restart-Service -Name "AnyDesk" -Force -ErrorAction Stop
@@ -640,7 +650,7 @@ if ($CHECK_RDP) {
     $disabledBody = @{
         service_id = $SERVICE_ID; source = "rdp"; status = "success"
         message = "Deshabilitado (CHECK_RDP = false)"
-        payload = @{ disabled = $true; script_version = $SCRIPT_VERSION }
+        payload = @{ disabled = $true; anydesk_id = $anydeskId; anydesk_status = $adStatus; script_version = $SCRIPT_VERSION }
     } | ConvertTo-Json -Depth 3
     try { Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $disabledBody | Out-Null } catch {}
     Write-Log "⏭️ rdp — omitido (CHECK_RDP = false en config.ps1)"

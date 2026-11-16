@@ -46,7 +46,9 @@ export function InfrastructureView({ services, clients }: Props) {
         for (const hb of data) {
           if (!map[hb.service_id]) {
             const p = hb.payload as Record<string, unknown>;
-            if (p?.anydesk_id) map[hb.service_id] = String(p.anydesk_id);
+            // Scripts < 1.9.3 mandaban "a" por un bug: solo IDs válidos
+            const id = p?.anydesk_id != null ? String(p.anydesk_id).replace(/\s/g, '') : '';
+            if (/^(\d{6,12}|[\w.-]+@[\w.-]+)$/.test(id)) map[hb.service_id] = id;
           }
         }
         setAnydeskMap(map);
