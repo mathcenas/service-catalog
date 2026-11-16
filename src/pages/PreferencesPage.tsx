@@ -5,8 +5,9 @@ const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 const FREQ_OPTIONS = [
-  { value: 'daily',  label: 'Diario',      desc: 'Recibís alertas y resúmenes cada día' },
-  { value: 'weekly', label: 'Semanal',      desc: 'Un resumen por semana con lo más importante' },
+  { value: 'all',     label: 'Diario',      desc: 'Recibís alertas y resúmenes cada día' },
+  { value: 'weekly',  label: 'Semanal',     desc: 'Un resumen por semana con lo más importante' },
+  { value: 'monthly', label: 'Mensual',     desc: 'Un resumen al mes, el primer lunes' },
   { value: 'none',   label: 'Desactivar',   desc: 'No recibís emails de este portal' },
 ];
 
@@ -37,7 +38,9 @@ export function PreferencesPage() {
       .then(async (data: Contact) => {
         setContact(data);
         // One-click reactivate: si viene ?frequency=weekly en la URL, aplicar directo
-        const target = ['daily', 'weekly', 'none'].includes(autoFreq) ? autoFreq : data.digest_frequency;
+        // 'daily' viene de links viejos: en la base el diario se guarda como 'all'
+        const wanted = autoFreq === 'daily' ? 'all' : autoFreq;
+        const target = ['all', 'weekly', 'monthly', 'none'].includes(wanted) ? wanted : data.digest_frequency;
         setSelected(target);
         if (target !== data.digest_frequency && autoFreq) {
           setSaving(true);

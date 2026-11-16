@@ -224,8 +224,8 @@ Deno.serve(async (req: Request) => {
         p.cpu_pct   != null ? `CPU ${p.cpu_pct}%`    : null,
         p.ram_pct   != null ? `RAM ${p.ram_pct}%`    : null,
         p.disk_pct  != null ? `Disk ${p.disk_pct}%`  : null,
-        p.free_gb   != null ? `Free ${p.free_gb} GB` : null,
-        p.uptime    != null ? `Up ${p.uptime}`        : null,
+        (p.disk_free_gb ?? p.free_gb) != null ? `Libre ${p.disk_free_gb ?? p.free_gb} GB` : null,
+        (p.uptime_str ?? p.uptime) != null ? `Encendido ${p.uptime_str ?? p.uptime}` : null,
       ].filter(Boolean).join(' &bull; ');
       return `<tr>
         <td style="padding:5px 8px;font-size:12px;color:${B.primary};">${svcName(h.service_id)}</td>

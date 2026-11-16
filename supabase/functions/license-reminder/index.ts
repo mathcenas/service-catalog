@@ -36,8 +36,8 @@ Deno.serve(async (req: Request) => {
       .from("client_licenses")
       .select("*, clients!inner(company_name, contact_name, email, alt_email, user_id)")
       .gte("expiration_date", todayStr)
-      .lte("expiration_date", in30Str)
-      .eq("status", "Active");
+      .lte("expiration_date", in30Str);
+    // client_licenses no tiene columna status: filtrar por ella hacía fallar la consulta todos los días.
 
     if (licError) {
       return new Response(
@@ -91,12 +91,7 @@ Deno.serve(async (req: Request) => {
                 <td valign="middle">
                   <table role="presentation" cellpadding="0" cellspacing="0">
                     <tr>
-                      <td valign="middle" style="padding-right:10px;">
-                        <div style="background:${B.primary};padding:7px 13px;border-radius:7px;display:inline-block;">
-                          <span style="color:${B.accent};font-size:11px;font-weight:700;letter-spacing:.5px;">${companyName.toUpperCase()}</span>
-                        </div>
-                      </td>
-                      ${logoHtmlInner ? `<td valign="middle">${logoHtmlInner}</td>` : ""}
+                      <td valign="middle">${logoHtmlInner}</td>
                     </tr>
                   </table>
                   <div style="font-size:15px;font-weight:700;color:${B.primary};margin-top:8px;">Recordatorio de Licencia</div>

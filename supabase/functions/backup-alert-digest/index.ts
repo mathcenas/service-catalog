@@ -164,7 +164,7 @@ Deno.serve(async (req: Request) => {
     // Count totals
     const totalOk      = rows.reduce((n, r) => n + r.backups.filter((b: any) => b.status === "success").length, 0);
     const totalWarning = rows.reduce((n, r) => n + r.backups.filter((b: any) => b.status === "warning").length, 0);
-    const totalFailed  = rows.reduce((n, r) => n + r.backups.filter((b: any) => b.status === "failed").length, 0);
+    const totalFailed  = rows.reduce((n, r) => n + r.backups.filter((b: any) => b.status === "failed" || b.status === "error").length, 0);
 
     const badgeText = totalFailed > 0 ? "⚠ ALERTA DE BACKUP"
                     : totalWarning > 0 ? "⚠ BACKUP CON ADVERTENCIAS"
