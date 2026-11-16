@@ -23,7 +23,7 @@ param(
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.3.0"
+$SCRIPT_VERSION = "1.3.1"
 
 if (-not (Get-Command Invoke-Kuma -ErrorAction SilentlyContinue)) {
     function Invoke-Kuma { param([string]$Status, [string]$Msg) }
@@ -202,8 +202,23 @@ function Parse-TaskBlock($block) {
 }
 
 # ---------- Parsear log de hoy ----------
+# Cobian escribe el log en UTF-16; ReadAllText detecta el BOM (Get-Content -Encoding UTF8 no siempre)
+function Read-CobianLog($path) {
+    try { return [System.IO.File]::ReadAllText($path) } catch { return "" }
+}
 $today   = Get-Date -Format 'yyyy-MM-dd'
 $logPath = Join-Path $COBIAN_LOG_DIR "Cobian Reflector $today.txt"
+
+# Pasada la medianoche el log del día todavía no tiene ninguna task: usar el de ayer.
+# ingest-backup descarta lo que ya se había cargado (mismo job y hora).
+$todayContent = if (Test-Path $logPath) { Read-CobianLog $logPath } else { "" }
+if ($todayContent -notmatch 'Backing up the task') {
+    $yesterdayPath = Join-Path $COBIAN_LOG_DIR ("Cobian Reflector " + (Get-Date).AddDays(-1).ToString('yyyy-MM-dd') + ".txt")
+    if (Test-Path $yesterdayPath) {
+        Write-Log "El log de hoy no tiene tasks todavía — se usa el de ayer: $yesterdayPath"
+        $logPath = $yesterdayPath
+    }
+}
 
 if (-not (Test-Path $logPath)) {
     Write-Log "No se encontró log de hoy: $logPath"
@@ -212,7 +227,7 @@ if (-not (Test-Path $logPath)) {
     exit 1
 }
 
-$content = Get-Content $logPath -Raw -Encoding UTF8
+$content = Read-CobianLog $logPath
 
 # Si la última task del log todavía no terminó, esperar. Durante una copia larga
 # Cobian no escribe nada en el log por horas, así que no se puede usar la fecha
@@ -230,7 +245,7 @@ while (-not [string]::IsNullOrWhiteSpace($content)) {
     Write-Log "Task '$($lastStart.Groups[1].Value)' en curso — esperando 5 min ($waited/$MaxWaitMinutes)"
     Start-Sleep -Seconds 300
     $waited += 5
-    $content = Get-Content $logPath -Raw -Encoding UTF8
+    $content = Read-CobianLog $logPath
 }
 
 if ([string]::IsNullOrWhiteSpace($content)) {
