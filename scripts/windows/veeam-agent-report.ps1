@@ -6,7 +6,7 @@
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"
-$SCRIPT_VERSION = "1.1.4"
+$SCRIPT_VERSION = "1.1.5"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
@@ -74,7 +74,23 @@ try {
 }
 
 # Ordenar cronológicamente (del más antiguo al más reciente)
-$events = $events | Sort-Object TimeCreated
+$events = @($events | Sort-Object TimeCreated)
+
+# Reintentos (ID 191): Veeam reintenta cada ~10 min mientras falla. Mandar solo el último
+# reintento de cada job; los anteriores se saltean (siguen en el Event Log).
+$lastEventByJob = @{}
+foreach ($ev in $events) {
+    $j = if ($ev.Message -match "'([^']+)'\s+finished") { $Matches[1] } else { 'Veeam Agent' }
+    $lastEventByJob[$j] = $ev
+}
+$skippedRetries = 0
+$events = @($events | Where-Object {
+    if ($_.Id -ne 191) { return $true }
+    $j = if ($_.Message -match "'([^']+)'\s+finished") { $Matches[1] } else { 'Veeam Agent' }
+    if ($lastEventByJob[$j] -eq $_) { return $true }
+    $script:skippedRetries++
+    return $false
+})
 
 if (-not $events -or $events.Count -eq 0) {
     Write-Log "Sin nuevos eventos de Veeam en las últimas $lookbackHours horas."
@@ -134,14 +150,17 @@ foreach ($ev in $events) {
         Write-Log "$icon $jobName → $status ($backedUpAt)"
         $reported++
 
-        # Actualizar puntero de fecha enviada
+        # Actualizar puntero y guardarlo ya: si el script se corta, no se reenvía lo mandado
         if (-not $latestEventTime -or $ev.TimeCreated -gt $latestEventTime) {
             $latestEventTime = $ev.TimeCreated
+            $latestEventTime.ToString("o") | Out-File -FilePath $StateFile -Encoding UTF8 -Force
         }
     } catch {
         Write-Log "❌ $jobName Error al enviar a telemetría: $($_.Exception.Message)"
     }
 }
+
+if ($skippedRetries -gt 0) { Write-Log "($skippedRetries reintentos anteriores salteados; se envió solo el último por job)" }
 
 # Guardar estado para la próxima ejecución
 if ($latestEventTime) {
