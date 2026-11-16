@@ -219,6 +219,8 @@ function Canvas({ initialNodes, initialEdges, clientId, siteId, siteName, onRefr
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [pendingConn, setPendingConn] = useState<Connection | null>(null);
+  // Enlace detectado por el router que se está pasando a manual (para quitarlo al guardar)
+  const [convertingAuto, setConvertingAuto] = useState<Edge | null>(null);
   const [editingEdge, setEditingEdge] = useState<Edge | null>(null);
   const [nodeForm, setNodeForm] = useState<{ nodeId?: string; custom: boolean; initial: NodeForm } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
@@ -269,13 +271,14 @@ function Canvas({ initialNodes, initialEdges, clientId, siteId, siteName, onRefr
       label: v.midLabel ?? null, edge_style: stored,
     });
     if (error) alert(`No se pudo guardar el enlace: ${error.message}`);
-    else setEdges(eds => [...eds, {
+    else setEdges(eds => [...eds.filter(e => e.id !== convertingAuto?.id), {
       id, source: pendingConn.source!, target: pendingConn.target!, type: 'port',
       sourceHandle: pendingConn.sourceHandle, targetHandle: pendingConn.targetHandle,
       style: edgeStyleFor(v.type), data: stored,
     }]);
     setSaving(false);
     setPendingConn(null);
+    setConvertingAuto(null);
   };
 
   const updateEdge = async (edge: Edge, v: StoredEdgeStyle) => {
@@ -294,7 +297,9 @@ function Canvas({ initialNodes, initialEdges, clientId, siteId, siteName, onRefr
   };
 
   const onEdgesDelete = useCallback(async (deleted: Edge[]) => {
-    await supabase.from('net_edges').delete().in('id', deleted.map(e => e.id));
+    // Los detectados por el router no están en net_edges: vuelven al recargar
+    const ids = deleted.filter(e => !(e.data as StoredEdgeStyle | undefined)?.auto).map(e => e.id);
+    if (ids.length) await supabase.from('net_edges').delete().in('id', ids);
   }, []);
 
   // ── Nodos ──────────────────────────────────────────────────
@@ -464,7 +469,14 @@ function Canvas({ initialNodes, initialEdges, clientId, siteId, siteName, onRefr
         onEdgesDelete={onEdgesDelete}
         onNodeContextMenu={(e, n) => { if (!editMode) return; e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, nodeId: n.id }); }}
         onNodeDoubleClick={(_, n) => { if (editMode) openNodeEditor(n.id); }}
-        onEdgeDoubleClick={(_, e) => { if (editMode) setEditingEdge(e); }}
+        onEdgeDoubleClick={(_, e) => {
+          if (!editMode) return;
+          if ((e.data as StoredEdgeStyle | undefined)?.auto) {
+            // Detectado por el router: al guardar se crea un enlace manual que lo reemplaza
+            setConvertingAuto(e);
+            setPendingConn({ source: e.source, target: e.target, sourceHandle: e.sourceHandle ?? null, targetHandle: e.targetHandle ?? null });
+          } else setEditingEdge(e);
+        }}
         nodesDraggable={editMode}
         nodesConnectable={editMode}
         connectionMode={ConnectionMode.Loose}
@@ -481,10 +493,11 @@ function Canvas({ initialNodes, initialEdges, clientId, siteId, siteName, onRefr
 
       {pendingConn && (
         <EdgeModal
+          initial={convertingAuto ? (convertingAuto.data as StoredEdgeStyle) : undefined}
           sourceName={nodeName(pendingConn.source)}
           targetName={nodeName(pendingConn.target)}
           onSave={createEdge}
-          onCancel={() => setPendingConn(null)}
+          onCancel={() => { setPendingConn(null); setConvertingAuto(null); }}
         />
       )}
       {editingEdge && (

@@ -14,9 +14,9 @@ Orden para un cliente nuevo: **1.** `setup.rsc` en el router → **2.** sitio de
 
 ## 1. `setup.rsc` — usuario de monitoreo y syslog
 
-Requiere RouterOS 7 con el servicio `www-ssl` (REST API) habilitado: **IP → Services → www-ssl**, con certificado, limitado a la IP del VPS en "Available From".
+Requiere RouterOS 7. **No lleva datos de ingest**: el router no le manda nada al portal, es el VPS el que lo consulta por REST. Los `SERVICE_ID` / `INGEST_SECRET` van en `mk-monitor.conf` del VPS.
 
-1. Editá las variables del principio: `IP_VPS`, `PASS_MONITOR` y `SYSLOG_PORT` (5140 por defecto).
+1. Editá las variables del principio: `IP_VPS`, `PASS_MONITOR` y `SYSLOG_PORT` (5140 por defecto). Nada más.
 2. Pegá el contenido en **New Terminal**.
 3. Verificá desde el VPS:
    ```bash
@@ -24,6 +24,7 @@ Requiere RouterOS 7 con el servicio `www-ssl` (REST API) habilitado: **IP → Se
    ```
 
 Qué crea:
+- REST API: habilita `www-ssl` (con un certificado propio `cenas-rest` si no tenía uno) y una regla al principio del firewall `input` que acepta el 443 **solo desde `IP_VPS`**. Si www-ssl ya tenía "Available From" cargado, le suma la IP del VPS.
 - Grupo `cenas-monitor` (solo lectura + API/REST, sin winbox/ssh/write) y usuario `monitor` que **solo puede entrar desde la IP del VPS**.
 - Acción de syslog `cenassyslog` hacia `IP_VPS:SYSLOG_PORT` con los temas `account` (logins) y `ppp,error`.
 
@@ -45,6 +46,12 @@ Manda el router y todos sus vecinos (switches, APs, otros MikroTik que se anunci
 5. Probá a mano: `/system script run net-topology-report` y mirá el log (`/log print where message~"net-topology"`).
 
 Requiere RouterOS 7 y salida a internet desde el router. Que los switches y APs tengan LLDP/CDP activado para aparecer como vecinos.
+
+**Cómo se ve en el mapa** (Infraestructura → Topología):
+- Cada vecino llega clasificado por lo que anuncia: router, switch, AP, teléfono IP o equipo final.
+- El mapa muestra solo la **infraestructura** (routers, switches, APs) y los enlaces con el puerto en cada punta. Teléfonos y PCs quedan en **"Descubiertos"**, donde podés mostrarlos u ocultar cualquier equipo.
+- Si un equipo descubierto es un **servicio que cargaste a mano** (misma MAC o misma IP), el servicio lo "absorbe": se ve un solo nodo, el del servicio, y el servicio completa la MAC y el modelo si no los tenía. También se puede vincular a mano desde "Descubiertos".
+- El estado del router sale del heartbeat que manda `mk-monitor.sh` (v1.1.0) cada 5 minutos, y si el servicio tiene página de Uptime Kuma, un monitor caído en Kuma lo marca en rojo.
 
 ## Reporte de dispositivos Wi-Fi
 

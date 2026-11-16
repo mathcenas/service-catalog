@@ -7,6 +7,54 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, X-Ingest-Secret",
 };
 
+type DiscoveredRow = { id: string; mac_address: string | null; ip_address: string | null; model: string | null; name: string | null; service_id: string | null };
+
+/**
+ * Un servicio cargado a mano "absorbe" al equipo descubierto con su misma MAC o IP:
+ * se vincula (net_devices.service_id) y el servicio completa lo que le falte
+ * (MAC, modelo, nombre anunciado). Nunca pisa datos cargados a mano, ni un
+ * vínculo que ya exista.
+ */
+async function absorbIntoServices(
+  // deno-lint-ignore no-explicit-any
+  supabase: any, clientId: string, siteId: string, devices: DiscoveredRow[],
+): Promise<number> {
+  const { data: services } = await supabase
+    .from("services")
+    .select("id, site_id, mac_address, server_ip, ip_internal, ip_public, specifications, status")
+    .eq("client_id", clientId)
+    .neq("status", "Cancelled");
+  if (!services?.length) return 0;
+
+  const norm = (v?: string | null) => (v ?? "").trim().toUpperCase();
+  let absorbed = 0;
+  for (const d of devices) {
+    if (d.service_id) continue;
+    const mac = norm(d.mac_address);
+    const ip = (d.ip_address ?? "").trim();
+    // Preferir servicios del mismo sitio (o sin sitio)
+    const candidates = [...services].sort((a, b) =>
+      Number(b.site_id === siteId || !b.site_id) - Number(a.site_id === siteId || !a.site_id));
+    const svc = candidates.find(s => mac && norm(s.mac_address) === mac)
+      ?? candidates.find(s => ip && [s.server_ip, s.ip_internal, s.ip_public].some(x => (x ?? "").trim() === ip));
+    if (!svc) continue;
+
+    await supabase.from("net_devices").update({ service_id: svc.id }).eq("id", d.id);
+
+    const update: Record<string, unknown> = {};
+    if (!svc.mac_address && mac) update.mac_address = mac;
+    const specs = (svc.specifications && typeof svc.specifications === "object") ? { ...svc.specifications } : {};
+    let specsChanged = false;
+    if (!specs.model && d.model?.trim()) { specs.model = d.model.trim(); specsChanged = true; }
+    if (!specs.lldp_name && d.name && norm(d.name) !== mac) { specs.lldp_name = d.name; specsChanged = true; }
+    if (specsChanged) update.specifications = specs;
+    if (Object.keys(update).length) await supabase.from("services").update(update).eq("id", svc.id);
+    svc.mac_address = svc.mac_address || mac;
+    absorbed++;
+  }
+  return absorbed;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== "POST") {
@@ -94,7 +142,7 @@ Deno.serve(async (req: Request) => {
       const { data: upserted, error: devErr } = await supabase
         .from("net_devices")
         .upsert(rows, { onConflict: "site_id,mac_address", ignoreDuplicates: false })
-        .select("id, mac_address");
+        .select("id, mac_address, ip_address, model, name, service_id");
 
       if (devErr) {
         console.error("[ingest-net-topology] devices error:", devErr.message);
@@ -103,6 +151,7 @@ Deno.serve(async (req: Request) => {
           if (row.mac_address) macToId.set(row.mac_address.toUpperCase(), row.id);
         }
         results.devices_upserted = upserted?.length ?? 0;
+        results.absorbed = await absorbIntoServices(supabase, site.client_id, site_id, upserted ?? []);
       }
     }
 
