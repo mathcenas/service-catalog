@@ -77,6 +77,24 @@ Deno.serve(async (req: Request) => {
 
     const backedUpAt = backed_up_at || new Date().toISOString();
 
+    // Reenvíos (script cortado a la mitad, lookback largo): mismo servicio, job y hora → ignorar
+    if (backed_up_at) {
+      let dup = supabaseAdmin
+        .from("service_backups")
+        .select("id")
+        .eq("service_id", service_id)
+        .eq("backed_up_at", backedUpAt)
+        .limit(1);
+      dup = job_name ? dup.eq("job_name", job_name) : dup.is("job_name", null);
+      const { data: existing } = await dup;
+      if (existing && existing.length > 0) {
+        return new Response(
+          JSON.stringify({ ok: true, duplicate: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // Insert backup history record
     const { error: insertErr } = await supabaseAdmin
       .from("service_backups")
