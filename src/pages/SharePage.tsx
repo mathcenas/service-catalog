@@ -8,9 +8,10 @@ import {
 import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapItemUpdate, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat, ClientApp, ServiceIncident } from '../lib/supabase';
 import { BackupMetricsModal } from '../components/BackupMetricsModal';
 import { backupMaxAgeHours } from '../lib/backupSchedule';
+import { ReferencesSection } from '../components/share/ReferencesSection';
 
 type Props = { token: string };
-type Section = 'overview' | 'services' | 'licenses' | 'changes' | 'hours' | 'support' | 'tickets';
+type Section = 'overview' | 'services' | 'licenses' | 'changes' | 'hours' | 'support' | 'tickets' | 'referencias';
 
 interface ServiceBackup {
   id: string;
@@ -92,7 +93,8 @@ export function SharePage({ token }: Props) {
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [section, setSection] = useState<Section>('overview');
+  // #referencias abre directo la página de referencias (link desde los mails)
+  const [section, setSection] = useState<Section>(() => (typeof window !== 'undefined' && window.location.hash === '#referencias' ? 'referencias' : 'overview'));
   const [expandedService, setExpandedService] = useState<string | null>(null);
 
   const [dark, setDark] = useState(() =>
@@ -347,6 +349,7 @@ export function SharePage({ token }: Props) {
             )}
             {(supportHours.length > 0 || roadmap.some(r => r.amount_type === 'hours' && r.amount && r.amount > 0)) && <NavBtn active={section === 'hours'} onClick={() => setSection('hours')}>Hours</NavBtn>}
             <NavBtn active={section === 'support'} onClick={() => setSection('support')}>Support</NavBtn>
+            <NavBtn active={section === 'referencias'} onClick={() => setSection('referencias')}>Referencias</NavBtn>
           </div>
         </nav>
 
@@ -357,6 +360,7 @@ export function SharePage({ token }: Props) {
           {section === ('tickets' as Section) && <TicketsSection items={roadmap.filter(r => r.category === 'problem' || r.category === 'change_request')} updates={roadmapUpdates} />}
           {section === 'hours' && <SupportHoursSection hours={supportHours} roadmapItems={roadmap} services={services} />}
           {section === 'support' && <SupportSection token={token} clientName={client!.company_name} services={services} />}
+          {section === 'referencias' && <ReferencesSection companyName={userSettings?.company_name ?? undefined} />}
         </main>
 
         <footer className="border-t border-gray-100 dark:border-gray-800 py-6">
@@ -1250,7 +1254,21 @@ function SystemHealth({ entries, services }: { entries: ServiceHeartbeat[]; serv
           const raidIssue = Array.isArray(p.disk_raid)
             ? p.disk_raid.filter((r: any) => r?.status && r.status !== 'ok').map((r: any) => `Volumen ${r.name}: ${r.health}`).join(' · ')
             : '';
-          const issues = typeof p.issues === 'string' && p.issues.trim() && p.issues !== 'Normal' ? p.issues.trim() : raidIssue || null;
+          // Scripts viejos no mandan "issues": armar el motivo con los discos que no están OK
+          const smartIssue = Array.isArray(p.disk_smart)
+            ? p.disk_smart.filter((d: any) => d?.status && d.status !== 'ok').map((d: any) => {
+                const why = [
+                  d.smart_health && !/^(healthy|passed|ok)$/i.test(d.smart_health) ? d.smart_health : null,
+                  d.temp_c != null ? `${d.temp_c} °C` : null,
+                  d.pct_used > 75 ? `desgaste ${d.pct_used}%` : null,
+                  d.uncorrectable_errors > 0 ? `${d.uncorrectable_errors} errores de lectura/escritura` : null,
+                ].filter(Boolean).join(', ');
+                return `Disco ${d.model ?? d.dev}${why ? `: ${why}` : ''}`;
+              }).join(' · ')
+            : '';
+          const issues = typeof p.issues === 'string' && p.issues.trim() && p.issues !== 'Normal'
+            ? p.issues.trim()
+            : [raidIssue, smartIssue].filter(Boolean).join(' · ') || null;
           const reason =
             freshness === 'offline' ? `No reporta hace ${Math.round(ageH / 24)} días` :
             freshness === 'stale'   ? `Último reporte hace ${Math.round(ageH)} h` :

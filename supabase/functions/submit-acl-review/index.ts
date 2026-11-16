@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { B, EMAIL_FONT, emailHeader, emailPortalPanel, emailMeta, emailLogo } from "../_shared/emailBrand.ts";
+import { clientShareUrl } from "../_shared/shareLink.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://servicios.cenas-support.com",
@@ -102,25 +103,17 @@ Deno.serve(async (req: Request) => {
     });
 
     // Fetch admin settings and client portal token in parallel
-    const [{ data: settings }, { data: shareToken }] = await Promise.all([
+    const [{ data: settings }, portalUrl] = await Promise.all([
       supabase
         .from("user_settings")
         .select("logo_url, company_name, weekly_digest_email")
         .eq("user_id", reviewToken.user_id)
         .maybeSingle(),
-      reviewToken.client_id
-        ? supabase
-            .from("share_tokens")
-            .select("token")
-            .eq("client_id", reviewToken.client_id)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
+      // client_share_tokens (share_tokens no existe); el link es /share/<token>
+      reviewToken.client_id ? clientShareUrl(supabase, reviewToken.client_id) : Promise.resolve(null),
     ]);
 
     const adminEmail = settings?.weekly_digest_email || Deno.env.get("RESEND_REPLY_TO") || "mathias@cenas.uy";
-    const portalUrl = shareToken?.token
-      ? `https://servicios.cenas-support.com/portal/${shareToken.token}`
-      : null;
     const logoUrl = settings?.logo_url || "";
     const companyName = settings?.company_name || "Cenas Support";
 

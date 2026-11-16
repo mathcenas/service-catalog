@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { B, EMAIL_FONT, emailHeader, emailPortalPanel, emailMeta } from "../_shared/emailBrand.ts";
+import { clientShareUrl } from "../_shared/shareLink.ts";
 
 // POST body options:
 //   { preview: true, client_id: "uuid", frequency?: "daily"|"weekly"|"monthly" }
@@ -108,15 +109,12 @@ Deno.serve(async (req: Request) => {
     // User settings (for company name / logo)
     const { data: settings } = await supabase
       .from("user_settings")
-      .select("company_name, logo_url, share_page_slug")
+      .select("company_name, logo_url")
       .eq("user_id", client.user_id)
       .maybeSingle();
 
     const senderName = settings?.company_name || "Cenas IT";
-    const portalSlug = settings?.share_page_slug;
-    const portalUrl  = portalSlug
-      ? `${Deno.env.get("APP_URL") || "https://servicios.cenas-support.com"}/share/${portalSlug}/${client.id}`
-      : null;
+    const portalUrl  = await clientShareUrl(supabase, client.id);
 
     // Services for this client
     const { data: services } = await supabase
@@ -314,6 +312,7 @@ Deno.serve(async (req: Request) => {
         ${!isDaily && renewalRows ? section('Próximas Renovaciones', '📅', tableWrap(renewalRows, ['Servicio', 'Fecha'])) : ''}
         ${!isDaily && changeItems ? section('Cambios realizados esta semana', '🔧', `<ul style="margin:4px 0;padding-left:16px;">${changeItems}</ul>`) : ''}
         ${emailPortalPanel({ companyName: client.company_name, portalUrl })}
+        ${portalUrl ? `<p style="text-align:center;margin:10px 0 0;font-size:11px;"><a href="${portalUrl}#referencias" style="color:${B.textMid};text-decoration:underline;">¿Qué significa cada estado?</a></p>` : ""}
         ${emailMeta(senderName)}
       `;
       return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${B.bg};font-family:${EMAIL_FONT};">
