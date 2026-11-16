@@ -3,7 +3,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { B, EMAIL_FONT, emailHeader, emailPortalPanel, emailMeta } from "../_shared/emailBrand.ts";
 
 // POST body options:
-//   { preview: true, client_id: "uuid" }  → returns { html } without sending
+//   { preview: true, client_id: "uuid", frequency?: "daily"|"weekly"|"monthly" }
+//                                          → returns { html, subject, recipients } without sending
 //   { client_id: "uuid" }                 → sends to that client only
 //   {}                                     → pg_cron: daily contacts always, weekly contacts only on Monday
 
@@ -31,6 +32,8 @@ Deno.serve(async (req: Request) => {
   try { body = await req.json(); } catch {}
 
   const previewMode: boolean = body?.preview === true;
+  const previewFreq: "daily" | "weekly" | "monthly" | null =
+    ["daily", "weekly", "monthly"].includes(body?.frequency) ? body.frequency : null;
   const targetClientId: string | null = body?.client_id || null;
 
   if (!RESEND_API_KEY && !previewMode) {
@@ -288,9 +291,9 @@ Deno.serve(async (req: Request) => {
         </tr>`;
       }).join('');
 
-    const buildHtml = (frequency: "daily" | "weekly") => {
+    const buildHtml = (frequency: "daily" | "weekly" | "monthly") => {
       const isDaily = frequency === "daily";
-      const label   = isDaily ? 'Resumen Diario' : 'Resumen Semanal';
+      const label   = isDaily ? 'Resumen Diario' : frequency === "monthly" ? 'Resumen Mensual' : 'Resumen Semanal';
       const bRows   = isDaily ? backupRows24h : backupRows;
       const bLabel  = isDaily ? 'Backups — últimas 24h' : 'Backups — últimos 7 días';
       const bEmpty  = isDaily ? 'Sin backups en las últimas 24h.' : 'Sin servicios con backup monitoreado esta semana.';
@@ -317,8 +320,15 @@ Deno.serve(async (req: Request) => {
     };
 
     if (previewMode) {
-      const html = buildHtml(hasDailyContact ? "daily" : "weekly");
-      return new Response(JSON.stringify({ html, client_name: client.company_name }), {
+      const freq = previewFreq ?? (hasDailyContact ? "daily" : "weekly");
+      const html = buildHtml(freq);
+      const groupKey = freq === "daily" ? "all" : freq;
+      const recipients = clientContacts.filter(c => c.digest_frequency === groupKey).map(c => ({ name: c.name, email: c.email }));
+      const subjLabel = freq === "daily" ? "Resumen diario" : freq === "monthly" ? "Resumen mensual" : "Resumen semanal";
+      return new Response(JSON.stringify({
+        html, client_name: client.company_name, frequency: freq, recipients,
+        subject: `${subjLabel} — ${client.company_name} — ${dateLabel}`,
+      }), {
         status: 200,
         headers: { ...cors, "Content-Type": "application/json" },
       });
@@ -333,7 +343,7 @@ Deno.serve(async (req: Request) => {
       if (frequency === "weekly"  && !isMonday      && !targetClientId) continue;
       if (frequency === "monthly" && !isFirstMonday && !targetClientId) continue;
 
-      const buildFreq = frequency === "all" ? "daily" : "weekly";
+      const buildFreq = frequency === "all" ? "daily" : frequency;
       const html      = buildHtml(buildFreq);
       const label       = frequency === "all" ? "Resumen diario" : frequency === "monthly" ? "Resumen mensual" : "Resumen semanal";
       const subject     = `${label} — ${client.company_name} — ${dateLabel}`;

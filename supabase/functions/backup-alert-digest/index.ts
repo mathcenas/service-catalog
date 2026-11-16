@@ -4,12 +4,22 @@ import { B, EMAIL_FONT, emailHeader, emailPortalPanel, emailMeta } from "../_sha
 
 // Runs daily via pg_cron (or POST with { client_id, preview }).
 // Sends ONE email per client summarising all backup events in the last 24h.
-// Only sends if there are any warning or failed backups, OR if any service
-// missed its expected backup window.
+// Only sends if there is at least one warning or failed backup in the last 24h.
+// Contacts with a daily summary ('all') are skipped: their daily digest already
+// lists the backups of the last 24h, so they would get the same news twice.
+// Preview ({ preview: true, client_id? }) returns
+//   { previews: [{ client_id, client_name, html, subject, has_alert, recipients }] }
+
+const cors = {
+  "Access-Control-Allow-Origin": "https://servicios.cenas-support.com",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+};
 
 Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: cors });
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405 });
+    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers: cors });
   }
 
   const supabase = createClient(
@@ -27,7 +37,15 @@ Deno.serve(async (req: Request) => {
   const targetClientId: string|null = body?.client_id || null;
 
   if (!RESEND_API_KEY && !previewMode) {
-    return new Response(JSON.stringify({ error: "RESEND_API_KEY not configured" }), { status: 500 });
+    return new Response(JSON.stringify({ error: "RESEND_API_KEY not configured" }), { status: 500, headers: cors });
+  }
+
+  // Vista previa desde la app: solo clientes del usuario logueado
+  let userId: string | null = null;
+  const authHeader = req.headers.get("Authorization");
+  if (previewMode && authHeader?.startsWith("Bearer ")) {
+    const { data: { user } } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
+    if (user) userId = user.id;
   }
 
   const since24h = new Date(Date.now() - 86400000).toISOString();
@@ -41,7 +59,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: allBackups } = await backupsQuery;
   if (!allBackups || allBackups.length === 0) {
-    return new Response(JSON.stringify({ sent: 0, reason: "No backups in last 24h" }), { status: 200 });
+    return new Response(JSON.stringify({ sent: 0, previews: [], reason: "No backups in last 24h" }), { status: 200, headers: cors });
   }
 
   // Group backups by service_id
@@ -63,7 +81,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: services } = await svcQuery;
   if (!services || services.length === 0) {
-    return new Response(JSON.stringify({ sent: 0, reason: "No services found" }), { status: 200 });
+    return new Response(JSON.stringify({ sent: 0, previews: [], reason: "No services found" }), { status: 200, headers: cors });
   }
 
   // Group services by client_id
@@ -107,6 +125,7 @@ Deno.serve(async (req: Request) => {
   for (const [clientId, clientServices] of servicesByClient) {
     const client = (clientServices[0] as any).clients;
     if (!client) continue;
+    if (userId && client.user_id !== userId) continue;
 
     // Collect all backups for this client
     const rows: { svc: any; backups: any[] }[] = clientServices.map((s: any) => ({
@@ -119,11 +138,12 @@ Deno.serve(async (req: Request) => {
     if (!hasAlert && !previewMode) continue;
 
     // Load contacts for this client
+    // Sin los contactos con resumen diario: ese resumen ya trae los backups de las últimas 24h
     const { data: contacts } = await supabase
       .from("client_contacts")
-      .select("id, email")
+      .select("id, name, email, digest_frequency")
       .eq("client_id", clientId)
-      .neq("digest_frequency", "none");
+      .not("digest_frequency", "in", "(none,all)");
 
     const recipients = (contacts || []).map((c: any) => c.email).filter(Boolean);
     if (recipients.length === 0 && !previewMode) continue;
@@ -210,14 +230,21 @@ Deno.serve(async (req: Request) => {
   </td></tr>
 </table>`;
 
-    if (previewMode) {
-      previews.push({ client_name: client.company_name, html });
-      continue;
-    }
-
     const subject = totalFailed > 0
       ? `⚠ Alerta de backup — ${client.company_name} — ${dateLabel}`
       : `Resumen de backups — ${client.company_name} — ${dateLabel}`;
+
+    if (previewMode) {
+      previews.push({
+        client_id: clientId,
+        client_name: client.company_name,
+        html,
+        subject,
+        has_alert: hasAlert,
+        recipients: (contacts || []).map((c: any) => ({ name: c.name, email: c.email })),
+      });
+      continue;
+    }
 
     const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -244,8 +271,8 @@ Deno.serve(async (req: Request) => {
   }
 
   if (previewMode) {
-    return new Response(JSON.stringify({ previews }), { status: 200, headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ previews }), { status: 200, headers: { ...cors, "Content-Type": "application/json" } });
   }
 
-  return new Response(JSON.stringify({ sent }), { status: 200 });
+  return new Response(JSON.stringify({ sent }), { status: 200, headers: cors });
 });
