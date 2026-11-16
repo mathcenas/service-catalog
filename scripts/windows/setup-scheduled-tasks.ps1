@@ -11,6 +11,9 @@
 
 #Requires -RunAsAdministrator
 
+# Con versión para que update-scripts.ps1 lo actualice (sin versión nunca se bajaba de nuevo)
+$SCRIPT_VERSION = "1.0.0"
+
 $ScriptsDir = $PSScriptRoot
 
 # Detectar pwsh.exe

@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================
 # update-scripts.sh — Auto-actualización de scripts Linux
-# v1.2.0
+# v1.3.0
 #
 # Uso:
 #   ./update-scripts.sh              # actualiza todos
@@ -17,7 +17,7 @@
 #   GITHUB_BRANCH rama                 (default: main)
 # =============================================================
 
-SCRIPT_VERSION="1.2.1"
+SCRIPT_VERSION="1.3.0"
 GITHUB_REPO="${GITHUB_REPO:-mathcenas/service-catalog}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/srv/scripts}"
@@ -37,7 +37,10 @@ declare -A SCRIPTS=(
   ["system-health.sh"]="scripts/linux/system-health.sh"
   ["backup.sh"]="scripts/linux/backup.sh"
   ["report-backup.sh"]="scripts/linux/report-backup.sh"
-  ["mikrotik-heartbeat.sh"]="scripts/linux/mikrotik-heartbeat.sh"
+  # mikrotik-heartbeat.sh ya no existe en el repo (daba error en cada corrida): lo reemplaza mk-monitor.sh
+  ["mk-monitor.sh"]="scripts/linux/mk-monitor.sh"
+  ["mk-wifi-report.sh"]="scripts/linux/mk-wifi-report.sh"
+  ["mk-syslog.sh"]="scripts/linux/mk-syslog.sh"
   ["update-scripts.sh"]="scripts/linux/update-scripts.sh"
 )
 # Nota: *.env y *.env.example no se actualizan para no sobreescribir config local.
@@ -105,6 +108,49 @@ write_versions_file() {
   printf '{%s\n}\n' "$entries" > "$VERSIONS_FILE" 2>/dev/null || true
 }
 
+# Reporta al portal qué versiones quedaron instaladas (source "update-scripts").
+# Usa el mismo .env que system-health.sh; sin config o sin jq, no manda nada.
+send_updater_report() {
+  (
+    set +e
+    local env_file=""
+    for f in /etc/backup-ingest.env "${INSTALL_DIR}/.env"; do [[ -f "$f" ]] && { env_file="$f"; break; }; done
+    [[ -z "$env_file" ]] && exit 0
+    command -v jq >/dev/null 2>&1 || { warn "jq no está instalado — no se reporta al portal"; exit 0; }
+    # shellcheck disable=SC1090
+    source "$env_file"
+    local anon="${SUPABASE_ANON_KEY:-$ANON_KEY}"
+    [[ -z "$SUPABASE_URL" || -z "$anon" || -z "$INGEST_SECRET" || -z "$SERVICE_ID" ]] && exit 0
+
+    local installed="{}"
+    for sname in "${!SCRIPTS[@]}"; do
+      [[ -f "${INSTALL_DIR}/${sname}" ]] || continue
+      installed=$(jq -c --arg k "$sname" --arg v "$(get_version "${INSTALL_DIR}/${sname}")" '. + {($k): $v}' <<<"$installed")
+    done
+    local cron_line
+    cron_line=$( (crontab -l 2>/dev/null; cat /etc/cron.d/* 2>/dev/null) | grep -v '^\s*#' | grep -m1 'update-scripts' )
+    local status="success"; (( errors > 0 )) && status="warning"
+
+    local body
+    body=$(jq -n \
+      --arg sid "$SERVICE_ID" --arg st "$status" \
+      --arg msg "Actualizados: ${updated} | Sin cambios: ${skipped} | Errores: ${errors}" \
+      --arg branch "$GITHUB_BRANCH" --arg ver "$SCRIPT_VERSION" --arg cron "$cron_line" \
+      --argjson installed "$installed" \
+      --rawfile upd "$UPDATED_LIST" --rawfile errs "$ERROR_LIST" \
+      '{service_id:$sid, source:"update-scripts", status:$st, message:$msg,
+        payload:{platform:"linux", branch:$branch, installed:$installed,
+          updated:($upd|split("\n")|map(select(length>0))),
+          errors:($errs|split("\n")|map(select(length>0))),
+          task:(if $cron=="" then null else {name:"cron", schedule:$cron} end),
+          script_version:$ver}}')
+    code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${SUPABASE_URL}/functions/v1/ingest-heartbeat" \
+      -H "Content-Type: application/json" -H "apikey: ${anon}" -H "Authorization: Bearer ${anon}" \
+      -H "X-Ingest-Secret: ${INGEST_SECRET}" --data "$body")
+    [[ "$code" =~ ^2 ]] && log "Reporte enviado al portal" || warn "No se pudo reportar al portal (HTTP ${code})"
+  )
+}
+
 # ── main ─────────────────────────────────────────────────────
 log "update-scripts.sh v${SCRIPT_VERSION} — repo: ${GITHUB_REPO}@${GITHUB_BRANCH}"
 
@@ -117,8 +163,10 @@ skipped=0
 errors=0
 
 # Scripts seguros de ejecutar inmediatamente después de actualizarse
-SAFE_TO_RUN=("system-health.sh" "mikrotik-heartbeat.sh")
+SAFE_TO_RUN=("system-health.sh")
 AUTO_RUN_LIST=$(mktemp)
+UPDATED_LIST=$(mktemp)
+ERROR_LIST=$(mktemp)
 
 for script_name in "${!SCRIPTS[@]}"; do
   (
@@ -135,6 +183,7 @@ for script_name in "${!SCRIPTS[@]}"; do
 
     if [[ "$http_code" != "200" ]]; then
       warn "${script_name}: HTTP ${http_code} — saltando"
+      echo "${script_name}: HTTP ${http_code}" >> "$ERROR_LIST"
       rm -f "$tmp"; exit 1
     fi
 
@@ -142,6 +191,7 @@ for script_name in "${!SCRIPTS[@]}"; do
     local_size=$(stat -c%s "$tmp" 2>/dev/null || echo 0)
     if (( local_size < 50 )); then
       warn "${script_name}: archivo sospechosamente pequeño (${local_size} bytes) — descartado"
+      echo "${script_name}: archivo vacío" >> "$ERROR_LIST"
       rm -f "$tmp"; exit 1
     fi
 
@@ -171,6 +221,7 @@ for script_name in "${!SCRIPTS[@]}"; do
       chmod +x "${dest}.new"
       rm -f "$tmp"
       ok "${script_name}: ${local_ver} → ${remote_ver} | sha256: ${sha:0:16}… (se aplicará al finalizar)"
+      echo "${script_name} ${local_ver} -> ${remote_ver}" >> "$UPDATED_LIST"
       exit 0
     fi
 
@@ -179,6 +230,7 @@ for script_name in "${!SCRIPTS[@]}"; do
     chmod +x "$dest"
     rm -f "$tmp"
     ok "${script_name}: ${local_ver} → ${remote_ver} | sha256: ${sha:0:16}…"
+    echo "${script_name} ${local_ver} -> ${remote_ver}" >> "$UPDATED_LIST"
 
     # Marcar para auto-ejecución si es seguro
     for safe in "${SAFE_TO_RUN[@]}"; do
@@ -200,7 +252,9 @@ done
 if [[ "$CHECK_ONLY" == "false" ]]; then
   write_versions_file
   log "Listo — actualizados: ${updated} · sin cambios: ${skipped} · errores: ${errors}"
+  send_updater_report
 fi
+rm -f "$UPDATED_LIST" "$ERROR_LIST"
 
 # Ejecutar scripts recién actualizados (B)
 if [[ -s "$AUTO_RUN_LIST" ]]; then
