@@ -649,6 +649,8 @@ function DailyOpsPanel({
 }) {
   const [items, setItems] = useState<DailyOpsItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // Tickets que sync-alert-tickets abrió en Task Tracker, por alert_key ("backup:<id>", "signal:<id>", "ops:<id>")
+  const [tickets, setTickets] = useState<Record<string, { tt_task_id: string | null; tt_error: string | null; opened_at: string }>>({});
 
   const clientMap = Object.fromEntries(clients.map(c => [c.id, c]));
   const activeIds = services.filter(s => s.status === 'Active').map(s => s.id);
@@ -774,6 +776,8 @@ function DailyOpsPanel({
       (a.when && b.when ? a.when.localeCompare(b.when) : 0)
     );
     setItems(result);
+    const { data: tk } = await supabase.from('alert_tickets').select('alert_key, tt_task_id, tt_error, opened_at').eq('status', 'open');
+    setTickets(Object.fromEntries((tk ?? []).map(t => [t.alert_key, t])));
     setLoading(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [services.length, clients.length]);
@@ -857,6 +861,24 @@ function DailyOpsPanel({
                             {item.tag}
                           </span>
                         )}
+                        {(() => {
+                          const key = item.id.startsWith('backup-') ? `backup:${item.id.replace(/^backup-(fail|stale)-/, '')}`
+                            : item.id.startsWith('no-hb-') ? `signal:${item.id.slice(6)}`
+                            : item.id.startsWith('ops-') ? `ops:${item.id.slice(4)}` : null;
+                          const t = key ? tickets[key] : undefined;
+                          if (!t) return null;
+                          return t.tt_task_id ? (
+                            <span className="inline-flex items-center rounded-md border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700"
+                              title={`Tarea abierta en Task Tracker ${relativeEs(t.opened_at, now)}; se cierra sola cuando la alerta desaparece`}>
+                              Ticket TT
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-md border border-gray-200 px-1.5 py-0.5 text-[11px] text-gray-400"
+                              title={t.tt_error ?? 'Sin tarea en Task Tracker'}>
+                              Sin ticket
+                            </span>
+                          );
+                        })()}
                         <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium ${sev.cls}`}>
                           <Flag className="w-3 h-3" />{sev.label}
                         </span>

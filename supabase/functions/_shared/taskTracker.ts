@@ -14,6 +14,7 @@ export interface PushTaskPayload {
   priority?:   string;   // "low"|"medium"|"high" — defaults to "medium"
   hours?:      number;
   date?:       string;   // YYYY-MM-DD — defaults to today
+  reported_by?: string;  // "integration:<origen>" permite cerrarla después con la API key
 }
 
 interface PushResult {
@@ -46,6 +47,7 @@ async function _post(
         priority:    payload.priority || "medium",
         date:        payload.date ?? new Date().toISOString().split("T")[0],
         ...(payload.hours != null ? { hours: payload.hours } : {}),
+        ...(payload.reported_by ? { reportedBy: payload.reported_by } : {}),
       }),
     });
 
@@ -113,4 +115,25 @@ export async function resolveDefaultProject(
   if (!proj?.tt_project_id) return null;
 
   return { ttClientId: client.task_tracker_id, ttProjectId: proj.tt_project_id };
+}
+
+// Cierra una tarea creada por una integración (POST /api/tasks/:id/resolve en Task Tracker):
+// la marca completada con una nota, sin mail al cliente. 404 = ya no existe (se toma como cerrada).
+export async function resolveTaskInTracker(
+  taskId: string,
+  note: string,
+  apiKey: string,
+  baseUrl: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${baseUrl}/api/tasks/${encodeURIComponent(taskId)}/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+      body: JSON.stringify({ note }),
+    });
+    if (res.ok || res.status === 404) return { ok: true };
+    return { ok: false, error: `${res.status}: ${await res.text().catch(() => "")}` };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
 }
