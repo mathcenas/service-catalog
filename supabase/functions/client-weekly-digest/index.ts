@@ -119,7 +119,7 @@ Deno.serve(async (req: Request) => {
     // Services for this client
     const { data: services } = await supabase
       .from("services")
-      .select("id, name, business_name, client_id, last_backup_at, last_restore_test_at, next_renewal_date, billing_cycle, status, uptime_badge_url")
+      .select("id, name, business_name, client_id, last_backup_at, last_restore_test_at, next_renewal_date, billing_cycle, status, uptime_badge_url, backup_max_age_hours")
       .eq("client_id", client.id)
       .eq("status", "Active");
 
@@ -199,7 +199,10 @@ Deno.serve(async (req: Request) => {
         const latest = latestBackupPerSvc[s.id];
         const dateStr = latest?.backed_up_at || s.last_backup_at;
         const daysAgo = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
-        const color   = daysAgo <= 1 ? '#22c55e' : daysAgo <= 3 ? '#f59e0b' : '#ef4444';
+        // Según la frecuencia del servicio (NULL = diario 26 h, 0 = no se controla)
+        const hoursAgo = (Date.now() - new Date(dateStr).getTime()) / 3600000;
+        const maxAge   = s.backup_max_age_hours === 0 ? null : (s.backup_max_age_hours ?? 26);
+        const color    = maxAge === null ? '#64748b' : hoursAgo <= maxAge ? '#22c55e' : hoursAgo <= maxAge * 2 ? '#f59e0b' : '#ef4444';
         const age     = daysAgo === 0 ? 'Hoy' : daysAgo === 1 ? 'Ayer' : `${daysAgo}d atrás`;
         return `<tr>
           <td style="padding:5px 8px;font-size:12px;color:${B.primary};">${s.business_name || s.name}</td>

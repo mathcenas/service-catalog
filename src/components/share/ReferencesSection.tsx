@@ -129,7 +129,7 @@ export function ReferencesSection({ companyName }: { companyName?: string }) {
           what="El backup no se completó. La copia anterior sigue disponible."
           todo={`${us} lo atiende ese mismo día. Te avisamos por email cuando hay fallas.`} />
         <Row pill={<Pill tone="warning">Pendiente</Pill>}
-          what="Pasó más tiempo del esperado sin un backup nuevo (más de 26 h en los diarios, 74 h en los de lunes a viernes, 8 días en los semanales)."
+          what="Pasó más tiempo del esperado sin un backup nuevo (más de 26 h en los diarios, 74 h en los de lunes a viernes, 8 días en los semanales, 32 días en los mensuales; si un job es semanal o mensual dentro de un servicio diario, se respeta la frecuencia de ese job)."
           todo="Si el equipo estuvo apagado, avisanos; si no, lo revisamos nosotros." />
         <Row pill={<Pill tone="error">Atrasado</Pill>}
           what="Pasó el doble del tiempo esperado sin backup."

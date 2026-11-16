@@ -5,6 +5,7 @@ import { ServiceMetricsModal } from './ServiceMetricsModal';
 import { BackupMetricsModal } from './BackupMetricsModal';
 import { BRAND, pdfHeader, pdfSection, openPrintWindow } from '../lib/pdfBrand';
 import { WifiClientsView } from './WifiClientsView';
+import { ScriptUpdatesView } from './ScriptUpdatesView';
 import { AclReviewSendModal } from './AclReviewSendModal';
 
 interface ServiceBackup {
@@ -347,7 +348,7 @@ export function TelemetryDashboard({ services, clients, focus }: Props) {
   const [statusFilter, setStatusFilter] = useState<'all' | 'ok' | 'warning' | 'error' | 'stale' | 'no-data'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAllBackups, setShowAllBackups] = useState(false);
-  const [viewMode, setViewMode] = useState<'cards' | 'log' | 'backups' | 'acl' | 'sessions' | 'wifi'>('cards');
+  const [viewMode, setViewMode] = useState<'cards' | 'log' | 'backups' | 'acl' | 'sessions' | 'wifi' | 'updates'>('cards');
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [liveDevices, setLiveDevices] = useState<Record<string, SoftwareImport[]>>({});
   useEffect(() => {
@@ -784,6 +785,10 @@ export function TelemetryDashboard({ services, clients, focus }: Props) {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'wifi' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
               <Wifi className="w-3.5 h-3.5" /> Wi-Fi
             </button>
+            <button onClick={() => setViewMode('updates')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${viewMode === 'updates' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              <Download className="w-3.5 h-3.5" /> Actualizaciones
+            </button>
           </div>
         </div>
       </div>
@@ -911,7 +916,7 @@ export function TelemetryDashboard({ services, clients, focus }: Props) {
             })}
           </div>
         )
-      ) : viewMode === 'backups' || viewMode === 'acl' || viewMode === 'sessions' || viewMode === 'wifi' ? null : (
+      ) : viewMode === 'backups' || viewMode === 'acl' || viewMode === 'sessions' || viewMode === 'wifi' || viewMode === 'updates' ? null : (
         /* ── LOG VIEW ── */
         filteredLog.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
@@ -1203,6 +1208,7 @@ export function TelemetryDashboard({ services, clients, focus }: Props) {
       )}
 
       {viewMode === 'wifi' && <WifiClientsView services={services} clients={clients} logoUrl={logoUrl} />}
+      {viewMode === 'updates' && <ScriptUpdatesView services={services} clients={clients} />}
 
       {/* Sesiones activas SMB / RDP */}
       {viewMode === 'sessions' && (() => {

@@ -26,7 +26,7 @@ param(
   [switch]$Force
 )
 
-$SCRIPT_VERSION = "1.2.6"
+$SCRIPT_VERSION = "1.3.0"
 
 $ErrorActionPreference = "SilentlyContinue"
 
@@ -57,6 +57,11 @@ $Scripts = [ordered]@{
   "device-report.ps1"             = "scripts/windows/device-report.ps1"
   "setup-scheduled-tasks.ps1"     = "scripts/windows/setup-scheduled-tasks.ps1"
   "update-scripts.ps1"            = "scripts/windows/update-scripts.ps1"
+  # Herramientas que se corren a mano o solo en algunos clientes: se mantienen al día igual
+  "cobian-backfill.ps1"           = "scripts/windows/cobian-backfill.ps1"
+  "kls-report.ps1"                = "scripts/windows/kls-report.ps1"
+  "server-snapshot.ps1"           = "scripts/windows/server-snapshot.ps1"
+  "cristar-backup-report.ps1"     = "scripts/windows/cristar-backup-report.ps1"
 }
 # Nota: config.ps1 se actualiza pero NO sobreescribe - se guarda como config.ps1.new
 # para que puedas revisar cambios antes de aplicarlos.
@@ -132,6 +137,59 @@ function Write-VersionsFile {
   $versions | ConvertTo-Json -Depth 3 | Set-Content -Path $VersionsFile -Encoding UTF8
 }
 
+# Reporta al portal qué versiones quedaron instaladas y cuándo vuelve a correr.
+# Usa SERVICE_ID / INGEST_SECRET de config.ps1; si no está configurado, no manda nada.
+function Send-UpdaterReport {
+  $cfg = Join-Path $InstallDir "config.ps1"
+  if (-not (Test-Path $cfg)) { return }
+  try { . $cfg } catch { Warn "config.ps1 no se pudo leer - no se reporta al portal"; return }
+  if (-not $SERVICE_ID -or $SERVICE_ID -like "REEMPLAZAR*" -or -not $HEARTBEAT_URL) { return }
+
+  $installed = [ordered]@{}
+  foreach ($scriptName in $Scripts.Keys) {
+    $dest = Join-Path $InstallDir $scriptName
+    if (Test-Path $dest) { $installed[$scriptName] = (Get-ScriptVersion -Path $dest).ToString() }
+  }
+
+  # Tarea programada que corre este script (cualquier nombre)
+  $task = $null
+  try {
+    $t = Get-ScheduledTask -ErrorAction Stop | Where-Object { ($_.Actions | ForEach-Object { "$($_.Execute) $($_.Arguments)" }) -match 'update-scripts' } | Select-Object -First 1
+    if ($t) {
+      $i = $t | Get-ScheduledTaskInfo
+      $task = [ordered]@{
+        name        = $t.TaskName
+        state       = $t.State.ToString()
+        last_run    = if ($i.LastRunTime -and $i.LastRunTime.Year -gt 2000) { $i.LastRunTime.ToUniversalTime().ToString("o") } else { $null }
+        next_run    = if ($i.NextRunTime) { $i.NextRunTime.ToUniversalTime().ToString("o") } else { $null }
+        last_result = $i.LastTaskResult
+      }
+    }
+  } catch {}
+
+  $body = @{
+    service_id = $SERVICE_ID
+    source     = "update-scripts"
+    status     = if ($errors -gt 0) { "warning" } else { "success" }
+    message    = "Actualizados: $updated | Sin cambios: $skipped | Errores: $errors"
+    payload    = [ordered]@{
+      platform       = "windows"
+      branch         = $GithubBranch
+      installed      = $installed
+      updated        = @($updatedList)
+      errors         = @($errorList)
+      task           = $task
+      ps_version     = $PSVersionTable.PSVersion.ToString()
+      script_version = $SCRIPT_VERSION
+    }
+  } | ConvertTo-Json -Depth 5
+  $h = @{ "Content-Type" = "application/json"; "apikey" = $ANON_KEY; "Authorization" = "Bearer $ANON_KEY"; "X-Ingest-Secret" = $INGEST_SECRET }
+  try {
+    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $h -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -ErrorAction Stop | Out-Null
+    Log "Reporte enviado al portal"
+  } catch { Warn "No se pudo reportar al portal: $($_.Exception.Message)" }
+}
+
 # Rotar log si supera 1 MB
 try {
   if ((Test-Path $LogFile) -and (Get-Item $LogFile).Length -gt 1MB) {
@@ -152,6 +210,8 @@ if (-not (Test-Path $LogsDir)) {
 }
 
 $updated = 0; $skipped = 0; $errors = 0
+$updatedList = [System.Collections.Generic.List[string]]::new()
+$errorList   = [System.Collections.Generic.List[string]]::new()
 $selfUpdatePending = $null
 $scriptsToRun = [System.Collections.Generic.List[string]]::new()
 
@@ -171,7 +231,7 @@ foreach ($scriptName in $Scripts.Keys) {
     $tmp = Download-Temp -Url $url
     if (-not $tmp) {
       Warn "${scriptName}: no se pudo descargar - saltando"
-      $errors++
+      $errors++; $errorList.Add("${scriptName}: no se pudo descargar")
       continue
     }
 
@@ -200,7 +260,7 @@ foreach ($scriptName in $Scripts.Keys) {
       $newPath = "$dest.new"
       Move-Item $tmp $newPath -Force
       Ok "${scriptName}: $localVer -> $remoteVer (guardado como config.ps1.new - revisar antes de aplicar)"
-      $updated++
+      $updated++; $updatedList.Add("config.ps1.new $remoteVer")
       continue
     }
 
@@ -214,7 +274,7 @@ foreach ($scriptName in $Scripts.Keys) {
     Backup-Script -Path $dest
     Move-Item $tmp $dest -Force
     Ok "${scriptName}: $localVer -> $remoteVer | sha256: $($sha.Substring(0,16))..."
-    $updated++
+    $updated++; $updatedList.Add("$scriptName $localVer -> $remoteVer")
 
     # Solo correr scripts que ya estaban instalados: uno recién bajado nunca se configuró
     # ni se programó en este equipo (ej: system-health-server.ps1 en una estación de trabajo).
@@ -224,7 +284,7 @@ foreach ($scriptName in $Scripts.Keys) {
 
   } catch {
     Err "${scriptName}: error inesperado - $($_.Exception.Message)"
-    $errors++
+    $errors++; $errorList.Add("${scriptName}: $($_.Exception.Message)")
   }
 }
 
@@ -235,10 +295,10 @@ if ($selfUpdatePending) {
     Backup-Script -Path $selfUpdatePending.dest
     Move-Item $selfUpdatePending.tmp $selfUpdatePending.dest -Force
     Ok "update-scripts.ps1: $($selfUpdatePending.from) -> $($selfUpdatePending.to) | sha256: $($sha.Substring(0,16))..."
-    $updated++
+    $updated++; $updatedList.Add("update-scripts.ps1 $($selfUpdatePending.from) -> $($selfUpdatePending.to)")
   } catch {
     Err "update-scripts.ps1: error al auto-actualizar - $($_.Exception.Message)"
-    $errors++
+    $errors++; $errorList.Add("update-scripts.ps1: $($_.Exception.Message)")
   }
 }
 
@@ -246,6 +306,7 @@ if (-not $Check) {
   Log "Listo - actualizados: $updated - sin cambios: $skipped - errores: $errors"
   Write-VersionsFile
   Log "Versiones guardadas en installed-versions.json"
+  Send-UpdaterReport
 }
 
 # Ejecutar scripts recién actualizados

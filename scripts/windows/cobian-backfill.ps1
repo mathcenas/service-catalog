@@ -18,7 +18,7 @@ param(
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.2.0"
+$SCRIPT_VERSION = "1.2.1"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -191,7 +191,8 @@ for ($i = $Days; $i -ge 1; $i--) {
         continue
     }
 
-    $content = Get-Content $logPath -Raw -Encoding UTF8
+    # Cobian escribe el log en UTF-16: ReadAllText detecta el BOM
+    $content = try { [System.IO.File]::ReadAllText($logPath) } catch { "" }
     if ([string]::IsNullOrWhiteSpace($content)) {
         Write-Log "[$dateStr] Log vacío — omitiendo"
         $totalSkipped++
