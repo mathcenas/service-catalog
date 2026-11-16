@@ -617,7 +617,7 @@ const KIND_META: Record<DailyOpsKind, { label: string; dot: string; icon: typeof
   renewal:   { label: 'Renovaciones',  dot: 'bg-blue-500',   icon: CalendarDays, tab: 'services' },
 };
 
-const FREQUENCY_LABEL: Record<number, string> = { 26: 'Diario', 74: 'Días hábiles', 194: 'Semanal' };
+const FREQUENCY_LABEL: Record<number, string> = { 26: 'Diario', 74: 'Días hábiles', 194: 'Semanal', 770: 'Mensual' };
 
 const BILLING_CYCLE_ES: Record<string, string> = {
   Monthly: 'Mensual', Quarterly: 'Trimestral', 'Semi-Annually': 'Semestral',

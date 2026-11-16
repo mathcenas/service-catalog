@@ -65,7 +65,7 @@ Deno.serve(async (req: Request) => {
       supabase.from("user_settings").select("*").eq("user_id", userId).maybeSingle(),
       supabase.auth.admin.getUserById(userId),
       supabase.from("clients").select("id, company_name").eq("user_id", userId),
-      supabase.from("services").select("id, name, business_name, service_type_id, client_id, last_backup_at, last_restore_test_at, last_restore_test_result, next_renewal_date, billing_cycle, status").eq("user_id", userId).eq("status", "Active"),
+      supabase.from("services").select("id, name, business_name, service_type_id, client_id, last_backup_at, last_restore_test_at, last_restore_test_result, next_renewal_date, billing_cycle, status, backup_max_age_hours").eq("user_id", userId).eq("status", "Active"),
       supabase.from("service_backups").select("service_id, status, backed_up_at, size_bytes").gte("backed_up_at", since7d).in("service_id", []),
       supabase.from("service_changes").select("service_id, summary, change_date").gte("change_date", since7d).eq("user_id", userId).order("change_date", { ascending: false }),
       supabase.from("roadmap_items").select("title, status, scheduled_date").eq("user_id", userId).neq("status", "Released").order("sort_order"),
@@ -83,7 +83,9 @@ Deno.serve(async (req: Request) => {
     const backupServices = serviceList.filter((s: any) => s.last_backup_at);
     const backupRows = backupServices.map((s: any) => {
       const daysAgo = Math.floor((Date.now() - new Date(s.last_backup_at).getTime()) / 86400000);
-      const color = daysAgo <= 1 ? "#22c55e" : daysAgo <= 3 ? "#f59e0b" : "#ef4444";
+      const hoursAgo = (Date.now() - new Date(s.last_backup_at).getTime()) / 3600000;
+      const maxAge = s.backup_max_age_hours === 0 ? null : (s.backup_max_age_hours ?? 26);
+      const color = maxAge === null ? "#64748b" : hoursAgo <= maxAge ? "#22c55e" : hoursAgo <= maxAge * 2 ? "#f59e0b" : "#ef4444";
       return `<tr>
         <td style="padding:5px 8px;font-size:12px;color:#1e293b;">${s.business_name || s.name}</td>
         <td style="padding:5px 8px;font-size:12px;color:#64748b;">${clientMap[s.client_id] || ''}</td>

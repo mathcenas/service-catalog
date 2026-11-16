@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapItemUpdate, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat, ClientApp, ServiceIncident } from '../lib/supabase';
 import { BackupMetricsModal } from '../components/BackupMetricsModal';
-import { backupMaxAgeHours } from '../lib/backupSchedule';
+import { backupMaxAgeHours, jobMaxAgeHours, isRetiredJob } from '../lib/backupSchedule';
 import { ReferencesSection } from '../components/share/ReferencesSection';
 
 type Props = { token: string };
@@ -840,7 +840,9 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
 
           const svcName = s.business_name || s.name;
 
-          const jobs = [...byJob.entries()];
+          // Jobs viejos (renombrados o dados de baja) no se muestran como vencidos
+          const newestRun = svcBackups.find(b => !isOfflineBackup(b.job_name))?.backed_up_at ?? '';
+          const jobs = [...byJob.entries()].filter(([, entries]) => !isRetiredJob(entries[0].backed_up_at, newestRun));
           const multiJob = jobs.length > 1;
 
           return (
@@ -860,11 +862,13 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
                 const last = entries[0];
                 const hoursOld = (Date.now() - new Date(last.backed_up_at).getTime()) / 3600000;
                 const history = entries.slice(0, 7);
+                // Cada job con su propia frecuencia (un servicio diario puede tener jobs semanales)
+                const maxAge = jobMaxAgeHours(backupMaxAgeHours(s), jobName, entries.map(e => e.backed_up_at));
 
                 return (
                   <div key={jobName} className={multiJob ? 'ml-3' : ''}>
                     <div className="flex items-center gap-3">
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${jobDotColor(last.status, hoursOld, backupMaxAgeHours(s))}`} />
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${jobDotColor(last.status, hoursOld, maxAge)}`} />
                       <div className="flex-1 min-w-0">
                         {!multiJob && (
                           <span className="text-sm font-medium text-white mr-2">{s.business_name || s.name}</span>
@@ -881,7 +885,7 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
                             {formatBytes(last.size_bytes)}
                           </span>
                         )}
-                        <span className={`text-xs font-medium ${jobTextColor(last.status, hoursOld, backupMaxAgeHours(s))}`}>
+                        <span className={`text-xs font-medium ${jobTextColor(last.status, hoursOld, maxAge)}`}>
                           {formatTimeAgo(last.backed_up_at)}
                         </span>
                         {!multiJob && (
