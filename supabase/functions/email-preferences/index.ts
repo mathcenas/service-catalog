@@ -64,10 +64,11 @@ Deno.serve(async (req: Request) => {
   // POST — actualizar preferencia
   if (req.method === "POST") {
     const body = await req.json().catch(() => ({}));
-    const { frequency } = body;
-    const allowed = ["daily", "weekly", "none"];
+    // En la base el diario es 'all' (CHECK none/weekly/monthly/all). 'daily' llega de links viejos.
+    const frequency = body.frequency === "daily" ? "all" : body.frequency;
+    const allowed = ["all", "weekly", "monthly", "none"];
     if (!allowed.includes(frequency)) {
-      return new Response(JSON.stringify({ error: "frequency debe ser daily, weekly o none" }), { status: 400, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: "frequency debe ser all, weekly, monthly o none" }), { status: 400, headers: corsHeaders });
     }
 
     const { data: contact } = await supabase
@@ -80,11 +81,14 @@ Deno.serve(async (req: Request) => {
     const prev = contact.digest_frequency;
     if (prev === frequency) return new Response(JSON.stringify({ ok: true, changed: false }), { status: 200, headers: corsHeaders });
 
-    await supabase.from("client_contacts").update({ digest_frequency: frequency }).eq("id", contactId);
+    const { error: updErr } = await supabase.from("client_contacts").update({ digest_frequency: frequency }).eq("id", contactId);
+    if (updErr) {
+      return new Response(JSON.stringify({ error: updErr.message }), { status: 500, headers: corsHeaders });
+    }
 
     // Registrar en email_opens para el notification center
     const emailType = frequency === "none" ? "unsubscribe" : "preference_change";
-    const freqLabel: Record<string, string> = { daily: "diario", weekly: "semanal", none: "desactivado" };
+    const freqLabel: Record<string, string> = { all: "diario", weekly: "semanal", monthly: "mensual", none: "desactivado" };
     await supabase.from("email_opens").insert({
       user_id:       (contact as any).clients?.user_id ?? null,
       client_id:     contact.client_id,
@@ -93,7 +97,8 @@ Deno.serve(async (req: Request) => {
       email_type:    emailType,
       sent_at:       new Date().toISOString(),
       opened_at:     new Date().toISOString(),
-      metadata:      { prev_frequency: prev, new_frequency: frequency },
+      // email_opens no tiene columna metadata: el cambio queda en subject
+      subject:       `Preferencia: ${freqLabel[prev] ?? prev} → ${freqLabel[frequency] ?? frequency}`,
     });
 
     console.log(`[email-preferences] ${contact.email} cambió de ${prev} → ${frequency}`);

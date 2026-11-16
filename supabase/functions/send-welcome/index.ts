@@ -9,8 +9,10 @@ const corsHeaders = {
 };
 
 const FREQ_LABEL: Record<string, string> = {
-  daily:  "diarias",
-  weekly: "semanales",
+  all:     "diarias",
+  daily:   "diarias",
+  weekly:  "semanales",
+  monthly: "mensuales",
   none:   "desactivadas",
 };
 

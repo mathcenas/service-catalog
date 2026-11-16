@@ -224,8 +224,8 @@ Deno.serve(async (req: Request) => {
         p.cpu_pct   != null ? `CPU ${p.cpu_pct}%`    : null,
         p.ram_pct   != null ? `RAM ${p.ram_pct}%`    : null,
         p.disk_pct  != null ? `Disk ${p.disk_pct}%`  : null,
-        p.free_gb   != null ? `Free ${p.free_gb} GB` : null,
-        p.uptime    != null ? `Up ${p.uptime}`        : null,
+        (p.disk_free_gb ?? p.free_gb) != null ? `Libre ${p.disk_free_gb ?? p.free_gb} GB` : null,
+        (p.uptime_str ?? p.uptime) != null ? `Encendido ${p.uptime_str ?? p.uptime}` : null,
       ].filter(Boolean).join(' &bull; ');
       return `<tr>
         <td style="padding:5px 8px;font-size:12px;color:${B.primary};">${svcName(h.service_id)}</td>
@@ -238,7 +238,13 @@ Deno.serve(async (req: Request) => {
     const diskRows = Object.values(healthMap).flatMap((h: any) => {
       const disks: any[] = Array.isArray(h.payload?.disk_smart) ? h.payload.disk_smart : [];
       return disks.map((d: any) => {
+        // El estado lo calcula el script (ok / warning / error). smart_health es el texto
+        // del sistema ("Healthy", "PASSED"…) y no sirve para decidir el color.
+        const diskStatus = ["ok", "warning", "error"].includes(d.status)
+          ? d.status
+          : /^(healthy|passed|ok)$/i.test(String(d.smart_health ?? "")) ? "ok" : "warning";
         const details = [
+          d.smart_health ? `SMART ${d.smart_health}` : null,
           d.temp_c        != null ? `${d.temp_c}°C` : null,
           d.pct_used      != null ? `${d.pct_used}% usado` : null,
           d.reallocated_sectors > 0 ? `⚠ ${d.reallocated_sectors} sect.` : null,
@@ -246,7 +252,7 @@ Deno.serve(async (req: Request) => {
         return `<tr>
           <td style="padding:5px 8px;font-size:12px;color:${B.primary};">${svcName(h.service_id)}</td>
           <td style="padding:5px 8px;font-size:11px;font-family:monospace;color:${B.textMid};">${d.dev || ''} ${d.type || ''}</td>
-          <td style="padding:5px 8px;">${statusPill(d.smart_health || d.status || 'ok')}</td>
+          <td style="padding:5px 8px;">${statusPill(diskStatus)}</td>
           <td style="padding:5px 8px;font-size:11px;color:${B.textMid};">${details}</td>
         </tr>`;
       });
