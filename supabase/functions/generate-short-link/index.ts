@@ -1,5 +1,17 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+// Crea un link corto (/functions/v1/r/<slug>) para un cliente del usuario logueado.
+// Lo llama el Centro de notificaciones desde el navegador: necesita CORS.
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "https://servicios.cenas-support.com",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+};
+
+const json = (body: unknown, status: number) =>
+  new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -7,35 +19,29 @@ const supabase = createClient(
 );
 
 function randomSlug(len = 6): string {
-  const chars = "abcdefghijkmnpqrstuvwxyz23456789"; // no 0/O/1/l
+  const chars = "abcdefghijkmnpqrstuvwxyz23456789"; // sin 0/O/1/l
   return Array.from(crypto.getRandomValues(new Uint8Array(len)))
     .map(b => chars[b % chars.length])
     .join("");
 }
 
-serve(async (req) => {
-  if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   const authHeader = req.headers.get("Authorization") ?? "";
-  const { data: { user }, error: authErr } = await supabase.auth.getUser(
-    authHeader.replace("Bearer ", "")
-  );
-  if (authErr || !user) return new Response("Unauthorized", { status: 401 });
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(authHeader.replace("Bearer ", ""));
+  if (authErr || !user) return json({ error: "Unauthorized" }, 401);
 
-  const body = await req.json() as {
-    client_id: string;
-    target_url: string;
-    label?: string;
-    expires_at?: string;
-  };
+  const body = await req.json() as { client_id: string; target_url: string; label?: string; expires_at?: string };
+  if (!body.client_id || !body.target_url) return json({ error: "client_id and target_url required" }, 400);
+  if (!/^https?:\/\//i.test(body.target_url)) return json({ error: "target_url must be http(s)" }, 400);
 
-  if (!body.client_id || !body.target_url) {
-    return new Response(JSON.stringify({ error: "client_id and target_url required" }), {
-      status: 400, headers: { "Content-Type": "application/json" },
-    });
-  }
+  // Solo para clientes del usuario logueado
+  const { data: client } = await supabase
+    .from("clients").select("id").eq("id", body.client_id).eq("user_id", user.id).maybeSingle();
+  if (!client) return json({ error: "Client not found" }, 404);
 
-  // Retry on slug collision (extremely unlikely but safe)
   let slug = randomSlug();
   for (let i = 0; i < 5; i++) {
     const { error } = await supabase.from("short_links").insert({
@@ -47,16 +53,10 @@ serve(async (req) => {
       created_by: user.id,
     });
     if (!error) break;
-    if (error.code === "23505") { slug = randomSlug(); continue; } // unique violation
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500, headers: { "Content-Type": "application/json" },
-    });
+    if (error.code === "23505") { slug = randomSlug(); continue; } // slug repetido
+    return json({ error: error.message }, 500);
   }
 
-  const baseUrl = Deno.env.get("SUPABASE_URL")!;
-  const shortUrl = `${baseUrl}/functions/v1/r/${slug}`;
-
-  return new Response(JSON.stringify({ slug, short_url: shortUrl }), {
-    status: 201, headers: { "Content-Type": "application/json" },
-  });
+  const shortUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/r/${slug}`;
+  return json({ slug, short_url: shortUrl }, 201);
 });
