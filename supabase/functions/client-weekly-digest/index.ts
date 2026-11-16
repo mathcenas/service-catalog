@@ -312,6 +312,7 @@ Deno.serve(async (req: Request) => {
         ${!isDaily && renewalRows ? section('Próximas Renovaciones', '📅', tableWrap(renewalRows, ['Servicio', 'Fecha'])) : ''}
         ${!isDaily && changeItems ? section('Cambios realizados esta semana', '🔧', `<ul style="margin:4px 0;padding-left:16px;">${changeItems}</ul>`) : ''}
         ${emailPortalPanel({ companyName: client.company_name, portalUrl })}
+        ${portalUrl ? `<p style="text-align:center;margin:10px 0 0;font-size:11px;"><a href="${portalUrl}#referencias" style="color:${B.textMid};text-decoration:underline;">¿Qué significa cada estado?</a></p>` : ""}
         ${emailMeta(senderName)}
       `;
       return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${B.bg};font-family:${EMAIL_FONT};">

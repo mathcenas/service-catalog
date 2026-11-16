@@ -221,6 +221,7 @@ Deno.serve(async (req: Request) => {
     </table>
 
     ${emailPortalPanel({ companyName: client.company_name, portalUrl })}
+        ${portalUrl ? `<p style="text-align:center;margin:10px 0 0;font-size:11px;"><a href="${portalUrl}#referencias" style="color:${B.textMid};text-decoration:underline;">¿Qué significa cada estado?</a></p>` : ""}
     ${emailMeta(senderName)}
 
   </td></tr>
