@@ -4,6 +4,8 @@ import { Bell, BellOff, Mail, CheckCircle2, Clock, AlertCircle, Send, RefreshCw,
          Eye, Zap, Filter, X } from 'lucide-react';
 import { supabase, Client } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { DigestScheduleView } from './DigestScheduleView';
+import { DigestPreviewModal } from './DigestPreviewModal';
 
 type Contact = {
   id: string;
@@ -140,7 +142,7 @@ function fmtTime(iso: string) {
   });
 }
 
-type Tab = 'contacts' | 'history' | 'alerts' | 'locks' | 'links' | 'tasklog';
+type Tab = 'contacts' | 'schedule' | 'history' | 'alerts' | 'locks' | 'links' | 'tasklog';
 
 type TTLogEntry = {
   id: string;
@@ -181,8 +183,8 @@ export function NotificationCenterView({ clients }: Props) {
 
   // Alerts tab state
   const [sendingDigest, setSendingDigest] = useState<string | null>(null);
-  const [previewingDigest, setPreviewingDigest] = useState<string | null>(null);
-  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  // Vista previa de resúmenes (modal con selector de versión)
+  const [previewClient, setPreviewClient] = useState<{ id: string; name: string } | null>(null);
 
   const showToast = (msg: string, ok: boolean) => {
     setToast({ msg, ok });
@@ -314,31 +316,7 @@ export function NotificationCenterView({ clients }: Props) {
     }
   };
 
-  const previewDigest = async (clientId: string) => {
-    setPreviewingDigest(clientId);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const supabaseUrl = (supabase as any).supabaseUrl ?? import.meta.env.VITE_SUPABASE_URL;
-      const res = await fetch(`${supabaseUrl}/functions/v1/client-weekly-digest`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session?.access_token}`,
-        },
-        body: JSON.stringify({ client_id: clientId, preview: true }),
-      });
-      const json = await res.json();
-      if (res.ok && json.html) {
-        setPreviewHtml(json.html);
-      } else {
-        showToast(json.error ?? 'No se pudo generar preview', false);
-      }
-    } catch {
-      showToast('Error de red', false);
-    } finally {
-      setPreviewingDigest(null);
-    }
-  };
+  const previewDigest = (clientId: string, clientName: string) => setPreviewClient({ id: clientId, name: clientName });
 
   const deleteLock = async (lock: NotificationLock) => {
     setDeletingLock(lock.lock_id);
@@ -444,6 +422,7 @@ export function NotificationCenterView({ clients }: Props) {
 
   const tabs: { id: Tab; label: string; badge?: number }[] = [
     { id: 'contacts', label: 'Contactos' },
+    { id: 'schedule', label: 'Próximos envíos' },
     { id: 'history',  label: 'Historial de envíos', badge: allEmails.length },
     { id: 'alerts',   label: 'Alertas',             badge: activeLocks.length || undefined },
     { id: 'locks',    label: 'Cooldowns activos',   badge: activeLocks.length },
@@ -511,6 +490,8 @@ export function NotificationCenterView({ clients }: Props) {
         <div className="text-center py-12 text-gray-400">Cargando...</div>
       ) : (
         <>
+          {tab === 'schedule' && <DigestScheduleView />}
+
           {/* ── CONTACTOS ── */}
           {tab === 'contacts' && (
             <div className="space-y-3">
@@ -829,13 +810,10 @@ export function NotificationCenterView({ clients }: Props) {
                         </div>
                         <div className="shrink-0 flex items-center gap-1.5">
                           <button
-                            onClick={() => previewDigest(client.id)}
-                            disabled={previewingDigest === client.id}
+                            onClick={() => previewDigest(client.id, client.company_name)}
                             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
                           >
-                            {previewingDigest === client.id
-                              ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                              : <Eye className="w-3.5 h-3.5" />}
+                            <Eye className="w-3.5 h-3.5" />
                             Preview
                           </button>
                           <button
@@ -1209,29 +1187,8 @@ export function NotificationCenterView({ clients }: Props) {
         </div>
       )}
 
-      {/* Preview modal */}
-      {previewHtml && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-[80vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 shrink-0">
-              <span className="font-semibold text-gray-800 flex items-center gap-2">
-                <Eye className="w-4 h-4 text-blue-600" /> Preview del digest
-              </span>
-              <button
-                onClick={() => setPreviewHtml(null)}
-                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <iframe
-              srcDoc={previewHtml}
-              className="flex-1 w-full border-0"
-              title="Preview del digest"
-              sandbox="allow-same-origin"
-            />
-          </div>
-        </div>
+      {previewClient && (
+        <DigestPreviewModal clientId={previewClient.id} clientName={previewClient.name} onClose={() => setPreviewClient(null)} />
       )}
     </div>
   );
