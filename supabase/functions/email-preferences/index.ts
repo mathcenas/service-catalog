@@ -97,7 +97,8 @@ Deno.serve(async (req: Request) => {
       email_type:    emailType,
       sent_at:       new Date().toISOString(),
       opened_at:     new Date().toISOString(),
-      metadata:      { prev_frequency: prev, new_frequency: frequency },
+      // email_opens no tiene columna metadata: el cambio queda en subject
+      subject:       `Preferencia: ${freqLabel[prev] ?? prev} → ${freqLabel[frequency] ?? frequency}`,
     });
 
     console.log(`[email-preferences] ${contact.email} cambió de ${prev} → ${frequency}`);
