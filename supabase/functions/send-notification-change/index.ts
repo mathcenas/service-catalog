@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { B, EMAIL_FONT, emailHeader, emailMeta, emailUnsubscribeFooter } from "../_shared/emailBrand.ts";
+import { clientShareUrl } from "../_shared/shareLink.ts";
 
 // One-shot announcement: notifica a todos los contactos activos sobre el cambio
 // en las notificaciones de backup.
@@ -66,15 +67,12 @@ Deno.serve(async (req: Request) => {
     // User settings
     const { data: settings } = await supabase
       .from("user_settings")
-      .select("company_name, share_page_slug")
+      .select("company_name")
       .eq("user_id", client.user_id)
       .maybeSingle();
 
     const senderName = settings?.company_name || "Cenas IT";
-    const portalSlug = settings?.share_page_slug;
-    const portalUrl  = portalSlug
-      ? `${Deno.env.get("APP_URL") || "https://servicios.cenas-support.com"}/share/${portalSlug}/${clientId}`
-      : null;
+    const portalUrl  = await clientShareUrl(supabase, clientId);
 
     // Load monitored services for this client
     const { data: clientServices } = await supabase

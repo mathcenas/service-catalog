@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { B, EMAIL_FONT, emailHeader, emailPortalPanel, emailMeta } from "../_shared/emailBrand.ts";
+import { clientShareUrl } from "../_shared/shareLink.ts";
 
 // Runs daily via pg_cron (or POST with { client_id, preview }).
 // Sends ONE email per client summarising all backup events in the last 24h.
@@ -151,15 +152,12 @@ Deno.serve(async (req: Request) => {
     // User settings
     const { data: settings } = await supabase
       .from("user_settings")
-      .select("company_name, share_page_slug")
+      .select("company_name")
       .eq("user_id", client.user_id)
       .maybeSingle();
 
     const senderName = settings?.company_name || "Cenas IT";
-    const portalSlug = settings?.share_page_slug;
-    const portalUrl  = portalSlug
-      ? `${Deno.env.get("APP_URL") || "https://servicios.cenas-support.com"}/share/${portalSlug}/${clientId}`
-      : null;
+    const portalUrl  = await clientShareUrl(supabase, clientId);
 
     // Count totals
     const totalOk      = rows.reduce((n, r) => n + r.backups.filter((b: any) => b.status === "success").length, 0);
