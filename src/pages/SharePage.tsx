@@ -1250,7 +1250,21 @@ function SystemHealth({ entries, services }: { entries: ServiceHeartbeat[]; serv
           const raidIssue = Array.isArray(p.disk_raid)
             ? p.disk_raid.filter((r: any) => r?.status && r.status !== 'ok').map((r: any) => `Volumen ${r.name}: ${r.health}`).join(' · ')
             : '';
-          const issues = typeof p.issues === 'string' && p.issues.trim() && p.issues !== 'Normal' ? p.issues.trim() : raidIssue || null;
+          // Scripts viejos no mandan "issues": armar el motivo con los discos que no están OK
+          const smartIssue = Array.isArray(p.disk_smart)
+            ? p.disk_smart.filter((d: any) => d?.status && d.status !== 'ok').map((d: any) => {
+                const why = [
+                  d.smart_health && !/^(healthy|passed|ok)$/i.test(d.smart_health) ? d.smart_health : null,
+                  d.temp_c != null ? `${d.temp_c} °C` : null,
+                  d.pct_used > 75 ? `desgaste ${d.pct_used}%` : null,
+                  d.uncorrectable_errors > 0 ? `${d.uncorrectable_errors} errores de lectura/escritura` : null,
+                ].filter(Boolean).join(', ');
+                return `Disco ${d.model ?? d.dev}${why ? `: ${why}` : ''}`;
+              }).join(' · ')
+            : '';
+          const issues = typeof p.issues === 'string' && p.issues.trim() && p.issues !== 'Normal'
+            ? p.issues.trim()
+            : [raidIssue, smartIssue].filter(Boolean).join(' · ') || null;
           const reason =
             freshness === 'offline' ? `No reporta hace ${Math.round(ageH / 24)} días` :
             freshness === 'stale'   ? `Último reporte hace ${Math.round(ageH)} h` :

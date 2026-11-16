@@ -12,7 +12,7 @@
 # Version: 1.6.0
 # =============================================================
 
-SCRIPT_VERSION="1.10.1"
+SCRIPT_VERSION="1.10.2"
 
 # ---------- Verificación de dependencias ----------
 if ! command -v jq >/dev/null 2>&1; then
@@ -340,8 +340,10 @@ elif command -v smartctl >/dev/null 2>&1; then
       FAILED*)   disk_status="error" ;;
       *)         disk_status="warning" ;;
     esac
-    if [[ "$temp_c" != "null" && "$temp_c" -gt 65 ]] 2>/dev/null; then disk_status="error"; fi
-    if [[ "$temp_c" != "null" && "$temp_c" -gt 55 ]] 2>/dev/null && [[ "$disk_status" == "ok" ]]; then disk_status="warning"; fi
+    # NVMe trabaja normalmente a 60-70 °C; SATA/HDD más frescos
+    if [[ "$dev_type" == "NVMe" ]]; then t_warn=70; t_err=80; else t_warn=55; t_err=65; fi
+    if [[ "$temp_c" != "null" && "$temp_c" -gt $t_err ]] 2>/dev/null; then disk_status="error"; fi
+    if [[ "$temp_c" != "null" && "$temp_c" -gt $t_warn ]] 2>/dev/null && [[ "$disk_status" == "ok" ]]; then disk_status="warning"; fi
     if [[ "$reallocated" != "null" && "$reallocated" -gt 0 ]] 2>/dev/null && [[ "$disk_status" == "ok" ]]; then disk_status="warning"; fi
     if [[ "$pct_used" != "null" && "$pct_used" -gt 80 ]] 2>/dev/null; then
       [[ "$pct_used" -gt 90 ]] 2>/dev/null && disk_status="error" || disk_status="warning"

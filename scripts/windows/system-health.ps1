@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.9.1"
+$SCRIPT_VERSION = "1.9.2"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -144,8 +144,11 @@ if (-not $CHECK_SMART) {
             }
 
             if ($null -ne $tempC) {
-                if ($tempC -gt 65) { $dStatus = 'error' }
-                elseif ($tempC -gt 55 -and $dStatus -eq 'ok') { $dStatus = 'warning' }
+                # NVMe trabaja normalmente a 60-70 °C; SATA/HDD más frescos
+                $tWarn = if ($devType -eq 'NVMe') { 70 } else { 55 }
+                $tErr  = if ($devType -eq 'NVMe') { 80 } else { 65 }
+                if ($tempC -gt $tErr) { $dStatus = 'error' }
+                elseif ($tempC -gt $tWarn -and $dStatus -eq 'ok') { $dStatus = 'warning' }
             }
             if ($null -ne $wearLevel) {
                 if ($wearLevel -gt 90) { $dStatus = 'error' }
@@ -335,7 +338,7 @@ foreach ($d in $diskSmartList) {
     if ($d.status -eq 'ok') { continue }
     $why = @()
     if ($d.smart_health -and $d.smart_health -ne 'Healthy') { $why += $d.smart_health }
-    if ($null -ne $d.temp_c -and $d.temp_c -gt 55)     { $why += "$($d.temp_c)°C" }
+    if ($null -ne $d.temp_c -and $d.temp_c -gt $(if ($d.type -eq 'NVMe') { 70 } else { 55 })) { $why += "$($d.temp_c)°C" }
     if ($null -ne $d.pct_used -and $d.pct_used -gt 75) { $why += "desgaste $($d.pct_used)%" }
     if ($d.uncorrectable_errors -gt 0)                 { $why += "$($d.uncorrectable_errors) errores de lectura/escritura" }
     $issueList += "Disco $($d.model): $(if ($why) { $why -join ', ' } else { $d.smart_health })"
