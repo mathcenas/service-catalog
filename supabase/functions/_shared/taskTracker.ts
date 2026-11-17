@@ -118,7 +118,7 @@ export async function resolveDefaultProject(
 }
 
 // Cierra una tarea creada por una integración (POST /api/tasks/:id/resolve en Task Tracker):
-// la marca completada con una nota, sin mail al cliente. 404 = ya no existe (se toma como cerrada).
+// la marca completada con una nota, sin mail al cliente.
 export async function resolveTaskInTracker(
   taskId: string,
   note: string,
@@ -131,8 +131,12 @@ export async function resolveTaskInTracker(
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
       body: JSON.stringify({ note }),
     });
-    if (res.ok || res.status === 404) return { ok: true };
-    return { ok: false, error: `${res.status}: ${await res.text().catch(() => "")}` };
+    if (res.ok) return { ok: true };
+    const text = await res.text().catch(() => "");
+    // 404 JSON "Task not found" = la borraron a mano: se da por cerrada. Un 404 HTML ("Cannot POST")
+    // es que el Task Tracker todavía no tiene el endpoint: error, se reintenta.
+    if (res.status === 404 && text.includes("Task not found")) return { ok: true };
+    return { ok: false, error: `${res.status}: ${text.slice(0, 200)}` };
   } catch (err) {
     return { ok: false, error: String(err) };
   }

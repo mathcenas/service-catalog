@@ -673,13 +673,14 @@ function DailyOpsPanel({
     const failCutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
     const { data: recentFails } = await supabase
       .from('service_backups')
-      .select('service_id, job_name, created_at')
+      .select('service_id, job_name, backed_up_at')
+      // Por la hora del backup, no la de carga: un registro cargado tarde (backfill) no es un fallo nuevo
       .in('service_id', activeIds)
       .in('status', ['failed', 'error'])
-      .gte('created_at', failCutoff)
-      .order('created_at', { ascending: false });
+      .gte('backed_up_at', failCutoff)
+      .order('backed_up_at', { ascending: false });
 
-    const latestFail: Record<string, { job_name: string | null; created_at: string }> = {};
+    const latestFail: Record<string, { job_name: string | null; backed_up_at: string }> = {};
     for (const b of recentFails ?? []) {
       if (!latestFail[b.service_id]) latestFail[b.service_id] = b;
     }
@@ -687,12 +688,12 @@ function DailyOpsPanel({
     for (const svc of active) {
       const fail = latestFail[svc.id];
       if (!fail || backupMaxAgeHours(svc) === null) continue;
-      if (svc.last_backup_at && svc.last_backup_at > fail.created_at) continue;
+      if (svc.last_backup_at && new Date(svc.last_backup_at) > new Date(fail.backed_up_at)) continue;
       failedIds.add(svc.id);
       result.push({
         id: `backup-fail-${svc.id}`, kind: 'backup', severity: 'urgent', ...base(svc),
         detail: 'Último backup fallido',
-        when: fail.created_at,
+        when: fail.backed_up_at,
         tag: fail.job_name ?? undefined,
       });
     }
