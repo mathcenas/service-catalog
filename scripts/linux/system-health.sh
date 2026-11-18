@@ -12,7 +12,7 @@
 # Version: 1.6.0
 # =============================================================
 
-SCRIPT_VERSION="1.10.2"
+SCRIPT_VERSION="1.11.0"
 
 # ---------- Verificación de dependencias ----------
 if ! command -v jq >/dev/null 2>&1; then
@@ -250,6 +250,31 @@ if command -v docker >/dev/null 2>&1; then
     [ "$STATUS" = "success" ] && STATUS="warning"
     ISSUES="${ISSUES}Containers caídos: ${DOCKER_DOWN}|"
   fi
+fi
+
+# ---------- Tailscale ----------
+# Estado de la VPN y de los equipos que se ven por ella (para el mapa: qué servidor habla con cuál).
+# Funciona con tailscale instalado en el servidor o corriendo en un contenedor (nombre con "tailscale").
+TAILSCALE_JSON="null"
+ts_raw=""
+if command -v tailscale >/dev/null 2>&1; then
+  ts_raw=$(timeout 10 tailscale status --json 2>/dev/null || true)
+fi
+if [[ -z "$ts_raw" ]] && command -v docker >/dev/null 2>&1; then
+  ts_ctr=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -i -m1 'tailscale' || true)
+  [[ -n "$ts_ctr" ]] && ts_raw=$(timeout 10 docker exec "$ts_ctr" tailscale status --json 2>/dev/null || true)
+fi
+if [[ -n "$ts_raw" ]]; then
+  TAILSCALE_JSON=$(jq -c --arg ctr "${ts_ctr:-}" '{
+      container: (if $ctr == "" then null else $ctr end),
+      backend: .BackendState,
+      self: { name: .Self.HostName, ip: (.Self.TailscaleIPs[0] // null), online: .Self.Online },
+      peers: [ (.Peer // {}) | to_entries[] | .value | {
+        name: .HostName, ip: (.TailscaleIPs[0] // null), os: .OS,
+        online: .Online, last_seen: .LastSeen
+      } ] | sort_by(.name)
+    }' <<<"$ts_raw" 2>/dev/null || echo "null")
+  [[ -z "$TAILSCALE_JSON" ]] && TAILSCALE_JSON="null"
 fi
 
 # ---------- Port checks ----------
@@ -567,6 +592,7 @@ PAYLOAD=$(jq -n \
   --argjson docker "$DOCKER_JSON" \
   --argjson ports "$PORT_CHECKS_JSON" \
   --argjson smart "$DISK_SMART_JSON" \
+  --argjson tailscale "$TAILSCALE_JSON" \
   --arg public_ip "$PUBLIC_IP" \
   --arg local_ip "$LOCAL_IP" \
   --arg cpu_model "$CPU_MODEL" \
@@ -595,6 +621,7 @@ PAYLOAD=$(jq -n \
       docker_containers: $docker,
       port_checks: $ports,
       disk_smart: $smart,
+      tailscale: $tailscale,
       public_ip: (if $public_ip == "" then null else $public_ip end),
       local_ip: (if $local_ip == "" then null else $local_ip end),
       cpu_model: (if $cpu_model == "" then null else $cpu_model end),

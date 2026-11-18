@@ -13,7 +13,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.1.2"
+$SCRIPT_VERSION = "1.2.0"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -48,30 +48,27 @@ function Write-Log($msg) {
 Get-ChildItem "$LogDir\kopia-report-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) } | Remove-Item -Force
 
 # ---------- Chequeo Tailscale (opcional) ----------
+# Se reporta como heartbeat "tailscale" (ok o caído, con latencia), no como un backup:
+# antes un corte de la VPN aparecía como "backup fallido" y abría tickets de backup.
 if ($TAILSCALE_IP) {
-    $ping = Test-Connection -ComputerName $TAILSCALE_IP -Count 2 -Quiet -ErrorAction SilentlyContinue
-    if (-not $ping) {
+    $pings = @(Test-Connection -ComputerName $TAILSCALE_IP -Count 3 -ErrorAction SilentlyContinue)
+    $tsOk  = $pings.Count -gt 0
+    $rtt   = if ($tsOk) { [math]::Round(($pings | ForEach-Object { if ($_.PSObject.Properties['Latency']) { $_.Latency } else { $_.ResponseTime } } | Measure-Object -Average).Average, 0) } else { $null }
+    $hbBody = @{
+        service_id = $SERVICE_ID
+        source     = "tailscale"
+        status     = if ($tsOk) { "success" } else { "failed" }
+        message    = if ($tsOk) { "Tailscale OK hacia $TAILSCALE_IP ($rtt ms)" } else { "Sin conectividad Tailscale a $TAILSCALE_IP" }
+        payload    = @{ target_ip = $TAILSCALE_IP; reachable = $tsOk; rtt_ms = $rtt; purpose = "kopia"; script_version = $SCRIPT_VERSION }
+    } | ConvertTo-Json -Depth 3
+    $hbHeaders = @{ "Content-Type" = "application/json"; "apikey" = $ANON_KEY; "Authorization" = "Bearer $ANON_KEY"; "X-Ingest-Secret" = $INGEST_SECRET }
+    try { Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $hbHeaders -Body $hbBody | Out-Null } catch { Write-Log "No se pudo reportar el estado de Tailscale: $($_.Exception.Message)" }
+    if (-not $tsOk) {
         Write-Log "ERROR: Tailscale no responde en $TAILSCALE_IP — no se puede verificar el repo remoto"
-        $body = @{
-            service_id       = $SERVICE_ID
-            job_name         = "Tailscale VPN"
-            status           = "failed"
-            size_bytes       = 0
-            duration_seconds = 0
-            backed_up_at     = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-            details          = "Sin conectividad Tailscale a $TAILSCALE_IP"
-        } | ConvertTo-Json -Compress
-        $headers = @{
-            "Content-Type"    = "application/json"
-            "apikey"          = $ANON_KEY
-            "Authorization"   = "Bearer $ANON_KEY"
-            "X-Ingest-Secret" = $INGEST_SECRET
-        }
-        try { Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body | Out-Null } catch {}
         Invoke-KumaBackup -Status "down" -Msg "Tailscale $TAILSCALE_IP sin respuesta"
         exit 1
     }
-    Write-Log "Tailscale OK — $TAILSCALE_IP responde"
+    Write-Log "Tailscale OK — $TAILSCALE_IP responde ($rtt ms)"
 }
 
 # ---------- Buscar kopia.exe ----------
