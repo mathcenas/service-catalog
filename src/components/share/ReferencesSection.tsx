@@ -115,7 +115,7 @@ export function ReferencesSection({ companyName }: { companyName?: string }) {
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400 max-w-3xl">
           También pasan a “Atención”: parches de seguridad sin instalar por más de 14 días, un reinicio pendiente por más de
-          7 días, un volumen RAID degradado o un servicio interno (por ejemplo, una base de datos) detenido.
+          7 días, una VPN (Tailscale) a la que le vence la clave en 7 días o menos, un volumen RAID degradado o un servicio interno (por ejemplo, una base de datos) detenido.
         </p>
       </section>
 
