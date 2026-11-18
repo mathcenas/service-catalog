@@ -43,9 +43,10 @@ async function currentAlerts(): Promise<Alert[]> {
   const since48 = new Date(Date.now() - 48 * 3_600_000).toISOString();
   const { data: fails } = await supabase
     .from("service_backups")
-    .select("service_id, job_name, created_at")
-    .in("service_id", ids).in("status", ["failed", "error"]).gte("created_at", since48)
-    .order("created_at", { ascending: false });
+    .select("service_id, job_name, backed_up_at")
+    // Por la hora del backup, no la de carga: un registro cargado tarde (backfill) no es un fallo nuevo
+    .in("service_id", ids).in("status", ["failed", "error"]).gte("backed_up_at", since48)
+    .order("backed_up_at", { ascending: false });
   const lastFail: Record<string, any> = {};
   for (const f of fails ?? []) if (!lastFail[f.service_id]) lastFail[f.service_id] = f;
 
@@ -53,10 +54,10 @@ async function currentAlerts(): Promise<Alert[]> {
     const maxAge = s.backup_max_age_hours === 0 ? null : (s.backup_max_age_hours ?? DEFAULT_BACKUP_MAX_AGE_HOURS);
     if (maxAge === null) continue;
     const fail = lastFail[s.id];
-    if (fail && !(s.last_backup_at && s.last_backup_at > fail.created_at)) {
+    if (fail && !(s.last_backup_at && new Date(s.last_backup_at) > new Date(fail.backed_up_at))) {
       alerts.push({ ...base(s), key: `backup:${s.id}`, kind: "backup", priority: "high",
         title: `Backup fallido — ${name(s)}`,
-        detail: `Último backup fallido el ${fmtUY(fail.created_at)}${fail.job_name ? ` (${fail.job_name})` : ""}.` });
+        detail: `Último backup fallido el ${fmtUY(fail.backed_up_at)}${fail.job_name ? ` (${fail.job_name})` : ""}.` });
       continue;
     }
     if (s.last_backup_at && hoursSince(s.last_backup_at) >= maxAge) {

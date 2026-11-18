@@ -1,121 +1,68 @@
 # Roadmap — Service Catalog
 
-Proyectos y tareas pendientes organizados por área. Actualizado en conversación con el equipo.
+Lo que falta hacer, por área. Lo terminado está abajo, en "Hecho".
 
 ---
 
-## 🟡 Deploy pendiente
+## 🟡 Para publicar
 
-> Estos cambios ya están en el branch `claude/security-rls-review-4ptzlh` pero aún no se desplegaron en Supabase.
+Cambios que están en `claude/security-rls-review-4ptzlh` y necesitan merge a `main` y deploy.
 
-- [ ] `supabase functions deploy ingest-backup`
-  - Fix `clientName` ReferenceError → 500 en daily summary POST
-  - Filtro `digest_frequency = 'daily'` (antes llegaba a contactos semanales)
-  - Cooldown backup_success subido a 23h (antes llegaba cada hora)
-  - Display name del remitente: "Cenas IT Backups" (antes "Cenas-Support Backups")
+- [ ] Web: `docker compose up -d --build client-manager` (pestaña Referencias, Actualizaciones en Telemetría, chips "Ticket TT", frecuencia por job)
+- [ ] Funciones: `supabase functions deploy client-weekly-digest backup-alert-digest weekly-digest send-notification-change submit-acl-review license-reminder email-preferences send-welcome ingest-backup ingest-heartbeat sync-script-versions`
+- [ ] Scripts: los equipos los bajan solos de `main` cada 48 h. Para verlos en Telemetría → Actualizaciones, correr una vez `update-scripts` a mano en cada equipo (dos veces: la primera se actualiza, la segunda reporta).
 
 ---
 
-## 📬 Centro de Notificaciones
+## 🌐 Topología de red
 
-**Objetivo:** vista tipo software de suscripciones para gestionar qué contactos reciben qué alertas, con tracking de apertura y clics.
-
-### Backend
-- [ ] Tabla `email_events` en Supabase
-  - Campos: `id`, `contact_id`, `email_id` (Resend), `event_type` (sent/opened/clicked/bounced), `metadata` (service_id, backup_id, etc.), `occurred_at`
-- [ ] Edge function `ingest-resend-webhook`
-  - Recibe eventos de Resend (`email.opened`, `email.clicked`, `email.delivered`, `email.bounced`)
-  - Guarda en `email_events` correlacionando con `service_backups` via `email_id`
-- [ ] Edge function `send-welcome`
-  - Se dispara al crear un contacto nuevo en `client_contacts`
-  - Email: "Tu casilla fue dada de alta para alertas de IT — [Cliente]"
-  - Guarda el `email_id` devuelto por Resend para tracking
-
-### Frontend
-- [ ] Ruta `/notifications` en el app React
-  - Tabla de contactos con frecuencia, estado de confirmación y columna de tracking (enviados/abiertos/clics)
-  - Panel lateral de detalle: timeline de eventos, selector de frecuencia inline, acción "reenviar bienvenida"
-  - KPIs: suscriptores activos, tasa de apertura 30d, pendientes confirmación, dados de baja
-
-### Decisión técnica
-Implementar sobre **Resend + Supabase** (webhooks nativos). No usar Mautic ni MailPoet — modelo B2B con contactos gestionados manualmente, no suscripción masiva.
-
----
-
-## 🌐 Topología de Red
-
-### Frontend ✅ base lista
-- [x] `src/components/TopologyCanvas.tsx` — ReactFlow, modo lock/edit, persistencia de posición por nodo
-- [x] `src/components/nodes/MikroTikNode.tsx` — uptime, throughput in/out, estado online/offline
-- [x] `src/components/nodes/UnmanagedNode.tsx` — switches genéricos
-- [x] `src/components/nodes/EndpointNode.tsx` — servers y workstations
-- [x] `src/pages/NetworkTopologyPage.tsx` — selector cliente + site, mock data RBUY (central + sucursal)
-- [ ] Agregar ruta `/network` en `App.tsx`
-- [ ] Reemplazar mock data por fetch a `net_devices` + `net_edges` cuando el colector esté activo
-
-### Base de datos (pendiente migración)
-- [ ] Tabla `net_devices` — `client_id`, `site_id`, `device_id`, `type`, `hostname`, `ip`, `model`, `status`, `uptime_seconds`, `throughput_in/out_bps`, `raw_data`, `source`, `last_seen_at`
-- [ ] Tabla `net_edges` — `client_id`, `site_id`, `source_device_id`, `target_device_id`, `link_type`
-- [ ] Tabla `net_layout_overrides` — `client_id`, `site_id`, `device_id`, `x`, `y` · UNIQUE `(client_id, site_id, device_id)`
-
-### Colector `rbuy-netinv` (Python/Docker) — bloqueante para datos reales
-- [ ] Activar SNMP en los 5 switches Omada de RBUY
-- [ ] Edge function `ingest-net-topology` — recibe payload de UniFi y MikroTik, upsert en `net_devices` + `net_edges`
-- [ ] Confirmar push via webhook con `source` = `rbuy-netinv` o `mikrotik-collector`
-- [ ] Configurar detección de loops (RSTP events) como alertas
-
-### Scope definido (RBUY)
-| Incluido | Excluido |
-|---|---|
-| Router WAN/LAN | Cámaras (no son del proveedor) |
-| Switches Omada (con SNMP) | Access Points (no administrados) |
-| Detección de loops | Inventario de dispositivos |
-| Alertas de conectividad | |
-
----
+- [ ] Activar SNMP en los 5 switches Omada de RBUY y sumarlos al mapa
+- [ ] Detección de loops (eventos RSTP) como alerta
 
 ## 📶 Reportes de red al cliente
 
-**Objetivo:** que el cliente reciba qué equipos usan su red (Wi-Fi e inventario) sin armarlo a mano.
+- [ ] **Google Wifi / Nest Wifi** — no tiene API local. Opción: modo bridge detrás del router del cliente (MikroTik/UDM) para que ese router vea los equipos por DHCP.
+- [ ] **Inventario desde Zoho/ManageEngine Endpoint Central** — dos caminos:
+  - Distribuir `device-report.ps1` (v2) como Custom Script de tipo **User** al iniciar sesión (trae M365, usuario NAS y Office).
+  - Leer por API el inventario que ya junta el agente y cargarlo en `device_reports` (sin tocar las PCs; no trae M365 ni NAS).
+- [ ] Definir un servicio "Inventario de equipos" por cliente (su ingest secret va en el script distribuido).
+- [ ] **Informe mensual automático** en PDF para el cliente: servicios, backups, accesos SMB, Wi-Fi, mapa de red e inventario.
 
-### Dispositivos Wi-Fi por marca de equipo
-- [x] **MikroTik** — `mk-wifi-report.sh` (VPS, REST API) + importador de `print terse` en Telemetría → Wi-Fi
-- [x] **TP-Link Deco** — `scripts/linux/deco-wifi-report.py` (API local vía `tplinkrouterc6u`; corre en Linux o Windows de la red del cliente)
-- [x] **UniFi** — controladora en el VPS (`scripts/unifi/docker-compose.yml`, adopción remota) + `scripts/unifi/unifi-wifi-report.py` (también sirve para UDM / Cloud Gateway con `unifi_os: true`)
-- [ ] **Google Wifi / Nest Wifi** — no tiene API local ni exportación (solo app Google Home). Opción: ponerlo en modo bridge detrás del router del cliente (MikroTik/UDM) para que ese router vea los equipos por DHCP. En modo NAT los dispositivos quedan ocultos detrás del Google Wifi.
+## 💾 Backups
 
-### Inventario de equipos desde Zoho/ManageEngine Endpoint Central
-- [ ] Que el agente de Endpoint Central genere el device report. Dos caminos a evaluar:
-  - **Script por agente:** distribuir `device-report.ps1` (v2, reporta directo al portal) como Custom Script de tipo **User**, en cada inicio de sesión. Corre como el usuario, así salen M365, usuario NAS y Office.
-  - **API de Endpoint Central:** leer desde el servidor el inventario que ya junta el agente (hardware, software, último usuario logueado) y cargarlo en `device_reports`, sin tocar las PCs. No trae usuario M365 ni NAS.
-- [ ] Definir un servicio "Inventario de equipos" por cliente (su ingest secret queda en el script distribuido).
+- [ ] Scripts pre/post-snapshot para Veeam Agent (apagar servicios, respaldar, volver a levantar) en los hosts de VMs.
+- [ ] Revisar la revisión de carpeta de RMI: apunta a `C:\Respaldos` (debería ser `K:\Respaldo-RMI`).
 
-### Entrega al cliente
-- [ ] Sumar Wi-Fi, mapa de red e inventario al portal del cliente, o un **informe mensual automático** en PDF que junte servicios, backups, accesos SMB, Wi-Fi e inventario.
+## 🔐 Portal de login
 
----
-
-## 🔐 Portal de Login
-
-- [ ] Integrar el componente `PlatformLoginLanding` en el app (ya diseñado)
-  - Cambiar `supportEmail` default a `info@cenas.uy`
-  - Conectar `onLogin` con Supabase Auth
-
----
+- [ ] Integrar `PlatformLoginLanding` (diseñado, todavía no está en `src/`): `supportEmail` = `info@cenas.uy` y `onLogin` con Supabase Auth.
 
 ## 🛠️ Infraestructura interna
 
-- [ ] **Stirling PDF** — configurar usuarios via `DOCKER_ENABLE_SECURITY=true` + `SECURITY_ENABLELOGIN=true`
-  - Contenedor reseteado, credenciales: admin/stirling
-  - Integrado con NPM sobre red `npm_default`
+- [ ] **Stirling PDF** — activar login (`DOCKER_ENABLE_SECURITY=true`, `SECURITY_ENABLELOGIN=true`), cambiar la contraseña por defecto y dejarlo detrás de NPM (red `npm_default`).
+
+## 🧰 Skills de Claude
+
+- [ ] "Deploy pendiente": junta lo que falta publicar de la rama (funciones, migraciones, web, scripts).
+- [ ] "Diagnóstico": revisa backups, heartbeats y alertas de un cliente y arma el resumen.
 
 ---
 
-## ✅ Completado recientemente
+## ✅ Hecho
 
-- [x] Banners de señal silenciada en `TelemetryDashboard` (24h warn / 72h dead)
-- [x] Fix digest_frequency filter en `ingest-backup` (solo `daily`)
-- [x] Cooldown backup_success a 23h
-- [x] Fix clientName ReferenceError → 500
-- [x] Display name email: "Cenas IT Backups"
-- [x] Script `veeam-report.ps1` — resumen diario con `suppress_email` por job
+**Notificaciones y resúmenes**
+- Centro de Notificaciones con contactos, frecuencias, tracking de aperturas y clics (`resend-webhook`, `email_opens`), mail de bienvenida (`send-welcome`), vista previa por versión y pestaña "Próximos envíos".
+- Auditoría de todos los mails: SMART en el resumen, chips de salud, recordatorio de licencias (filtraba por una columna inexistente), preferencias del portal (`daily` → `all`, opción mensual), link al portal con `/share/<token>`.
+- Página **Referencias** en el portal del cliente y link "¿Qué significa cada estado?" en los resúmenes.
+
+**Alertas y Task Tracker**
+- `sync-alert-tickets`: una tarea en Task Tracker por alerta de "Para hoy" (backup fallido/vencido, dejó de reportar, servicio caído) que se cierra sola con una nota cuando la alerta desaparece. Endpoint `POST /api/tasks/:id/resolve` en Task Tracker.
+- Frecuencia esperada por servicio (diario, días hábiles, semanal, mensual) y por job dentro del servicio.
+
+**Topología de red**
+- Mapa con React Flow, tablas `net_devices`, `net_links`, `net_edges`, `net_layout_overrides`, `net_custom_nodes`; `ingest-net-topology` con `net-topology-report.rsc`; los servicios absorben los equipos descubiertos por MAC/IP.
+
+**Scripts**
+- Auto-actualizador que reporta al portal y vista Telemetría → Actualizaciones (al día / se actualiza solo / push manual).
+- Veeam Agent: un solo registro por reintento, sin reenvíos al cortarse. Cobian: lectura del log UTF-16 y corridas pasada la medianoche. AnyDesk ID en todos los equipos. Umbral de temperatura propio para NVMe.
+- Wi-Fi: MikroTik (`mk-wifi-report.sh` + importador), TP-Link Deco, UniFi.
