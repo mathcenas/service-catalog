@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.7.0"
+$SCRIPT_VERSION = "1.8.0"
 
 # ---------- IPs (pública WAN + local) ----------
 $publicIp = $null
@@ -313,6 +313,33 @@ if ($tsExe) {
 $issueList += $osuIssues
 $issues = if ($issueList.Count -gt 0) { $issueList -join ' · ' } else { 'Normal' }
 
+# ---------- Qué corre en este equipo (sugerencias para el portal) ----------
+# Carpetas compartidas (sin las del sistema), impresoras compartidas y servicios conocidos.
+# En el portal aparecen como "Detectado en el equipo" para sumarlos con un clic.
+$serverRoles = [ordered]@{ shares = @(); printers = @(); services = @() }
+try {
+    $serverRoles.shares = @(Get-SmbShare -ErrorAction Stop | Where-Object { -not $_.Special -and $_.Name -notmatch '\$$' -and $_.Name -notin @('print$', 'IPC$') } |
+        ForEach-Object { [ordered]@{ name = $_.Name; path = $_.Path; description = $_.Description } })
+} catch {}
+try {
+    $serverRoles.printers = @(Get-Printer -ErrorAction Stop | Where-Object { $_.Shared } |
+        ForEach-Object { [ordered]@{ name = $_.Name; share_name = $_.ShareName; driver = $_.DriverName } })
+} catch {}
+$knownServices = [ordered]@{
+    'MSSQL*'            = 'SQL Server';       'postgresql*'   = 'PostgreSQL';        'MySQL*'       = 'MySQL'
+    'W3SVC'             = 'IIS (sitios web)'; 'NTDS'          = 'Active Directory';  'DNS'          = 'DNS'
+    'DHCPServer'        = 'DHCP';             'vmms'          = 'Hyper-V';           'Veeam*'       = 'Veeam'
+    'Kopia*'            = 'Kopia';            'CobianReflector*' = 'Cobian Reflector'; 'AnyDesk'    = 'AnyDesk'
+    'TeamViewer'        = 'TeamViewer';       'FileZilla*'    = 'FileZilla Server';  'Apache*'      = 'Apache'
+}
+try {
+    $allSvc = Get-Service -ErrorAction Stop
+    foreach ($pattern in $knownServices.Keys) {
+        $hit = $allSvc | Where-Object { $_.Name -like $pattern } | Select-Object -First 1
+        if ($hit) { $serverRoles.services += [ordered]@{ name = $knownServices[$pattern]; svc = $hit.Name; status = $hit.Status.ToString() } }
+    }
+} catch {}
+
 $hwData = @{
     service_id = $SERVICE_ID
     source     = "system-health"
@@ -333,6 +360,7 @@ $hwData = @{
         issues         = $issues
         os_updates     = $osUpdates
         tailscale      = $tailscale
+        server_roles   = $serverRoles
         disk_raid      = $raidList
         public_ip      = $publicIp
         local_ip       = $localIp

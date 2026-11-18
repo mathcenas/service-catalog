@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Save } from 'lucide-react';
-import { supabase, ClientApp } from '../lib/supabase';
+import { supabase, ClientApp, AppKind } from '../lib/supabase';
+import { APP_KINDS, appKind } from '../lib/appKinds';
 import { useAuth } from '../contexts/AuthContext';
 
 type Props = { clientId: string };
 
-const empty = (): Omit<ClientApp, 'id' | 'user_id' | 'client_id' | 'sort_order' | 'created_at' | 'updated_at'> => ({
-  name: '', vendor: '', support_phone: '', whatsapp_url: '', notes: '',
+const empty = () => ({
+  name: '', vendor: '', support_phone: '', whatsapp_url: '', notes: '', kind: 'app' as AppKind, service_id: '',
 });
 
 export function ClientAppsManager({ clientId }: Props) {
@@ -16,10 +17,15 @@ export function ClientAppsManager({ clientId }: Props) {
   const [draft, setDraft] = useState(empty());
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [servers, setServers] = useState<{ id: string; name: string }[]>([]);
 
   const load = async () => {
-    const { data } = await supabase.from('client_apps').select('*').eq('client_id', clientId).order('sort_order');
+    const [{ data }, { data: svcs }] = await Promise.all([
+      supabase.from('client_apps').select('*').eq('client_id', clientId).order('sort_order'),
+      supabase.from('services').select('id, name, business_name').eq('client_id', clientId).eq('status', 'Active').order('name'),
+    ]);
     setApps(data || []);
+    setServers((svcs ?? []).map((x: { id: string; name: string; business_name?: string | null }) => ({ id: x.id, name: x.business_name || x.name })));
     setLoading(false);
   };
 
@@ -36,6 +42,8 @@ export function ClientAppsManager({ clientId }: Props) {
       support_phone: draft.support_phone?.trim() || null,
       whatsapp_url: draft.whatsapp_url?.trim() || null,
       notes: draft.notes?.trim() || null,
+      kind: draft.kind,
+      service_id: draft.service_id || null,
       sort_order: apps.length,
     });
     setDraft(empty());
@@ -67,7 +75,8 @@ export function ClientAppsManager({ clientId }: Props) {
       {apps.map(app => (
         <div key={app.id} className="bg-gray-50 rounded-lg px-3 py-2 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-900">{app.name}</p>
+            <p className="text-sm font-medium text-gray-900"><span aria-hidden="true">{appKind(app.kind).icon}</span> {app.name}</p>
+            {app.service_id && <p className="text-xs text-gray-400">en {servers.find(x => x.id === app.service_id)?.name ?? 'otro equipo'}</p>}
             {app.vendor && <p className="text-xs text-gray-500">{app.vendor}</p>}
             <div className="flex gap-2 mt-1">
               {app.support_phone && <a href={`tel:${app.support_phone}`} className="text-xs text-blue-600">{app.support_phone}</a>}
@@ -88,6 +97,15 @@ export function ClientAppsManager({ clientId }: Props) {
       {adding && (
         <div className="bg-blue-50 rounded-lg p-3 space-y-2 border border-blue-100">
           <div className="grid grid-cols-2 gap-2">
+            <select value={draft.kind} onChange={e => setDraft(d => ({ ...d, kind: e.target.value as AppKind }))} aria-label="Tipo"
+              className="px-2 py-1.5 text-sm border border-gray-300 rounded-md outline-none focus:ring-1 focus:ring-blue-500">
+              {APP_KINDS.map(k => <option key={k.value} value={k.value}>{k.icon} {k.label}</option>)}
+            </select>
+            <select value={draft.service_id} onChange={e => setDraft(d => ({ ...d, service_id: e.target.value }))} aria-label="Equipo"
+              className="px-2 py-1.5 text-sm border border-gray-300 rounded-md outline-none focus:ring-1 focus:ring-blue-500">
+              <option value="">Sin equipo (general)</option>
+              {servers.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
             <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
               placeholder="App name *" className="col-span-2 px-2 py-1.5 text-sm border border-gray-300 rounded-md outline-none focus:ring-1 focus:ring-blue-500" />
             <input value={draft.vendor} onChange={e => setDraft(d => ({ ...d, vendor: e.target.value }))}

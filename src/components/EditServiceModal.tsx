@@ -3,6 +3,7 @@ import { X, Copy, Check, RefreshCw } from 'lucide-react';
 import { Service, Client, ServiceType, Project, MANAGED_ROLES, ManagedRole, OPERATIONAL_STATUSES, OperationalStatus, PAID_BY_OPTIONS, PaidBy, supabase } from '../lib/supabase';
 import { BACKUP_SCHEDULE_OPTIONS } from '../lib/backupSchedule';
 import { DynamicServiceFields } from './DynamicServiceFields';
+import { ServerAppsEditor } from './ServerAppsEditor';
 import { getFieldsForType, COLUMN_FIELD_KEYS, EXCLUDED_SERVICE_TYPE_NAMES } from '../lib/serviceFields';
 
 type Props = {
@@ -490,6 +491,11 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
                   placeholder="1234" />
               </div>
             </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-gray-800 mb-3 pb-1 border-b border-gray-100">Qué corre en este equipo</h3>
+            <ServerAppsEditor serviceId={service.id} clientId={formData.client_id} />
           </div>
 
           <div>

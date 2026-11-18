@@ -9,6 +9,7 @@ import { supabase, Client, Service, ServiceType, Project, ServiceChange, Managed
 import { BackupMetricsModal } from '../components/BackupMetricsModal';
 import { backupMaxAgeHours, jobMaxAgeHours, isRetiredJob } from '../lib/backupSchedule';
 import { ReferencesSection } from '../components/share/ReferencesSection';
+import { appKind } from '../lib/appKinds';
 
 type Props = { token: string };
 type Section = 'overview' | 'services' | 'licenses' | 'changes' | 'hours' | 'support' | 'tickets' | 'referencias';
@@ -614,32 +615,59 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
         <section>
           <div className="flex items-center gap-2 mb-3">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Applications & Software</h2>
-            <InfoTooltip text="Aplicaciones y herramientas instaladas en los equipos de tu empresa que Cenas IT tiene registradas y monitorea." />
+            <InfoTooltip text="Qué corre en cada equipo de tu empresa: aplicaciones de proveedores (con su contacto de soporte), impresoras y carpetas compartidas. Tocá un equipo para ver el detalle." />
           </div>
           <div className="space-y-2">
-            {clientApps.map(app => (
-              <div key={app.id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">{app.name}</p>
-                  {app.vendor && <p className="text-xs text-gray-400">{app.vendor}</p>}
-                  {app.notes && <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{app.notes}</p>}
-                </div>
-                <div className="flex gap-2 shrink-0">
-                  {app.whatsapp_url && (
-                    <a href={app.whatsapp_url} target="_blank" rel="noopener noreferrer"
-                      className="text-xs text-emerald-600 hover:text-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded-md font-medium">
-                      WhatsApp
-                    </a>
-                  )}
-                  {app.support_phone && (
-                    <a href={`tel:${app.support_phone}`}
-                      className="text-xs text-brand-accent hover:text-brand-accent/80 bg-brand-accent/10 px-2 py-1 rounded-md font-medium">
-                      {app.support_phone}
-                    </a>
-                  )}
-                </div>
-              </div>
-            ))}
+            {(() => {
+              // Agrupado por equipo; cada grupo es desplegable y arranca cerrado
+              const groups = new Map<string, ClientApp[]>();
+              for (const app of clientApps) {
+                const key = app.service_id ?? '';
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key)!.push(app);
+              }
+              const svcName = (id: string) => { const sv = services.find(x => x.id === id); return sv ? (sv.business_name || sv.name) : 'Otro equipo'; };
+              return [...groups.entries()]
+                .sort(([a], [b]) => (a === '' ? 1 : b === '' ? -1 : svcName(a).localeCompare(svcName(b))))
+                .map(([key, apps]) => (
+                  <details key={key || 'general'} className="group bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800">
+                    <summary className="px-4 py-3 flex items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                      <span className="min-w-0">
+                        <span className="text-sm font-medium text-gray-900 dark:text-white">{key ? svcName(key) : 'Generales'}</span>
+                        <span className="ml-2 text-xs text-gray-400">
+                          {apps.length} {apps.length === 1 ? 'ítem' : 'ítems'} · {[...new Set(apps.map(a => appKind(a.kind).icon))].join(' ')}
+                        </span>
+                      </span>
+                      <ChevronDown className="w-4 h-4 text-gray-400 shrink-0 transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="border-t border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+                      {apps.map(app => (
+                        <div key={app.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white"><span aria-hidden="true">{appKind(app.kind).icon}</span> {app.name}</p>
+                            <p className="text-xs text-gray-400">{[appKind(app.kind).label, app.vendor].filter(Boolean).join(' · ')}</p>
+                            {app.notes && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{app.notes}</p>}
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            {app.whatsapp_url && (
+                              <a href={app.whatsapp_url} target="_blank" rel="noopener noreferrer"
+                                className="text-xs text-emerald-600 hover:text-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded-md font-medium">
+                                WhatsApp
+                              </a>
+                            )}
+                            {app.support_phone && (
+                              <a href={`tel:${app.support_phone}`}
+                                className="text-xs text-brand-accent hover:text-brand-accent/80 bg-brand-accent/10 px-2 py-1 rounded-md font-medium">
+                                {app.support_phone}
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                ));
+            })()}
           </div>
         </section>
       )}

@@ -330,9 +330,14 @@ export type ClientApp = {
   whatsapp_url?: string;
   notes?: string;
   sort_order: number;
+  /** Equipo (servicio) donde corre; null = del cliente en general */
+  service_id?: string | null;
+  kind?: AppKind;
   created_at: string;
   updated_at: string;
 };
+
+export type AppKind = 'app' | 'printer' | 'share' | 'database' | 'service' | 'other';
 
 export type DeviceTelemetry = {
   id: string;
