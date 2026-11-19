@@ -231,7 +231,12 @@ function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersi
     chips.push({ label: 'v', value: '?', warn: true });
   }
 
+  // Problemas que detectó el script (discos, RAID, puntos de control, Tailscale, actualizaciones…)
+  const issues = hb.source === 'system-health' && typeof p.issues === 'string' && p.issues !== 'Normal'
+    ? p.issues.split(/\s+[·�]\s+/).filter(Boolean) : [];
+
   return (
+    <>
     <div className="flex flex-wrap gap-2 mt-1">
       {chips.map(c => {
         const isVersionChip = c.label === 'v';
@@ -251,6 +256,12 @@ function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersi
         );
       })}
     </div>
+    {issues.length > 0 && (
+      <ul className={`mt-1.5 space-y-0.5 text-[11px] leading-snug ${hb.status === 'failed' ? 'text-red-700' : 'text-amber-700'}`}>
+        {issues.map((t, i) => <li key={i} className="flex gap-1"><span aria-hidden="true">•</span><span>{t}</span></li>)}
+      </ul>
+    )}
+    </>
   );
 }
 
