@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.12.0"
+$SCRIPT_VERSION = "1.13.0"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -217,6 +217,73 @@ try {
     }
 } catch {}
 
+# ---------- Errores de disco en el Visor de eventos ----------
+# Discos detrás de una controladora RAID (Intel RST / iaStor, PERC, etc.) aparecen como un solo
+# disco "Healthy" para Get-PhysicalDisk, aunque un disco físico esté fallando. Windows sí lo
+# registra en el log System: se cuentan esos eventos de las últimas $DISK_EVENT_HOURS horas.
+$DISK_EVENT_HOURS = if (Get-Variable 'DISK_EVENT_HOURS' -ErrorAction SilentlyContinue) { [int]$DISK_EVENT_HOURS } else { 24 }
+$diskEvents = @()
+$diskEventIssues = @()
+try {
+    $evSince = (Get-Date).AddHours(-$DISK_EVENT_HOURS)
+    # Proveedor → IDs graves (falla) y leves (aviso). Las controladoras RAID: cualquier error.
+    $evRules = @(
+        @{ p = 'disk';                   bad = @(7, 154);        warn = @(11, 51, 153) },
+        @{ p = 'Microsoft-Windows-Ntfs'; bad = @(55, 140, 137);  warn = @(98) },
+        @{ p = 'Ntfs';                   bad = @(55, 140, 137);  warn = @(98) }
+    )
+    foreach ($ctl in 'iaStorVD', 'iaStorAC', 'iaStorA', 'iaStorAVC', 'iaStorV', 'megasas', 'megasas2i', 'percsas2i', 'percsas3i', 'arcsas', 'HpCISSs3', 'SmartPqi') {
+        $evRules += @{ p = $ctl; bad = 'error'; warn = @() }
+    }
+    foreach ($rule in $evRules) {
+        $evs = $null
+        try {
+            $evs = Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = $rule.p; Level = 1, 2, 3; StartTime = $evSince } -MaxEvents 5000 -ErrorAction Stop
+        } catch { continue }   # proveedor inexistente o sin eventos
+        foreach ($g in ($evs | Group-Object Id)) {
+            $id = [int]$g.Name
+            $first = $g.Group | Select-Object -Last 1
+            $last  = $g.Group | Select-Object -First 1
+            if ($rule.bad -eq 'error') { $sev = if ($last.Level -le 2) { 'error' } else { $null } }
+            elseif ($id -in $rule.bad)  { $sev = 'error' }
+            elseif ($id -in $rule.warn) { $sev = 'warning' }
+            else { $sev = $null }
+            if (-not $sev) { continue }
+            $msg = [string]$last.Message
+            $vol    = if ($msg -match 'Volum(?:e|en)Id:\s*([^;\s]+)') { $Matches[1] } else { $null }
+            $serial = if ($msg -match '(?:serie del dispositivo|Device Serial Number):\s*(\S+)') { $Matches[1] }
+                      elseif ($msg -match 'disk\s*:\s*(\S+)') { $Matches[1] } else { $null }
+            $diskNo = if ($msg -match '(?:disco|disk)\s+(\d+)\b') { $Matches[1] } else { $null }
+            $model  = if ($msg -match '(?:Modelo de dispositivo|Device Model):\s*(.+)') { $Matches[1].Trim() } else { $null }
+            $diskEvents += @{
+                source = $rule.p; id = $id; severity = $sev; count = $g.Count
+                first  = $first.TimeCreated.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                last   = $last.TimeCreated.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                volume = $vol; serial = $serial; disk = $diskNo; model = $model
+                sample = ($msg -split "`r?`n")[0].Trim()
+            }
+        }
+    }
+    foreach ($e in $diskEvents) {
+        $what = switch -Regex ($e.source) {
+            '^disk$' { if ($e.id -in 7, 154) { "error de hardware" } elseif ($e.id -eq 153) { "reintentos de lectura/escritura" } else { "errores de E/S" } }
+            'Ntfs'   { "NTFS no pudo escribir" }
+            default  { "controladora RAID ($($e.source))" }
+        }
+        $where = @()
+        if ($e.disk)   { $where += "disco $($e.disk)" }
+        if ($e.volume) { $where += $e.volume }
+        if ($e.model)  { $where += $e.model }
+        if ($e.serial) { $where += "serie $($e.serial)" }
+        $diskEventIssues += "Visor de eventos: $($e.count)× $what$(if ($where) { ' (' + ($where -join ', ') + ')' })"
+        if ($e.severity -eq 'error') { $hwStatus = 'failed' }
+        elseif ($hwStatus -eq 'success') { $hwStatus = 'warning' }
+    }
+    if ($diskEvents.Count) { Write-Log "⚠️ Errores de disco en el Visor de eventos: $($diskEventIssues -join ' · ')" }
+} catch {
+    Write-Log "⚠️ Visor de eventos (discos): $($_.Exception.Message)"
+}
+
 # ---------- Actualizaciones del SO (solo lectura, no instala nada) ----------
 # La consulta a Windows Update es lenta: se hace 1 vez por día y el resultado queda en cache.
 function ConvertTo-UtcDate($v) {
@@ -346,6 +413,7 @@ foreach ($d in $diskSmartList) {
 foreach ($r in $raidList) {
     if ($r.status -ne 'ok') { $issueList += "Volumen $($r.name): $($r.health)" }
 }
+$issueList += $diskEventIssues
 # ---------- Tailscale: sesión y vencimiento de claves ----------
 # Avisa si la sesión de este equipo venció o si la clave de este equipo o de otro del túnel
 # vence en 7 días o menos (o ya venció). $TAILSCALE_IGNORE (config.ps1): nombres a ignorar,
@@ -447,6 +515,7 @@ $hwData = @{
         server_roles   = $serverRoles
         disk_smart     = $diskSmartList
         disk_raid      = $raidList
+        disk_events    = $diskEvents
         public_ip      = $publicIp
         local_ip       = $localIp
         is_server      = $false
