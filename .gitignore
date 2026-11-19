@@ -27,3 +27,6 @@ scripts/linux/deco-report.env
 __pycache__/
 scripts/unifi/unifi-report.json
 scripts/unifi/data/
+
+# Caché que genera system-health.sh al correr
+scripts/linux/os-updates-cache.json
