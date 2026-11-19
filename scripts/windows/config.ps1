@@ -2,7 +2,7 @@
 # config.ps1 - Configuracion por cliente/servidor
 # Copiar este archivo por cada cliente y ajustar los valores
 # =============================================================
-$SCRIPT_VERSION = "1.6.1"
+$SCRIPT_VERSION = "1.6.3"
 
 $INGEST_URL    = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-backup"
 $HEARTBEAT_URL = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-heartbeat"
@@ -66,6 +66,14 @@ $CHECKPOINT_MAX_DAYS = 7            # dias para considerar viejo un punto de con
 $CHECKPOINT_IGNORE   = "*_replica,*replica*"   # VMs a ignorar (las replicas usan puntos de control a proposito)
 $CHECK_KOPIA_MAINTENANCE   = $true  # kopia-report: revisar que el mantenimiento del repositorio corra
 $KOPIA_MAINTENANCE_MAX_DAYS = 3      # dias sin mantenimiento completo para avisar
+$KOPIA_TASK_USER   = ""      # usuario de Windows de KopiaUI (ej. "PC"): setup-scheduled-tasks registra la tarea de Kopia con ese usuario
+$KOPIA_REPORT_TIME = "19:30" # hora de la tarea de Kopia (despues del snapshot diario)
+# $KOPIA_EXE    = "C:\Users\PC\AppData\Local\Programs\KopiaUI\resources\server\kopia.exe"  # si la tarea corre con otro usuario
+# $KOPIA_CONFIG = "C:\Users\PC\AppData\Roaming\kopia\repository.config"
+$CPU_WATCH_ENABLED   = $false   # cpu-watch.ps1: vigilar picos de CPU en una franja (setup-scheduled-tasks registra la tarea)
+$CPU_WATCH_START     = "12:30"
+$CPU_WATCH_END       = "15:30"
+$CPU_WATCH_THRESHOLD = 80        # % de CPU total que cuenta como pico
 
 function Invoke-Kuma {
     param([string]$Status, [string]$Msg, [string]$Url = "")

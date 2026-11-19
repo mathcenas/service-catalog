@@ -13,7 +13,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.3.0"
+$SCRIPT_VERSION = "1.3.1"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -83,6 +83,14 @@ foreach ($k in $kandidatos) {
     if (Test-Path $k -ErrorAction SilentlyContinue) { $kopiaExe = $k; break }
     try { if (Get-Command $k -ErrorAction Stop) { $kopiaExe = $k; break } } catch {}
 }
+# KopiaUI se instala en la carpeta del usuario: si la tarea corre con otro usuario (o SYSTEM),
+# $env:LOCALAPPDATA no es el del que instaló KopiaUI. Buscar en todos los perfiles.
+if (-not $kopiaExe) {
+    $kopiaExe = Get-ChildItem "C:\Users\*\AppData\Local\Programs\KopiaUI\resources\server\kopia.exe" -ErrorAction SilentlyContinue |
+                Select-Object -First 1 -ExpandProperty FullName
+}
+# $KOPIA_EXE (config.ps1) gana sobre la búsqueda
+if ((Get-Variable 'KOPIA_EXE' -ErrorAction SilentlyContinue) -and $KOPIA_EXE -and (Test-Path $KOPIA_EXE)) { $kopiaExe = $KOPIA_EXE }
 # Búsqueda dinámica en Downloads de todos los usuarios si no se encontró
 if (-not $kopiaExe) {
     $found = Get-ChildItem "C:\Users" -Recurse -Filter "kopia.exe" -ErrorAction SilentlyContinue |
@@ -91,9 +99,17 @@ if (-not $kopiaExe) {
     if ($found) { $kopiaExe = $found.FullName }
 }
 if (-not $kopiaExe) {
-    Write-Log "ERROR: no se encontró kopia.exe"
+    Write-Log "ERROR: no se encontró kopia.exe (usuario $env:USERNAME). Definí `$KOPIA_EXE en config.ps1 o corré la tarea con el usuario de KopiaUI"
     exit 1
 }
+
+# Conexión al repositorio: la de KopiaUI está en %APPDATA%\kopia\repository.config del usuario que lo usa.
+# Si la tarea corre con otro usuario, usar la de ese perfil ($KOPIA_CONFIG en config.ps1, o la que se encuentre).
+$kopiaCfgArgs = @()
+$cfgPath = if ((Get-Variable 'KOPIA_CONFIG' -ErrorAction SilentlyContinue) -and $KOPIA_CONFIG) { $KOPIA_CONFIG }
+           elseif (Test-Path "$env:APPDATA\kopia\repository.config") { $null }
+           else { Get-ChildItem "C:\Users\*\AppData\Roaming\kopia\repository.config" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName }
+if ($cfgPath) { $kopiaCfgArgs = @("--config-file=$cfgPath"); Write-Log "Usando la conexión de Kopia de $cfgPath" }
 
 # ---------- Mantenimiento del repositorio ----------
 # Kopia limpia los datos de snapshots vencidos en el mantenimiento (rápido cada hora, completo cada
@@ -104,7 +120,7 @@ $CHECK_KOPIA_MAINTENANCE = if (Get-Variable 'CHECK_KOPIA_MAINTENANCE' -ErrorActi
 $KOPIA_MAINTENANCE_MAX_DAYS = if (Get-Variable 'KOPIA_MAINTENANCE_MAX_DAYS' -ErrorAction SilentlyContinue) { [int]$KOPIA_MAINTENANCE_MAX_DAYS } else { 3 }
 if ($CHECK_KOPIA_MAINTENANCE) {
     try {
-        $mi = (& $kopiaExe maintenance info --json 2>$null | Out-String) | ConvertFrom-Json -ErrorAction Stop
+        $mi = (& $kopiaExe maintenance info --json @kopiaCfgArgs 2>$null | Out-String) | ConvertFrom-Json -ErrorAction Stop
         # Formato de "kopia maintenance info --json": owner y schedule.runs en la raíz;
         # cada tarea es una lista (la más nueva primero) de { start, end, success, error?, extra[] }
         $owner = if ($mi.owner) { [string]$mi.owner } else { [string]$mi.params.owner }
@@ -162,7 +178,15 @@ if ($CHECK_KOPIA_MAINTENANCE) {
 $since = (Get-Date).AddHours(-25).ToUniversalTime()
 
 try {
-    $jsonOutput = & $kopiaExe snapshot list --all --json 2>$null
+    $kErr = Join-Path $env:TEMP "kopia-report-err.txt"
+    $jsonOutput = & $kopiaExe snapshot list --all --json @kopiaCfgArgs 2>$kErr
+    if ($LASTEXITCODE -ne 0) {
+        # Antes el error se descartaba y quedaba como "no hay snapshots" (típico: la tarea corre con un
+        # usuario que no tiene la contraseña del repositorio guardada)
+        $msg = (Get-Content $kErr -ErrorAction SilentlyContinue | Select-Object -Last 3) -join ' '
+        Write-Log "ERROR: kopia no pudo listar los snapshots (usuario $env:USERNAME): $msg"
+        exit 1
+    }
     $snapshots  = $jsonOutput | ConvertFrom-Json
 } catch {
     Write-Log "ERROR: no se pudo obtener lista de snapshots: $_"

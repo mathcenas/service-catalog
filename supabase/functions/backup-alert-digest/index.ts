@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { B, EMAIL_FONT, emailHeader, emailPortalPanel, emailMeta } from "../_shared/emailBrand.ts";
 import { clientShareUrl } from "../_shared/shareLink.ts";
+import { REPLY_TO } from "../_shared/replyTo.ts";
 
 // Runs daily via pg_cron (or POST with { client_id, preview }).
 // Sends ONE email per client summarising all backup events in the last 24h.
@@ -66,6 +67,8 @@ Deno.serve(async (req: Request) => {
   // Group backups by service_id
   const backupsByService = new Map<string, any[]>();
   for (const b of allBackups as any[]) {
+    // El resumen diario de Veeam repite los trabajos que ya se listan (igual que en el portal)
+    if (/^(veeam\s*-\s*)?resumen diario\b/i.test(b.job_name || "")) continue;
     const arr = backupsByService.get(b.service_id) || [];
     arr.push(b);
     backupsByService.set(b.service_id, arr);
@@ -248,7 +251,7 @@ Deno.serve(async (req: Request) => {
     const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: FROM_EMAIL, to: recipients, subject, html }),
+      body: JSON.stringify({ from: FROM_EMAIL, reply_to: REPLY_TO, to: recipients, subject, html }),
     });
 
     const resendData = resendRes.ok ? await resendRes.json() as { id?: string } : null;

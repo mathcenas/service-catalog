@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { B, EMAIL_FONT, emailHeader, emailPortalPanel, emailMeta } from "../_shared/emailBrand.ts";
 import { clientShareUrl } from "../_shared/shareLink.ts";
+import { REPLY_TO } from "../_shared/replyTo.ts";
 
 // POST body options:
 //   { preview: true, client_id: "uuid", frequency?: "daily"|"weekly"|"monthly" }
@@ -373,7 +374,7 @@ Deno.serve(async (req: Request) => {
       await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from: FROM_EMAIL, to: toEmails, subject, html: htmlWithPixel }),
+        body: JSON.stringify({ from: FROM_EMAIL, reply_to: REPLY_TO, to: toEmails, subject, html: htmlWithPixel }),
       });
 
       sent++;
