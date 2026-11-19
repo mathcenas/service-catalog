@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { B, EMAIL_FONT, emailHeader, emailMeta, emailUnsubscribeFooter } from "../_shared/emailBrand.ts";
 import { clientShareUrl } from "../_shared/shareLink.ts";
+import { REPLY_TO } from "../_shared/replyTo.ts";
 
 // One-shot announcement: notifica a todos los contactos activos sobre el cambio
 // en las notificaciones de backup.
@@ -249,7 +250,7 @@ Deno.serve(async (req: Request) => {
     const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: FROM_EMAIL, to: recipients, subject, html }),
+      body: JSON.stringify({ from: FROM_EMAIL, reply_to: REPLY_TO, to: recipients, subject, html }),
     });
 
     const resendData = resendRes.ok ? await resendRes.json() as { id?: string } : null;
