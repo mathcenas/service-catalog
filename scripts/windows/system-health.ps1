@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.11.0"
+$SCRIPT_VERSION = "1.12.0"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -734,3 +734,24 @@ if ($CHECK_RDP) {
 }
 
 Invoke-KumaHealth -Status "up" -Msg "system-health OK"
+
+
+# ---------- Red de seguridad del actualizador ----------
+# Si update-scripts.ps1 no corrió en 3 días (tarea programada borrada, deshabilitada o que falla)
+# o ni siquiera está, lo baja de GitHub y lo lanza en segundo plano. update-scripts deja su log
+# al correr, así que esto no se repite hasta dentro de 3 días.
+try {
+    $updPath = Join-Path $PSScriptRoot 'update-scripts.ps1'
+    $updLog  = Join-Path $PSScriptRoot 'update-scripts.log'
+    $lastRun = if (Test-Path $updLog) { (Get-Item $updLog).LastWriteTime } else { $null }
+    if (-not $lastRun -or ((Get-Date) - $lastRun).TotalDays -gt 3) {
+        if (-not (Test-Path $updPath)) {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/windows/update-scripts.ps1' -OutFile $updPath -UseBasicParsing -ErrorAction Stop
+            Write-Log "update-scripts.ps1 no estaba: descargado de GitHub"
+        }
+        $psExe = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell' }
+        Start-Process -FilePath $psExe -ArgumentList @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', "`"$updPath`"") -WindowStyle Hidden
+        Write-Log "update-scripts no corre hace $(if ($lastRun) { [int]((Get-Date) - $lastRun).TotalDays } else { '?' }) días: lanzado en segundo plano"
+    }
+} catch { Write-Log "No se pudo lanzar update-scripts: $($_.Exception.Message)" }

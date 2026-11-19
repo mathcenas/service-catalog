@@ -26,7 +26,8 @@ param(
   [switch]$Force
 )
 
-$SCRIPT_VERSION = "1.3.0"
+$SCRIPT_VERSION = "1.3.1"
+$UPDATER_VERSION = $SCRIPT_VERSION   # config.ps1 también define $SCRIPT_VERSION y la pisa al leerlo
 
 $ErrorActionPreference = "SilentlyContinue"
 
@@ -180,7 +181,7 @@ function Send-UpdaterReport {
       errors         = @($errorList)
       task           = $task
       ps_version     = $PSVersionTable.PSVersion.ToString()
-      script_version = $SCRIPT_VERSION
+      script_version = $UPDATER_VERSION
     }
   } | ConvertTo-Json -Depth 5
   $h = @{ "Content-Type" = "application/json"; "apikey" = $ANON_KEY; "Authorization" = "Bearer $ANON_KEY"; "X-Ingest-Secret" = $INGEST_SECRET }
