@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================
 # update-scripts.sh — Auto-actualización de scripts Linux
-# v1.3.0
+# v1.3.1
 #
 # Uso:
 #   ./update-scripts.sh              # actualiza todos
@@ -17,7 +17,7 @@
 #   GITHUB_BRANCH rama                 (default: main)
 # =============================================================
 
-SCRIPT_VERSION="1.3.0"
+SCRIPT_VERSION="1.3.1"
 GITHUB_REPO="${GITHUB_REPO:-mathcenas/service-catalog}"
 GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/srv/scripts}"
@@ -137,13 +137,14 @@ send_updater_report() {
       --arg msg "Actualizados: ${updated} | Sin cambios: ${skipped} | Errores: ${errors}" \
       --arg branch "$GITHUB_BRANCH" --arg ver "$SCRIPT_VERSION" --arg cron "$cron_line" \
       --argjson installed "$installed" \
-      --rawfile upd "$UPDATED_LIST" --rawfile errs "$ERROR_LIST" \
+      --arg upd "$(cat "$UPDATED_LIST" 2>/dev/null)" --arg errs "$(cat "$ERROR_LIST" 2>/dev/null)" \
       '{service_id:$sid, source:"update-scripts", status:$st, message:$msg,
         payload:{platform:"linux", branch:$branch, installed:$installed,
           updated:($upd|split("\n")|map(select(length>0))),
           errors:($errs|split("\n")|map(select(length>0))),
           task:(if $cron=="" then null else {name:"cron", schedule:$cron} end),
           script_version:$ver}}')
+    [[ -z "$body" ]] && { warn "No se pudo armar el reporte (jq) — no se manda"; exit 0; }
     code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${SUPABASE_URL}/functions/v1/ingest-heartbeat" \
       -H "Content-Type: application/json" -H "apikey: ${anon}" -H "Authorization: Bearer ${anon}" \
       -H "X-Ingest-Secret: ${INGEST_SECRET}" --data "$body")

@@ -30,6 +30,8 @@ type Machine = {
   updater: { at: string; status: string; payload: UpdaterPayload } | null;
   healthVersion: string | null;
   healthAt: string | null;
+  hostKey: string;               // IP pública + local: identifica servicios que son el mismo servidor
+  sharedWith?: string;           // nombre del servicio del que toma el reporte del actualizador
 };
 
 type Verdict = 'ok' | 'auto' | 'manual';
@@ -98,7 +100,7 @@ export function ScriptUpdatesView({ services, clients }: { services: Service[]; 
       if (!svc) continue;
       let m = byId.get(h.service_id);
       if (!m) {
-        m = { serviceId: svc.id, name: svc.business_name || svc.name, clientName: clientName.get(svc.client_id) ?? '', platform: null, updater: null, healthVersion: null, healthAt: null };
+        m = { serviceId: svc.id, name: svc.business_name || svc.name, clientName: clientName.get(svc.client_id) ?? '', platform: null, updater: null, healthVersion: null, healthAt: null, hostKey: '' };
         byId.set(svc.id, m);
       }
       const p = (h.payload ?? {}) as Record<string, unknown>;
@@ -109,6 +111,7 @@ export function ScriptUpdatesView({ services, clients }: { services: Service[]; 
       if (h.source === 'system-health' && !m.healthAt) {
         m.healthAt = h.received_at;
         m.healthVersion = typeof p.script_version === 'string' ? p.script_version : null;
+        if (p.public_ip || p.local_ip) m.hostKey = `${p.public_ip ?? ''}|${p.local_ip ?? ''}`;
         // Windows manda os_caption ("Microsoft Windows …"); Linux manda load_avg
         if (!m.platform) {
           const os = String(p.os_caption ?? p.os_name ?? '').toLowerCase();
@@ -118,6 +121,13 @@ export function ScriptUpdatesView({ services, clients }: { services: Service[]; 
     }
     // Solo equipos que reportaron en la última semana (los demás están apagados o dados de baja)
     const weekAgo = Date.now() - 7 * 86_400_000;
+    // Varios servicios en el mismo servidor (ej. RMI): el actualizador reporta en uno solo
+    const all = [...byId.values()];
+    for (const m of all) {
+      if (m.updater || !m.hostKey) continue;
+      const sib = all.find(o => o !== m && o.updater && o.hostKey === m.hostKey);
+      if (sib) { m.updater = sib.updater; m.platform = m.platform ?? sib.platform; m.sharedWith = sib.name; }
+    }
     setMachines([...byId.values()].filter(m => new Date(m.updater?.at ?? m.healthAt ?? 0).getTime() > weekAgo));
     setLoading(false);
   }, [services, clients]);
@@ -167,6 +177,7 @@ export function ScriptUpdatesView({ services, clients }: { services: Service[]; 
     } else {
       verdict = outdated.length ? 'auto' : 'ok';
     }
+    if (m.sharedWith) reasons.unshift(`Mismo servidor que "${m.sharedWith}".`);
     if (verdict === 'auto') {
       const next = u?.payload.task?.next_run;
       reasons.push(next ? `Próxima corrida: ${fmtDate(next)}.` : 'Se actualiza en la próxima corrida del cron.');

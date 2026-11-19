@@ -12,7 +12,7 @@
 # Version: 1.6.0
 # =============================================================
 
-SCRIPT_VERSION="1.11.1"
+SCRIPT_VERSION="1.12.0"
 
 # ---------- Verificación de dependencias ----------
 if ! command -v jq >/dev/null 2>&1; then
@@ -696,3 +696,22 @@ for i in $(seq 1 10); do
     log "✗ system-health [${extra_name}] → HTTP $extra_code"
   fi
 done
+
+
+# ---------- Red de seguridad del actualizador ----------
+# Si update-scripts.sh no corrió en 3 días (cron borrado o que falla) o no está, lo baja y lo
+# lanza en segundo plano en esta misma carpeta. Su log se actualiza al correr: no se repite.
+UPD="$SCRIPT_DIR/update-scripts.sh"; UPD_LOG="$SCRIPT_DIR/update-scripts.log"
+if [[ ! -f "$UPD_LOG" ]] || [[ -n "$(find "$UPD_LOG" -mtime +3 2>/dev/null)" ]]; then
+  if [[ ! -f "$UPD" ]]; then
+    if curl -fsSL --retry 2 -o "$UPD.tmp" "https://raw.githubusercontent.com/mathcenas/service-catalog/main/scripts/linux/update-scripts.sh" && [[ -s "$UPD.tmp" ]]; then
+      mv "$UPD.tmp" "$UPD"; chmod +x "$UPD"; log "update-scripts.sh no estaba: descargado de GitHub"
+    else
+      rm -f "$UPD.tmp"
+    fi
+  fi
+  if [[ -f "$UPD" ]]; then
+    INSTALL_DIR="$SCRIPT_DIR" nohup bash "$UPD" >/dev/null 2>&1 &
+    log "update-scripts no corre hace más de 3 días: lanzado en segundo plano"
+  fi
+fi
