@@ -5,10 +5,12 @@ import { clientShareUrl } from "../_shared/shareLink.ts";
 import { REPLY_TO } from "../_shared/replyTo.ts";
 
 // Runs daily via pg_cron (or POST with { client_id, preview }).
-// Sends ONE email per client summarising all backup events in the last 24h.
-// Only sends if there is at least one warning or failed backup in the last 24h.
-// Contacts with a daily summary ('all') are skipped: their daily digest already
-// lists the backups of the last 24h, so they would get the same news twice.
+// Arma UN mail por cliente con los backups de las últimas 24 h, solo si hubo alguno fallido o
+// con advertencia. Va al ADMIN (Cenas IT), no a los contactos del cliente: el cliente recibe los
+// backups en su resumen (diario, semanal o mensual, el que eligió) y nada más. Antes iba a los
+// contactos con resumen semanal/mensual y les llegaban alertas casi todos los días.
+// Destino: user_settings.weekly_digest_email del dueño del cliente → email de su cuenta →
+// RESEND_REPLY_TO_ADDRESS / info@cenas.uy.
 // Preview ({ preview: true, client_id? }) returns
 //   { previews: [{ client_id, client_name, html, subject, has_alert, recipients }] }
 
@@ -141,23 +143,20 @@ Deno.serve(async (req: Request) => {
     const hasAlert = rows.some(r => r.backups.some((b: any) => b.status !== "success"));
     if (!hasAlert && !previewMode) continue;
 
-    // Load contacts for this client
-    // Sin los contactos con resumen diario: ese resumen ya trae los backups de las últimas 24h
-    const { data: contacts } = await supabase
-      .from("client_contacts")
-      .select("id, name, email, digest_frequency")
-      .eq("client_id", clientId)
-      .not("digest_frequency", "in", "(none,all)");
-
-    const recipients = (contacts || []).map((c: any) => c.email).filter(Boolean);
-    if (recipients.length === 0 && !previewMode) continue;
-
-    // User settings
+    // User settings (nombre y a dónde mandar las alertas internas)
     const { data: settings } = await supabase
       .from("user_settings")
-      .select("company_name")
+      .select("company_name, weekly_digest_email")
       .eq("user_id", client.user_id)
       .maybeSingle();
+
+    let adminEmail: string | null = settings?.weekly_digest_email || null;
+    if (!adminEmail) {
+      const { data: owner } = await supabase.auth.admin.getUserById(client.user_id);
+      adminEmail = owner?.user?.email ?? null;
+    }
+    if (!adminEmail) adminEmail = REPLY_TO;
+    const recipients = [adminEmail];
 
     const senderName = settings?.company_name || "Cenas IT";
     const portalUrl  = await clientShareUrl(supabase, clientId);
@@ -233,8 +232,8 @@ Deno.serve(async (req: Request) => {
 </table>`;
 
     const subject = totalFailed > 0
-      ? `⚠ Alerta de backup — ${client.company_name} — ${dateLabel}`
-      : `Resumen de backups — ${client.company_name} — ${dateLabel}`;
+      ? `[Interno] ⚠ Alerta de backup — ${client.company_name} — ${dateLabel}`
+      : `[Interno] Resumen de backups — ${client.company_name} — ${dateLabel}`;
 
     if (previewMode) {
       previews.push({
@@ -243,7 +242,7 @@ Deno.serve(async (req: Request) => {
         html,
         subject,
         has_alert: hasAlert,
-        recipients: (contacts || []).map((c: any) => ({ name: c.name, email: c.email })),
+        recipients: recipients.map(email => ({ name: "Cenas IT (interno)", email })),
       });
       continue;
     }
@@ -254,20 +253,8 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({ from: FROM_EMAIL, reply_to: REPLY_TO, to: recipients, subject, html }),
     });
 
-    const resendData = resendRes.ok ? await resendRes.json() as { id?: string } : null;
-
-    // Log
-    for (const email of recipients) {
-      await supabase.from("email_opens").insert({
-        user_id:         client.user_id,
-        client_id:       clientId,
-        client_email:    email,
-        resend_email_id: resendData?.id ?? null,
-        email_type:      "backup_digest",
-        subject,
-        sent_at:         new Date().toISOString(),
-      });
-    }
+    // Es un mail interno: no se registra en email_opens (eso es el historial de mails al cliente)
+    if (!resendRes.ok) console.error("[backup-alert-digest] Resend:", resendRes.status, await resendRes.text().catch(() => ""));
 
     sent++;
   }

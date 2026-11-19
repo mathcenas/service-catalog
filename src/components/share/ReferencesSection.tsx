@@ -146,8 +146,8 @@ export function ReferencesSection({ companyName }: { companyName?: string }) {
       <Card title="Resúmenes por email">
         <Row pill={<span className="text-sm font-medium text-gray-900 dark:text-white">Diario / Semanal / Mensual</span>}
           what="Lo mismo que ves en este portal, resumido. El semanal sale los lunes y el mensual el primer lunes de cada mes." />
-        <Row pill={<span className="text-sm font-medium text-gray-900 dark:text-white">Alerta de backups</span>}
-          what="Sale solo el día que algún backup terminó con advertencia o falló." />
+        <Row pill={<span className="text-sm font-medium text-gray-900 dark:text-white">Backups con problemas</span>}
+          what="Nos llega un aviso a nosotros el mismo día y lo resolvemos. Vos lo ves en este portal y en tu resumen, sin mails extra." />
         <Row pill={<span className="text-sm font-medium text-gray-900 dark:text-white">Cambiar frecuencia</span>}
           what="Desde el link “Cambiar frecuencia de notificaciones” al pie de cualquier resumen." />
       </Card>

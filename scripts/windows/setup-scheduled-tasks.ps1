@@ -12,12 +12,14 @@
 #Requires -RunAsAdministrator
 
 # Con versión para que update-scripts.ps1 lo actualice (sin versión nunca se bajaba de nuevo)
-$SCRIPT_VERSION = "1.2.0"
+$SCRIPT_VERSION = "1.2.1"
 
 $ScriptsDir = $PSScriptRoot
 
 # Detectar pwsh.exe
-$PwshPath = (Get-Command pwsh -ErrorAction SilentlyContinue)?.Source
+# Sin "?." (solo existe en PowerShell 7): el setup también se corre desde Windows PowerShell 5.1
+$PwshCmd  = Get-Command pwsh -ErrorAction SilentlyContinue
+$PwshPath = if ($PwshCmd) { $PwshCmd.Source } else { $null }
 if (-not $PwshPath) {
     $PwshPath = "$env:ProgramFiles\PowerShell\7\pwsh.exe"
 }
