@@ -10,6 +10,7 @@ import { BackupMetricsModal } from '../components/BackupMetricsModal';
 import { backupMaxAgeHours, jobMaxAgeHours, isRetiredJob } from '../lib/backupSchedule';
 import { ReferencesSection } from '../components/share/ReferencesSection';
 import { appKind } from '../lib/appKinds';
+import { hardwareAlerts, type HardwareAlert } from '../lib/hardwareAlerts';
 
 type Props = { token: string };
 type Section = 'overview' | 'services' | 'licenses' | 'changes' | 'hours' | 'support' | 'tickets' | 'referencias';
@@ -484,6 +485,15 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
     }
   }
   const healthEntries = Object.values(latestHealth);
+  // Avisos de hardware para el cliente (disco que falla, espejo degradado, disco lleno), de reportes de los últimos 3 días
+  const attention = healthEntries
+    .filter(h => h.source === 'system-health' && Date.now() - new Date(h.received_at).getTime() < 72 * 3_600_000)
+    .flatMap(h => {
+      const svc = services.find(s => s.id === h.service_id);
+      return hardwareAlerts(h.payload as Record<string, unknown>, svc?.business_name || svc?.name || 'un equipo')
+        .map(a => ({ ...a, key: `${h.service_id}-${a.key}`, reportedAt: h.received_at }));
+    })
+    .sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'critical' ? -1 : 1));
 
   const totalAllocated = services.reduce((sum, s) => sum + (s.confirmed_hours_monthly || 0), 0);
   const completedHours = roadmap
@@ -492,6 +502,7 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
 
   return (
     <div className="space-y-6">
+      {attention.length > 0 && <AttentionPanel alerts={attention} />}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard label="Active Services" value={services.length.toString()} tooltip="Cantidad de servicios activos que Cenas IT gestiona para tu empresa (internet, servidores, backups, licencias, etc.)." />
         <StatCard label="Upcoming Updates" value={upcoming.length.toString()} accent={upcoming.length > 0} tooltip="Mejoras, cambios o tareas planificadas que están en progreso o pendientes de implementar." />
@@ -1255,6 +1266,56 @@ function timeAgoEs(iso: string): string {
   return days === 1 ? 'ayer' : `hace ${days} días`;
 }
 
+// "Requiere tu atención": lo que el cliente tiene que decidir o comprar, explicado sin tecnicismos.
+// Se puede enlazar directo con /share/<token>#atencion.
+function AttentionPanel({ alerts }: { alerts: (HardwareAlert & { reportedAt: string })[] }) {
+  useEffect(() => {
+    if (window.location.hash === '#atencion') document.getElementById('atencion')?.scrollIntoView({ block: 'start' });
+  }, []);
+  return (
+    <section id="atencion" aria-labelledby="atencion-title" className="scroll-mt-20">
+      <div className="flex items-center gap-2 mb-3">
+        <AlertTriangle className="w-4 h-4 text-red-500" aria-hidden="true" />
+        <h2 id="atencion-title" className="text-sm font-semibold text-gray-900 dark:text-white">Requiere tu atención</h2>
+      </div>
+      <div className="space-y-3">
+        {alerts.map(a => {
+          const crit = a.severity === 'critical';
+          return (
+            <article key={a.key} className={`rounded-xl border p-4 sm:p-5 ${crit ? 'border-red-200 bg-red-50 dark:border-red-500/30 dark:bg-red-500/10' : 'border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10'}`}>
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white text-balance">{a.title}</h3>
+              <dl className="mt-3 grid gap-3 text-sm">
+                <div>
+                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Qué pasa</dt>
+                  <dd className="mt-0.5 text-gray-700 dark:text-gray-200">{a.what}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Qué puede pasar</dt>
+                  <dd className="mt-0.5 text-gray-700 dark:text-gray-200">{a.risk}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Qué recomendamos</dt>
+                  <dd className="mt-0.5 font-medium text-gray-900 dark:text-white">{a.action}</dd>
+                </div>
+                {a.part && (
+                  <div>
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Pieza a reemplazar</dt>
+                    <dd className="mt-0.5 font-mono text-xs text-gray-700 dark:text-gray-200 break-words">{a.part}</dd>
+                  </div>
+                )}
+              </dl>
+              <p className="mt-3 text-[11px] text-gray-500 dark:text-gray-400">
+                {a.since ? `Detectado el ${new Date(a.since).toLocaleString('es-UY', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · ` : ''}
+                Último control {timeAgoEs(a.reportedAt)}. Cualquier duda, respondé este mensaje o escribinos por soporte.
+              </p>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function SystemHealth({ entries, services }: { entries: ServiceHeartbeat[]; services: Service[] }) {
   return (
     <section>
@@ -1301,7 +1362,9 @@ function SystemHealth({ entries, services }: { entries: ServiceHeartbeat[]; serv
           const issues = typeof p.issues === 'string' && p.issues.trim() && p.issues !== 'Normal'
             ? p.issues.trim()
             : [raidIssue, smartIssue].filter(Boolean).join(' · ') || null;
+          const hw = freshness !== 'offline' && h.source === 'system-health' ? hardwareAlerts(p, '') : [];
           const reason =
+            hw.length                ? `${hw[0].title} — ver "Requiere tu atención" arriba` :
             freshness === 'offline' ? `No reporta hace ${Math.round(ageH / 24)} días` :
             freshness === 'stale'   ? `Último reporte hace ${Math.round(ageH)} h` :
             level !== 'ok'          ? (issues ?? (hasMetrics ? 'Revisar alertas del equipo' : h.message)) :

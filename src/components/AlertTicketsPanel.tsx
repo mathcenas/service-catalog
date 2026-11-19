@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, CheckCircle2, Clock, Ticket, ChevronDown } from 'lucide-react';
+import { RefreshCw, CheckCircle2, Clock, Ticket, ChevronDown, Link2 } from 'lucide-react';
 import { supabase, Client } from '../lib/supabase';
 
 // Tickets que sync-alert-tickets abre y cierra en Task Tracker (tabla alert_tickets).
@@ -25,6 +25,23 @@ export function AlertTicketsPanel({ clients }: { clients: Client[] }) {
   const [msg, setMsg] = useState('');
   const [showResolved, setShowResolved] = useState(false);
   const clientName = (id: string | null) => clients.find(c => c.id === id)?.company_name ?? '';
+  const [copied, setCopied] = useState<Record<string, string>>({});
+
+  // Link al portal del cliente, directo al aviso "Requiere tu atención" (para mandarle "mirá esto")
+  const copyClientLink = async (r: Row) => {
+    let text = '';
+    try {
+      const { data } = await supabase.from('client_share_tokens').select('token').eq('client_id', r.client_id ?? '').order('created_at', { ascending: false }).limit(1);
+      const token = data?.[0]?.token;
+      if (!token) { setCopied(c => ({ ...c, [r.id]: 'El cliente no tiene portal: crealo en Clientes → Compartir' })); return; }
+      text = `${window.location.origin}/share/${token}#atencion`;
+      await navigator.clipboard.writeText(text);
+      setCopied(c => ({ ...c, [r.id]: 'Link copiado' }));
+    } catch {
+      setCopied(c => ({ ...c, [r.id]: text ? `No se pudo copiar: ${text}` : 'No se pudo copiar' }));
+    }
+    setTimeout(() => setCopied(c => { const n = { ...c }; delete n[r.id]; return n; }), 4000);
+  };
 
   const load = useCallback(async () => {
     const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
@@ -89,6 +106,14 @@ export function AlertTicketsPanel({ clients }: { clients: Client[] }) {
                 <span className={`rounded-md border px-1.5 py-0.5 ${r.tt_task_id ? 'border-blue-100 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-400'}`}>
                   {r.tt_task_id ? 'en Task Tracker' : 'sin tarea'}
                 </span>
+                {r.kind === 'health' && r.client_id && (
+                  <button type="button" onClick={() => copyClientLink(r)}
+                    className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-1.5 py-0.5 min-h-6 text-gray-700 hover:border-gray-300"
+                    title="Copia el link del portal del cliente, directo al aviso explicado para él">
+                    <Link2 className="w-3 h-3" aria-hidden="true" /> Link para el cliente
+                  </button>
+                )}
+                <span role="status" className="text-gray-500">{copied[r.id] ?? ''}</span>
               </div>
             </div>
           );
