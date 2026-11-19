@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.11.1"
+$SCRIPT_VERSION = "1.11.2"
 
 # ---------- IPs (pública WAN + local) ----------
 $publicIp = $null
@@ -211,8 +211,8 @@ if ($CHECK_DISK_EVENTS) { try {
 } }
 
 # ---------- Discos que Windows no puede usar ----------
-# Un disco sin inicializar (RAW), desconectado (Offline) o que la controladora ve pero Windows
-# no lista (se cayó) suele ser un disco que falló o que salió de un RAID.
+# Un disco sin inicializar (RAW) o desconectado (Offline) suele ser un disco que falló o que
+# salió de un RAID.
 $CHECK_DISK_INIT = if (Get-Variable 'CHECK_DISK_INIT' -ErrorAction SilentlyContinue) { $CHECK_DISK_INIT } else { $true }
 $diskInitIssues = @()
 if ($CHECK_DISK_INIT) {
@@ -223,14 +223,8 @@ if ($CHECK_DISK_INIT) {
             if ($d.PartitionStyle -eq 'RAW')        { $diskInitIssues += "${label}: sin inicializar" }
             elseif ($d.OperationalStatus -ne 'Online') { $diskInitIssues += "${label}: $($d.OperationalStatus)" }
         }
-        $known = @($wDisks | ForEach-Object { [string]$_.Number })
-        # Los discos de un grupo de Espacios de almacenamiento no aparecen en Get-Disk: no son una falla
-        $pooled = @(Get-StoragePool -IsPrimordial $false -ErrorAction SilentlyContinue | Get-PhysicalDisk -ErrorAction SilentlyContinue | ForEach-Object { [string]$_.UniqueId })
-        foreach ($pd in @(Get-PhysicalDisk -ErrorAction SilentlyContinue)) {
-            if ($pd.DeviceId -ne $null -and ([string]$pd.DeviceId) -notin $known -and ([string]$pd.UniqueId) -notin $pooled) {
-                $diskInitIssues += "Disco $($pd.DeviceId) $([string]$pd.FriendlyName) (serie $(([string]$pd.SerialNumber).Trim())): la controladora lo ve pero Windows no"
-            }
-        }
+        # (No se compara Get-PhysicalDisk con Get-Disk: los discos detrás de una controladora RAID
+        #  aparecen en uno y no en el otro aunque estén sanos, y daba falsos avisos.)
         if ($diskInitIssues.Count -and $hwStatus -eq 'success') { $hwStatus = 'warning' }
     } catch { Write-Log "⚠️ Discos: $($_.Exception.Message)" }
 }
