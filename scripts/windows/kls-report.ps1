@@ -15,7 +15,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.0.3"
+$SCRIPT_VERSION = "1.0.4"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -120,7 +120,7 @@ Write-Log "KLS $status - $jobName - ${duration}s - $sizeBytes bytes"
 
 # ---------- Reportar a Supabase ----------
 $headers = @{
-    "Content-Type"    = "application/json"
+    "Content-Type"    = "application/json; charset=utf-8"
     "apikey"          = $ANON_KEY
     "Authorization"   = "Bearer $ANON_KEY"
     "X-Ingest-Secret" = $INGEST_SECRET
@@ -138,7 +138,7 @@ $body = @{
 } | ConvertTo-Json -Depth 5
 
 try {
-    Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body -TimeoutSec 30 | Out-Null
+    Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30 | Out-Null
     Write-Log "Reporte enviado OK"
 } catch {
     Write-Log "ERROR enviando reporte: $($_.Exception.Message)"

@@ -50,7 +50,7 @@ if (-not $env:SC_VEEAM_RELAUNCHED) {
 
 $_scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 . "$_scriptDir\config.ps1"
-$SCRIPT_VERSION = "1.1.1"
+$SCRIPT_VERSION = "1.1.2"
 # Agregar TLS 1.2 sin quitar los protocolos ya habilitados: dejar solo TLS 1.2 puede romper la
 # inicialización SSL del módulo de Veeam 13 ("SSslOptions threw an exception").
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -96,7 +96,7 @@ $BackupServiceId    = if ($VEEAM_SERVICE_ID)    { $VEEAM_SERVICE_ID }    else { 
 $BackupIngestSecret = if ($VEEAM_INGEST_SECRET) { $VEEAM_INGEST_SECRET } else { $INGEST_SECRET }
 
 $headers = @{
-    "Content-Type"    = "application/json"
+    "Content-Type"    = "application/json; charset=utf-8"
     "apikey"          = $ANON_KEY
     "Authorization"   = "Bearer $ANON_KEY"
     "X-Ingest-Secret" = $BackupIngestSecret
@@ -150,7 +150,7 @@ foreach ($session in $sessions) {
     } | ConvertTo-Json
 
     try {
-        Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body | Out-Null
+        Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body ([Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
         Write-Log "✅ $jobName → $status | $([math]::Round($sizeBytes/1GB,2)) GB | $([math]::Round($durationSecs/60,1)) min"
         Invoke-Kuma -Status "up" -Msg "veeam $jobName OK"
     } catch {
@@ -176,7 +176,7 @@ $summaryBody = @{
 } | ConvertTo-Json
 
 try {
-    Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $summaryBody | Out-Null
+    Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body ([Text.Encoding]::UTF8.GetBytes($summaryBody)) | Out-Null
     Write-Log "📧 Resumen diario enviado → $globalStatus | $([math]::Round($totalBytes/1GB,2)) GB total | $([math]::Round($totalDuration/60,1)) min total"
 } catch {
     Write-Log "❌ Error enviando resumen diario: $($_.Exception.Message)"

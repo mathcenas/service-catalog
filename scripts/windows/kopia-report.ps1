@@ -13,7 +13,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.2.0"
+$SCRIPT_VERSION = "1.2.1"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -61,8 +61,8 @@ if ($TAILSCALE_IP) {
         message    = if ($tsOk) { "Tailscale OK hacia $TAILSCALE_IP ($rtt ms)" } else { "Sin conectividad Tailscale a $TAILSCALE_IP" }
         payload    = @{ target_ip = $TAILSCALE_IP; reachable = $tsOk; rtt_ms = $rtt; purpose = "kopia"; script_version = $SCRIPT_VERSION }
     } | ConvertTo-Json -Depth 3
-    $hbHeaders = @{ "Content-Type" = "application/json"; "apikey" = $ANON_KEY; "Authorization" = "Bearer $ANON_KEY"; "X-Ingest-Secret" = $INGEST_SECRET }
-    try { Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $hbHeaders -Body $hbBody | Out-Null } catch { Write-Log "No se pudo reportar el estado de Tailscale: $($_.Exception.Message)" }
+    $hbHeaders = @{ "Content-Type" = "application/json; charset=utf-8"; "apikey" = $ANON_KEY; "Authorization" = "Bearer $ANON_KEY"; "X-Ingest-Secret" = $INGEST_SECRET }
+    try { Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $hbHeaders -Body ([Text.Encoding]::UTF8.GetBytes($hbBody)) | Out-Null } catch { Write-Log "No se pudo reportar el estado de Tailscale: $($_.Exception.Message)" }
     if (-not $tsOk) {
         Write-Log "ERROR: Tailscale no responde en $TAILSCALE_IP — no se puede verificar el repo remoto"
         Invoke-KumaBackup -Status "down" -Msg "Tailscale $TAILSCALE_IP sin respuesta"
@@ -118,7 +118,7 @@ if (-not $recent) {
 
 # ---------- Headers ----------
 $headers = @{
-    "Content-Type"    = "application/json"
+    "Content-Type"    = "application/json; charset=utf-8"
     "apikey"          = $ANON_KEY
     "Authorization"   = "Bearer $ANON_KEY"
     "X-Ingest-Secret" = $INGEST_SECRET
@@ -164,7 +164,7 @@ foreach ($snap in $byPath) {
     } | ConvertTo-Json -Compress
 
     try {
-        Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body -ErrorAction Stop | Out-Null
+        Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ErrorAction Stop | Out-Null
         Write-Log "  Reporte enviado OK"
     } catch {
         Write-Log "  ERROR al enviar: $_"

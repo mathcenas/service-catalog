@@ -33,7 +33,7 @@ param([switch]$AclOnly)
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.1.1"
+$SCRIPT_VERSION = "1.1.2"
 
 if (-not (Get-Command Invoke-Kuma -ErrorAction SilentlyContinue)) {
     function Invoke-Kuma { param([string]$Status, [string]$Msg) }
@@ -68,13 +68,13 @@ if (-not $BaseUrl) { $BaseUrl = ($HEARTBEAT_URL -replace '/functions/v1/.*', '')
 $AclIngestUrl     = "$BaseUrl/functions/v1/ingest-nas-acl"
 
 $headersHeartbeat = @{
-    "Content-Type"    = "application/json"
+    "Content-Type"    = "application/json; charset=utf-8"
     "apikey"          = $ANON_KEY
     "Authorization"   = "Bearer $ANON_KEY"
     "X-Ingest-Secret" = $SMB_INGEST_SECRET
 }
 $headersAcl = @{
-    "Content-Type"    = "application/json"
+    "Content-Type"    = "application/json; charset=utf-8"
     "apikey"          = $ANON_KEY
     "Authorization"   = "Bearer $ANON_KEY"
     "X-Ingest-Secret" = $SMB_INGEST_SECRET
@@ -126,7 +126,7 @@ if (-not $AclOnly) {
             payload    = $payload
         } | ConvertTo-Json -Compress -Depth 5
         try {
-            Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headersHeartbeat -Body $body -ErrorAction Stop | Out-Null
+            Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headersHeartbeat -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ErrorAction Stop | Out-Null
             Write-Log "Heartbeat: $status — $message"
         } catch {
             Write-Log "ERROR heartbeat: $_"
@@ -316,7 +316,7 @@ $aclPayload = @{
 
 Write-Log "Enviando ACL snapshot a $AclIngestUrl ..."
 try {
-    $response = Invoke-RestMethod -Uri $AclIngestUrl -Method Post -Headers $headersAcl -Body $aclPayload -ErrorAction Stop
+    $response = Invoke-RestMethod -Uri $AclIngestUrl -Method Post -Headers $headersAcl -Body ([Text.Encoding]::UTF8.GetBytes($aclPayload)) -ErrorAction Stop
     Write-Log "ACL OK: shares=$($response.shares) usuarios=$($response.users)"
 } catch {
     $code = $_.Exception.Response.StatusCode.value__

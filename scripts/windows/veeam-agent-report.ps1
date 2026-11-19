@@ -6,7 +6,7 @@
 # =============================================================
 
 . "$PSScriptRoot\config.ps1"
-$SCRIPT_VERSION = "1.1.5"
+$SCRIPT_VERSION = "1.1.6"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
@@ -105,7 +105,7 @@ $BackupServiceId    = if ($VEEAM_SERVICE_ID)    { $VEEAM_SERVICE_ID }    else { 
 $BackupIngestSecret = if ($VEEAM_INGEST_SECRET) { $VEEAM_INGEST_SECRET } else { $INGEST_SECRET }
 
 $headers = @{
-    "Content-Type"    = "application/json"
+    "Content-Type"    = "application/json; charset=utf-8"
     "apikey"          = $ANON_KEY
     "Authorization"   = "Bearer $ANON_KEY"
     "X-Ingest-Secret" = $BackupIngestSecret
@@ -145,7 +145,7 @@ foreach ($ev in $events) {
     } | ConvertTo-Json -Compress
 
     try {
-        Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body -ErrorAction Stop | Out-Null
+        Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ErrorAction Stop | Out-Null
         $icon = if ($status -eq 'success') { '✅' } elseif ($status -eq 'warning') { '⚠️' } else { '❌' }
         Write-Log "$icon $jobName → $status ($backedUpAt)"
         $reported++
