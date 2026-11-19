@@ -10,8 +10,11 @@ const SCRIPT_SOURCE_FILES: Record<string, { windows?: string; windowsServer?: st
   "network":            { windows: "scripts/windows/system-health.ps1", windowsServer: "scripts/windows/system-health-server.ps1" },
   "speedtest":          { windows: "scripts/windows/system-health.ps1" },
   "server-snapshot":    { windows: "scripts/windows/server-snapshot.ps1" },
+  "cpu-watch":          { windows: "scripts/windows/cpu-watch.ps1" },
   // Backups
   "kopia":              { windows: "scripts/windows/kopia-report.ps1" },
+  "kopia-maintenance":  { windows: "scripts/windows/kopia-report.ps1" },
+  "tailscale":          { windows: "scripts/windows/kopia-report.ps1" },
   "veeam":              { windows: "scripts/windows/veeam-report.ps1" },
   "veeam-agent":        { windows: "scripts/windows/veeam-agent-report.ps1" },
   "cristar":            { windows: "scripts/windows/cristar-backup-report.ps1" },

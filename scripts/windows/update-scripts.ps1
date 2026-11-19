@@ -26,7 +26,7 @@ param(
   [switch]$Force
 )
 
-$SCRIPT_VERSION = "1.3.1"
+$SCRIPT_VERSION = "1.3.2"
 $UPDATER_VERSION = $SCRIPT_VERSION   # config.ps1 también define $SCRIPT_VERSION y la pisa al leerlo
 
 $ErrorActionPreference = "SilentlyContinue"
@@ -62,6 +62,7 @@ $Scripts = [ordered]@{
   "cobian-backfill.ps1"           = "scripts/windows/cobian-backfill.ps1"
   "kls-report.ps1"                = "scripts/windows/kls-report.ps1"
   "server-snapshot.ps1"           = "scripts/windows/server-snapshot.ps1"
+  "cpu-watch.ps1"                 = "scripts/windows/cpu-watch.ps1"
   "cristar-backup-report.ps1"     = "scripts/windows/cristar-backup-report.ps1"
 }
 # Nota: config.ps1 se actualiza pero NO sobreescribe - se guarda como config.ps1.new

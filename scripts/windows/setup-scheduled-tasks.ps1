@@ -12,7 +12,7 @@
 #Requires -RunAsAdministrator
 
 # Con versión para que update-scripts.ps1 lo actualice (sin versión nunca se bajaba de nuevo)
-$SCRIPT_VERSION = "1.1.0"
+$SCRIPT_VERSION = "1.2.0"
 
 $ScriptsDir = $PSScriptRoot
 
@@ -124,6 +124,27 @@ foreach ($t in $Tasks) {
             -Principal   $principal `
             -Description $t.Description | Out-Null
         Write-Host "  REGISTRADA   $($t.Name)" -ForegroundColor Green
+    }
+}
+
+# ---------- Vigilancia de picos de CPU (opcional) ----------
+# config.ps1: $CPU_WATCH_ENABLED = $true y la franja en $CPU_WATCH_START / $CPU_WATCH_END
+$cpuWatch = Join-Path $ScriptsDir "cpu-watch.ps1"
+$cpuOn = (Get-Variable 'CPU_WATCH_ENABLED' -ErrorAction SilentlyContinue) -and $CPU_WATCH_ENABLED
+if ((Test-Path $cpuWatch) -and $cpuOn) {
+    $cwStart = if ((Get-Variable 'CPU_WATCH_START' -ErrorAction SilentlyContinue) -and $CPU_WATCH_START) { [string]$CPU_WATCH_START } else { '12:30' }
+    $cwAction   = New-ScheduledTaskAction -Execute $PwshPath -Argument "$CommonArgs -File `"$cpuWatch`""
+    $cwTrigger  = New-ScheduledTaskTrigger -Daily -At $cwStart
+    # Corre toda la franja (hasta unas horas): límite más largo que el resto
+    $cwSettings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 6) -StartWhenAvailable
+    $cwPrincipal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+    if (Get-ScheduledTask -TaskName "ServiceCatalog-CpuWatch" -ErrorAction SilentlyContinue) {
+        Set-ScheduledTask -TaskName "ServiceCatalog-CpuWatch" -Action $cwAction -Trigger $cwTrigger -Settings $cwSettings -Principal $cwPrincipal | Out-Null
+        Write-Host "  ACTUALIZADA  ServiceCatalog-CpuWatch ($cwStart)" -ForegroundColor Yellow
+    } else {
+        Register-ScheduledTask -TaskName "ServiceCatalog-CpuWatch" -Action $cwAction -Trigger $cwTrigger -Settings $cwSettings -Principal $cwPrincipal `
+            -Description "Vigila los picos de CPU en la franja configurada y reporta qué procesos los causan." | Out-Null
+        Write-Host "  REGISTRADA   ServiceCatalog-CpuWatch ($cwStart)" -ForegroundColor Green
     }
 }
 
