@@ -223,10 +223,10 @@ Deno.serve(async (req: Request) => {
 
           <p style="color:${B.textMid};font-size:12px;margin:0 0 8px;">Enviado: ${nowTime}</p>
 
-          ${share_url ? `
+          ${share_url && share_url_label ? `
             <p style="margin:20px 0;">
               <a href="${share_url}" style="display:inline-block;background:${B.accent};color:${B.primary};padding:11px 26px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:700;">
-                ${share_url_label || "Ver Portal"}
+                ${share_url_label}
               </a>
             </p>
           ` : ""}
@@ -235,7 +235,8 @@ Deno.serve(async (req: Request) => {
             ${meta.footer}
           </p>
 
-          ${emailPortalPanel({ companyName: "Cenas IT", portalUrl: portal_url })}
+          ${/* Un solo acceso al portal: el panel con el botón (antes salía también un botón "Ver Portal" suelto) */ ""}
+          ${emailPortalPanel({ companyName: client_name || "Portal de Servicios", portalUrl: portal_url || (!share_url_label ? share_url : undefined) })}
 
           <div style="margin-top:14px;text-align:center;">
             <a href="https://clientes.cenas-support.com/onboarding" style="display:inline-block;color:${B.accent};font-size:11px;text-decoration:none;border:1px solid ${B.border};border-radius:4px;padding:6px 14px;">
