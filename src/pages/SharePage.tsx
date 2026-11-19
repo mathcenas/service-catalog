@@ -90,6 +90,8 @@ export function SharePage({ token }: Props) {
   const [systemHeartbeats, setSystemHeartbeats] = useState<ServiceHeartbeat[]>([]);
   // Heartbeats "tailscale" de kopia-report: a qué IP de la VPN manda el backup y si responde
   const [vpnHeartbeats, setVpnHeartbeats] = useState<ServiceHeartbeat[]>([]);
+  // cpu-watch.ps1: resumen diario de los picos de CPU en horario laboral (evidencia antes/después de un cambio)
+  const [cpuWatch, setCpuWatch] = useState<ServiceHeartbeat[]>([]);
   const [clientApps, setClientApps] = useState<ClientApp[]>([]);
   const [incidents, setIncidents] = useState<ServiceIncident[]>([]);
   const [backups, setBackups] = useState<ServiceBackup[]>([]);
@@ -190,6 +192,10 @@ export function SharePage({ token }: Props) {
         setVpnHeartbeats((sysHbData || []).filter(h => h.source === 'tailscale'));
         setBackups(backupsData || []);
         setUptimeEvents(uptimeData || []);
+        const { data: cpuData } = await supabase.from('service_heartbeats').select('id,service_id,status,payload,received_at')
+          .in('service_id', serviceIds).eq('source', 'cpu-watch')
+          .gte('received_at', new Date(Date.now() - 21 * 86_400_000).toISOString()).order('received_at', { ascending: true });
+        setCpuWatch((cpuData || []) as ServiceHeartbeat[]);
       }
 
       const { data: appsData } = await supabase
@@ -362,7 +368,7 @@ export function SharePage({ token }: Props) {
         </nav>
 
         <main className="max-w-5xl mx-auto px-4 py-6">
-          {section === 'overview' && <OverviewSection services={activeServices} roadmap={roadmap} changes={changes} getTypeName={getTypeName} backups={backups} uptimeEvents={uptimeEvents} supportHours={supportHours} systemHeartbeats={systemHeartbeats} vpnHeartbeats={vpnHeartbeats} clientApps={clientApps} licenses={licenses} riskFlags={client?.risk_flags ?? []} incidents={incidents} />}
+          {section === 'overview' && <OverviewSection services={activeServices} roadmap={roadmap} changes={changes} getTypeName={getTypeName} backups={backups} uptimeEvents={uptimeEvents} supportHours={supportHours} systemHeartbeats={systemHeartbeats} vpnHeartbeats={vpnHeartbeats} cpuWatch={cpuWatch} clientApps={clientApps} licenses={licenses} riskFlags={client?.risk_flags ?? []} incidents={incidents} />}
           {section === 'services' && <ServiceCatalog services={services} projects={projects} getTypeName={getTypeName} getProjectName={getProjectName} expandedService={expandedService} setExpandedService={setExpandedService} heartbeats={heartbeats} backups={backups} systemHeartbeats={systemHeartbeats} />}
           {section === 'licenses' && <LicensesSection licenses={licenses} services={services} />}
           {section === ('tickets' as Section) && <TicketsSection items={roadmap.filter(r => r.category === 'problem' || r.category === 'change_request')} updates={roadmapUpdates} />}
@@ -467,10 +473,10 @@ const RISK_FLAG_LABELS: Record<string, string> = {
   no_bco_plan:         'Sin plan de BCO documentado',
 };
 
-function OverviewSection({ services, roadmap, changes, getTypeName, backups, uptimeEvents, supportHours, systemHeartbeats, vpnHeartbeats, clientApps, licenses, riskFlags, incidents }: {
+function OverviewSection({ services, roadmap, changes, getTypeName, backups, uptimeEvents, supportHours, systemHeartbeats, vpnHeartbeats, cpuWatch, clientApps, licenses, riskFlags, incidents }: {
   services: Service[]; roadmap: RoadmapItem[]; changes: ServiceChange[]; getTypeName: (id: string) => string;
   backups: ServiceBackup[]; uptimeEvents: UptimeEvent[]; supportHours: SupportHour[];
-  systemHeartbeats: ServiceHeartbeat[]; vpnHeartbeats: ServiceHeartbeat[]; clientApps: ClientApp[]; licenses: ClientLicense[];
+  systemHeartbeats: ServiceHeartbeat[]; vpnHeartbeats: ServiceHeartbeat[]; cpuWatch: ServiceHeartbeat[]; clientApps: ClientApp[]; licenses: ClientLicense[];
   riskFlags: string[]; incidents: ServiceIncident[];
 }) {
   const upcoming = roadmap.filter(r => r.status !== 'Released');
@@ -602,7 +608,7 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
         </section>
       ); })()}
 
-      {healthEntries.length > 0 && <SystemHealth entries={healthEntries} services={services} />}
+      {healthEntries.length > 0 && <SystemHealth entries={healthEntries} services={services} cpuWatch={cpuWatch} />}
 
       {/* Resolved incidents history from support_hours (legacy — shown only when no new incident system entries) */}
       {incidents.filter(i => i.status === 'resolved').length === 0 && supportHours.filter(h => h.type === 'incident').length > 0 && (
@@ -1386,7 +1392,96 @@ function AttentionPanel({ alerts }: { alerts: (HardwareAlert & { reportedAt: str
   );
 }
 
-function SystemHealth({ entries, services }: { entries: ServiceHeartbeat[]; services: Service[] }) {
+type CpuWatchPayload = {
+  window?: string; threshold?: number; interval_s?: number; samples?: number; peak_samples?: number; max_cpu?: number; avg_cpu?: number;
+  top_processes?: { name: string; avg_pct: number; seen_in: number; users_count: number }[];
+};
+
+// Picos de CPU por día en la franja vigilada (cpu-watch.ps1): una barra por día con los minutos por
+// encima del umbral. Sirve de evidencia para el cliente: cuándo pasa, qué lo causa y si un cambio
+// (por ejemplo ajustar los procesadores de la VM) lo mejoró.
+function CpuWatchPanel({ entries }: { entries: ServiceHeartbeat[] }) {
+  const days = entries.map(e => {
+    const p = (e.payload ?? {}) as CpuWatchPayload;
+    const minutes = Math.round(((p.peak_samples ?? 0) * (p.interval_s ?? 60)) / 60);
+    return { date: new Date(e.received_at), minutes, max: p.max_cpu ?? 0, avg: p.avg_cpu ?? 0, p };
+  }).slice(-21);
+  if (!days.length) return null;
+  const last = days[days.length - 1];
+  const top = (last.p.top_processes ?? []).filter(t => t.avg_pct >= 1).slice(0, 4);
+  const fmtDay = (d: Date) => d.toLocaleDateString('es-UY', { weekday: 'short', day: 'numeric', month: 'short' });
+
+  // Escala: el tope del eje es el máximo redondeado hacia arriba (mínimo 10 min) para que las barras se comparen
+  const peakMax = Math.max(10, ...days.map(d => d.minutes));
+  const yMax = Math.ceil(peakMax / 10) * 10;
+  const W = 320, H = 96, PAD_L = 26, PAD_B = 16, PAD_T = 8;
+  const plotW = W - PAD_L - 4, plotH = H - PAD_B - PAD_T;
+  const slot = plotW / days.length;
+  const barW = Math.max(3, Math.min(18, slot - 2));
+  const y = (v: number) => PAD_T + plotH - (v / yMax) * plotH;
+
+  return (
+    <details className="group rounded-lg border border-gray-100 dark:border-gray-800 px-3 py-2">
+      <summary className="cursor-pointer list-none flex items-center justify-between gap-2 text-xs font-medium text-gray-700 dark:text-gray-200">
+        <span className="inline-flex items-center gap-1.5">
+          <ChevronRight className="w-3.5 h-3.5 transition-transform group-open:rotate-90" aria-hidden="true" />
+          Picos de CPU en horario de trabajo
+        </span>
+        <span className="text-gray-500 dark:text-gray-400 font-normal tabular-nums">
+          {last.minutes ? `Último día: ${last.minutes} min por encima de ${last.p.threshold ?? 80}%` : 'Último día: sin picos'}
+        </span>
+      </summary>
+      <div className="mt-3 space-y-3">
+        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+          Minutos por día con el procesador por encima del {last.p.threshold ?? 80}%, medido de {(last.p.window ?? '').replace('-', ' a ')} h.
+          Menos es mejor.
+        </p>
+        <div className="overflow-x-auto">
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[280px] h-auto text-slate-500 dark:text-slate-400" role="img"
+            aria-label={`Minutos de pico de CPU por día, ${days.length} días. Último: ${last.minutes} minutos.`}>
+            {[0, yMax / 2, yMax].map(v => (
+              <g key={v}>
+                <line x1={PAD_L} x2={W - 4} y1={y(v)} y2={y(v)} stroke="currentColor" strokeOpacity={v === 0 ? 0.5 : 0.15} strokeWidth={1} />
+                <text x={PAD_L - 4} y={y(v) + 3} textAnchor="end" fontSize={8} fill="currentColor">{v}</text>
+              </g>
+            ))}
+            {days.map((d, i) => {
+              const x = PAD_L + i * slot + (slot - barW) / 2;
+              const h = Math.max(d.minutes ? 2 : 0, y(0) - y(d.minutes));
+              return (
+                <g key={i}>
+                  <title>{`${fmtDay(d.date)}: ${d.minutes} min de pico · máx ${d.max}% · promedio ${d.avg}%`}</title>
+                  {/* zona de hover más grande que la barra */}
+                  <rect x={PAD_L + i * slot} y={PAD_T} width={slot} height={plotH} fill="transparent" />
+                  {h > 0 && <rect x={x} y={y(0) - h} width={barW} height={h} rx={Math.min(3, barW / 2)} fill="currentColor" fillOpacity={0.85} />}
+                </g>
+              );
+            })}
+            <text x={PAD_L} y={H - 3} fontSize={8} fill="currentColor">{fmtDay(days[0].date)}</text>
+            <text x={W - 4} y={H - 3} fontSize={8} fill="currentColor" textAnchor="end">{fmtDay(last.date)}</text>
+          </svg>
+        </div>
+        {top.length > 0 && (
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Qué usaba el procesador en los picos (último día)</p>
+            <ul className="mt-1 space-y-0.5 text-xs text-gray-700 dark:text-gray-200">
+              {top.map(t => (
+                <li key={t.name} className="flex justify-between gap-3">
+                  <span className="truncate font-mono">{t.name}</span>
+                  <span className="shrink-0 tabular-nums text-gray-500 dark:text-gray-400">
+                    {t.avg_pct}% del CPU{t.users_count > 1 ? ` · ${t.users_count} usuarios` : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function SystemHealth({ entries, services, cpuWatch = [] }: { entries: ServiceHeartbeat[]; services: Service[]; cpuWatch?: ServiceHeartbeat[] }) {
   return (
     <section>
       <div className="flex items-center gap-2 mb-3">
@@ -1463,6 +1558,8 @@ function SystemHealth({ entries, services }: { entries: ServiceHeartbeat[]; serv
                   {disk != null && <HealthMeter label="Disco" pct={disk} warnAt={75} critAt={90} detail={diskFree != null ? `${diskFree} GB libres` : undefined} />}
                 </div>
               )}
+
+              {h.source === 'system-health' && <CpuWatchPanel entries={cpuWatch.filter(c => c.service_id === h.service_id)} />}
 
               <footer className="flex items-center gap-x-3 gap-y-1 flex-wrap text-[11px] text-gray-400 dark:text-gray-500 pt-3 border-t border-gray-100 dark:border-gray-800">
                 <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" />Actualizado {timeAgoEs(h.received_at)}</span>
