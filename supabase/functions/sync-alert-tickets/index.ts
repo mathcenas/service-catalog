@@ -86,16 +86,30 @@ async function currentAlerts(): Promise<Alert[]> {
   }
 
   // Dejó de reportar: telemetría activada, reportó alguna vez y no reporta hace SIGNAL_HOURS
+  // Último reporte de cada servicio con una consulta por servicio (limit 1). Antes se pedían todos
+  // los heartbeats de las últimas horas de una vez: la API devuelve como máximo 1000 filas y, con
+  // más reportes que eso, los servicios que quedaban afuera parecían "sin reportar" (tickets falsos).
   const monitored = active.filter(s => s.telemetry_enabled);
+  const lastBeat: Record<string, string | null> = {};
+  const lastHealth: Record<string, any> = {};
+  for (let i = 0; i < monitored.length; i += 10) {
+    await Promise.all(monitored.slice(i, i + 10).map(async (s) => {
+      const [{ data: any1 }, { data: sh }] = await Promise.all([
+        supabase.from("service_heartbeats").select("received_at")
+          .eq("service_id", s.id).order("received_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("service_heartbeats").select("service_id, status, payload, received_at")
+          .eq("service_id", s.id).eq("source", "system-health").order("received_at", { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      lastBeat[s.id] = any1?.received_at ?? null;
+      if (sh) lastHealth[s.id] = sh;
+    }));
+  }
   if (monitored.length) {
-    const cutoff = new Date(Date.now() - SIGNAL_HOURS * 3_600_000).toISOString();
-    const { data: recent } = await supabase.from("service_heartbeats").select("service_id")
-      .in("service_id", monitored.map(s => s.id)).gte("received_at", cutoff);
-    const alive = new Set((recent ?? []).map((h: any) => h.service_id));
-    for (const s of monitored.filter(s => !alive.has(s.id))) {
-      const { data: last } = await supabase.from("service_heartbeats").select("received_at")
-        .eq("service_id", s.id).order("received_at", { ascending: false }).limit(1).maybeSingle();
-      if (!last) continue; // nunca reportó: es configuración pendiente, no un incidente
+    for (const s of monitored) {
+      const lastAt = lastBeat[s.id];
+      if (!lastAt) continue; // nunca reportó: es configuración pendiente, no un incidente
+      if (hoursSince(lastAt) < SIGNAL_HOURS) continue;
+      const last = { received_at: lastAt };
       const h = Math.round(hoursSince(last.received_at));
       alerts.push({ ...base(s), key: `signal:${s.id}`, kind: "signal", priority: h > 24 ? "high" : "medium",
         title: `Dejó de reportar — ${name(s)}`,
@@ -106,15 +120,8 @@ async function currentAlerts(): Promise<Alert[]> {
   // Salud del equipo: el último system-health está en "failed" por algo más que un pico de CPU/RAM
   // (disco con errores de hardware, disco lleno, RAID, discos que Windows dejó de ver…)
   if (monitored.length) {
-    const since = new Date(Date.now() - HEALTH_HOURS * 3_600_000).toISOString();
-    const { data: hbs } = await supabase.from("service_heartbeats")
-      .select("service_id, status, payload, received_at")
-      .in("service_id", monitored.map(s => s.id)).eq("source", "system-health").gte("received_at", since)
-      .order("received_at", { ascending: false });
-    const latest: Record<string, any> = {};
-    for (const h of hbs ?? []) if (!latest[h.service_id]) latest[h.service_id] = h;
     for (const s of monitored) {
-      const h = latest[s.id];
+      const h = lastHealth[s.id] && hoursSince(lastHealth[s.id].received_at) < HEALTH_HOURS ? lastHealth[s.id] : null;
       if (!h) { healthUnknown.add(s.id); continue; }
       if (!["failed", "error"].includes(h.status)) continue;
       const issues = splitIssues(h.payload?.issues);
