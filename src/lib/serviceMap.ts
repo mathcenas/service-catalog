@@ -2,13 +2,13 @@
 // contenedores de Docker + estado de Tailscale. Lo que el admin corrige (rol, servicio del
 // catálogo, ocultar) y las conexiones que confirma o descarta vienen de service_map_nodes/_edges.
 
-export type MapRole = 'users' | 'proxy' | 'app' | 'testing' | 'db' | 'storage' | 'tool' | 'vpn' | 'remote';
+export type MapRole = 'users' | 'proxy' | 'app' | 'testing' | 'db' | 'storage' | 'tool' | 'vpn' | 'remote' | 'cloud';
 
 export type Container = { name: string; state: string; status?: string };
 export type TsPeer = { name: string; ip: string | null; os?: string; online?: boolean; last_seen?: string; key_days_left?: number | null };
 export type TsInfo = { container?: string | null; backend?: string; self?: { name?: string; ip?: string | null; key_days_left?: number | null }; peers?: TsPeer[] } | null;
 
-export type NodeOverride = { node: string; role: MapRole | null; service_id: string | null; hidden: boolean; notes: string | null };
+export type NodeOverride = { node: string; role: MapRole | null; service_id: string | null; hidden: boolean; notes: string | null; x?: number | null; y?: number | null };
 export type EdgeOverride = { a: string; b: string; status: 'confirmed' | 'removed' };
 
 export type MapNode = {
@@ -49,7 +49,7 @@ export function guessRole(name: string): MapRole {
 
 const ROLE_SUB: Record<MapRole, string> = {
   users: 'usuarios', proxy: 'entrada', app: 'app', testing: 'pruebas', db: 'base de datos',
-  storage: 'almacenamiento', tool: 'herramienta', vpn: 'VPN', remote: 'equipo remoto',
+  storage: 'almacenamiento', tool: 'herramienta', vpn: 'VPN', remote: 'equipo remoto', cloud: 'internet',
 };
 
 // Raíz del nombre para agrupar app ↔ base: "pgsis-test-adminer-1" → "pgsis", "wp_echo_prod" → "wp"
@@ -101,6 +101,11 @@ export function buildMap(opts: {
         serviceId: o?.service_id ?? svc?.id ?? null, peer: p,
       });
     }
+  }
+
+  // Internet entre los equipos remotos y el VPS: el túnel la cruza cifrado (se explica solo al cliente)
+  if (vpnId && nodes.some(n => n.role === 'remote')) {
+    add({ id: '__internet', label: 'internet', sub: '', role: 'cloud', roleGuessed: false, state: 'unknown', stateText: '', serviceId: null });
   }
 
   // ---- Conexiones supuestas
@@ -166,8 +171,25 @@ export function buildMap(opts: {
   const frontY = Math.max(4, ...nodes.filter(n => n.role !== 'tool').map(n => n.y)) + 5;
   tools.forEach((n, i) => { n.x = 1 + i * STEP; n.y = frontY; });
   zoneOf('herramientas', tools);
+  const cloud = nodes.find(n => n.id === '__internet');
+  if (cloud && vpnNode) { cloud.x = 22.6; cloud.y = vpnNode.y - 2.6; }
   const users = nodes.find(n => n.id === '__users');
   if (users) { users.x = 0; users.y = proxies.length ? 4 : Math.max(0, (apps.length - 1) * STEP / 2); }
+
+  // Posiciones arrastradas a mano: ganan sobre el acomodo automático (las zonas siguen a sus nodos)
+  for (const n of nodes) {
+    const o = ov.get(n.id);
+    if (o && o.x != null && o.y != null) { n.x = o.x; n.y = o.y; }
+  }
+  if (nodes.some(n => ov.get(n.id)?.x != null)) {
+    const recalc = (label: string, list: MapNode[]) => {
+      const z = zones.find(q => q.label === label);
+      if (!z || !list.length) return;
+      const xs = list.map(n => n.x), ys = list.map(n => n.y);
+      Object.assign(z, { x: Math.min(...xs) - 0.8, y: Math.min(...ys) - 0.8, w: Math.max(...xs) - Math.min(...xs) + 4, h: Math.max(...ys) - Math.min(...ys) + 4 });
+    };
+    recalc('producción', apps); recalc('testing', tests); recalc('datos', data); recalc('equipos por VPN', remotes); recalc('herramientas', tools);
+  }
 
   return { nodes, edges, zones };
 }

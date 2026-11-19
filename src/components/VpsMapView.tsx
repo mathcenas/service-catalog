@@ -25,8 +25,19 @@ const FACES: Record<string, [string, string, string]> = {
 };
 const ROLE_LABEL: Record<MapRole, string> = {
   users: 'Usuarios', proxy: 'Entrada (proxy)', app: 'App', testing: 'Testing', db: 'Base de datos',
-  storage: 'Almacenamiento', tool: 'Herramienta', vpn: 'VPN', remote: 'Equipo remoto',
+  storage: 'Almacenamiento', tool: 'Herramienta', vpn: 'VPN', remote: 'Equipo remoto', cloud: 'Internet',
 };
+
+// Punto a la mitad de una polilínea (para el candado del túnel)
+function midpoint(p: [number, number][]): [number, number] {
+  const seg = p.slice(1).map((q, i) => Math.hypot(q[0] - p[i][0], q[1] - p[i][1]));
+  let half = seg.reduce((a, b) => a + b, 0) / 2;
+  for (let i = 0; i < seg.length; i++) {
+    if (half <= seg[i]) { const t = seg[i] ? half / seg[i] : 0; return [p[i][0] + (p[i + 1][0] - p[i][0]) * t, p[i][1] + (p[i + 1][1] - p[i][1]) * t]; }
+    half -= seg[i];
+  }
+  return p[p.length - 1];
+}
 
 export function VpsMapView() {
   const { user } = useAuth();
@@ -41,6 +52,10 @@ export function VpsMapView() {
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(() => !matchMedia('(prefers-reduced-motion: reduce)').matches);
+  // Arrastre: posición provisoria mientras se mueve; al soltar se guarda en service_map_nodes
+  const [dragPos, setDragPos] = useState<Record<string, { x: number; y: number }>>({});
+  const svgRef = useRef<SVGSVGElement>(null);
+  const dragRef = useRef<{ id: string; sx: number; sy: number; ox: number; oy: number; moved: boolean } | null>(null);
 
   // ---- Servidores con contenedores o Tailscale
   useEffect(() => {
@@ -89,17 +104,25 @@ export function VpsMapView() {
   const loadOverrides = useCallback(async () => {
     if (!host) return;
     const [{ data: n }, { data: e }] = await Promise.all([
-      supabase.from('service_map_nodes').select('node, role, service_id, hidden, notes').eq('host_service_id', host.hostServiceId),
+      supabase.from('service_map_nodes').select('node, role, service_id, hidden, notes, x, y').eq('host_service_id', host.hostServiceId),
       supabase.from('service_map_edges').select('a, b, status').eq('host_service_id', host.hostServiceId),
     ]);
     setNodeOv((n ?? []) as NodeOverride[]);
+    setDragPos({});
     setEdgeOv((e ?? []) as EdgeOverride[]);
   }, [host]);
   useEffect(() => { setSelected(null); loadOverrides(); }, [loadOverrides]);
 
-  const map = useMemo(() => host
-    ? buildMap({ containers: host.containers, tailscale: host.tailscale, overrides: nodeOv, edgeOverrides: edgeOv, tsIpToService: tsIp })
-    : null, [host, nodeOv, edgeOv, tsIp]);
+  const map = useMemo(() => {
+    if (!host) return null;
+    const ov = [...nodeOv];
+    for (const [node, p] of Object.entries(dragPos)) {
+      const i = ov.findIndex(o => o.node === node);
+      if (i >= 0) ov[i] = { ...ov[i], x: p.x, y: p.y };
+      else ov.push({ node, role: null, service_id: null, hidden: false, notes: null, x: p.x, y: p.y });
+    }
+    return buildMap({ containers: host.containers, tailscale: host.tailscale, overrides: ov, edgeOverrides: edgeOv, tsIpToService: tsIp });
+  }, [host, nodeOv, edgeOv, tsIp, dragPos]);
 
   // "Qué corre" de los equipos del mapa que son servicios del catálogo
   useEffect(() => {
@@ -109,12 +132,13 @@ export function VpsMapView() {
   }, [map]);
 
   // ---- Guardar correcciones
-  const saveNode = async (node: string, patch: Partial<{ role: MapRole | null; service_id: string | null; hidden: boolean }>) => {
+  const saveNode = async (node: string, patch: Partial<{ role: MapRole | null; service_id: string | null; hidden: boolean; x: number | null; y: number | null }>) => {
     if (!host || !user) return;
     const cur = nodeOv.find(o => o.node === node);
     await supabase.from('service_map_nodes').upsert({
       user_id: user.id, host_service_id: host.hostServiceId, node,
-      role: cur?.role ?? null, service_id: cur?.service_id ?? null, hidden: cur?.hidden ?? false, ...patch,
+      role: cur?.role ?? null, service_id: cur?.service_id ?? null, hidden: cur?.hidden ?? false,
+      x: cur?.x ?? null, y: cur?.y ?? null, ...patch,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'host_service_id,node' });
     loadOverrides();
@@ -125,6 +149,45 @@ export function VpsMapView() {
       { onConflict: 'host_service_id,a,b' });
     loadOverrides();
   };
+  const resetPositions = async () => {
+    if (!host) return;
+    await supabase.from('service_map_nodes').update({ x: null, y: null }).eq('host_service_id', host.hostServiceId);
+    loadOverrides();
+  };
+
+  // ---- Arrastre (pantalla → grilla isométrica)
+  const toSvg = (clientX: number, clientY: number) => {
+    const svg = svgRef.current; const ctm = svg?.getScreenCTM();
+    if (!svg || !ctm) return { x: 0, y: 0 };
+    const pt = svg.createSVGPoint(); pt.x = clientX; pt.y = clientY;
+    const r = pt.matrixTransform(ctm.inverse());
+    return { x: r.x, y: r.y };
+  };
+  const startDrag = (n: MapNode, e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    const p = toSvg(e.clientX, e.clientY);
+    dragRef.current = { id: n.id, sx: p.x, sy: p.y, ox: n.x, oy: n.y, moved: false };
+    const move = (ev: PointerEvent) => {
+      const d = dragRef.current; if (!d) return;
+      const q = toSvg(ev.clientX, ev.clientY);
+      const dx = q.x - d.sx, dy = q.y - d.sy;
+      if (!d.moved && Math.hypot(dx, dy) < 4) return;
+      d.moved = true;
+      // inversa de iso(): dx = (gx - gy)·S·0.866, dy = (gx + gy)·S·0.5
+      const a = dx / (S * 0.866), b = dy / (S * 0.5);
+      const gx = Math.round(((a + b) / 2 + d.ox) * 5) / 5, gy = Math.round(((b - a) / 2 + d.oy) * 5) / 5;
+      setDragPos(cur => ({ ...cur, [d.id]: { x: gx, y: gy } }));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      const d = dragRef.current; dragRef.current = null;
+      if (!d) return;
+      if (!d.moved) { setSelected(d.id); return; }
+      setDragPos(cur => { const p2 = cur[d.id]; if (p2) saveNode(d.id, { x: p2.x, y: p2.y }); return cur; });
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+
   const resetEdge = async (a: string, b: string) => {
     if (!host) return;
     await supabase.from('service_map_edges').delete().eq('host_service_id', host.hostServiceId).eq('a', a).eq('b', b);
@@ -139,14 +202,16 @@ export function VpsMapView() {
       const A = byId.get(e.a)!, B = byId.get(e.b)!;
       const [ax, ay] = center(A), [bx, by] = center(B);
       const d = 'M' + [iso(ax, ay, 0.05), iso(bx, ay, 0.05), iso(bx, by, 0.05)].map(p => p.join(',')).join(' L');
-      return { ...e, d };
+      return { ...e, d, pts: [iso(ax, ay, 0.05), iso(bx, ay, 0.05), iso(bx, by, 0.05)] as [number, number][] };
     });
     const P: [number, number][] = [];
     for (const z of map.zones) P.push(iso(z.x, z.y), iso(z.x + z.w, z.y), iso(z.x + z.w, z.y + z.h), iso(z.x, z.y + z.h));
     for (const n of map.nodes) P.push(iso(n.x, n.y, 2.4), iso(n.x + 3.2, n.y, 2.4), iso(n.x + 3.2, n.y + 2.8, 0), iso(n.x, n.y + 2.8, 0));
     const xs = P.map(p => p[0]), ys = P.map(p => p[1]);
     const vb = [Math.min(...xs) - 70, Math.min(...ys) - 40, Math.max(...xs) - Math.min(...xs) + 140, Math.max(...ys) - Math.min(...ys) + 80];
-    return { byId, edgePaths, viewBox: vb.join(' ') };
+    const tunnel = edgePaths.find(e => e.tunnel && e.a.startsWith('ts:'));
+    const lock = tunnel && byId.has('__internet') ? midpoint(tunnel.pts) : null;
+    return { byId, edgePaths, viewBox: vb.join(' '), lock };
   }, [map]);
 
   // ---- Animación de pedidos (imperativa sobre <g ref>)
@@ -235,7 +300,7 @@ export function VpsMapView() {
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto" style={{ backgroundImage: 'linear-gradient(#EEF2F6 1px, transparent 1px), linear-gradient(90deg, #EEF2F6 1px, transparent 1px)', backgroundSize: '22px 22px' }}>
           {geo && map && (
-            <svg viewBox={geo.viewBox} className="block h-auto" style={{ width: 'max(100%, 760px)' }} role="img" aria-label="Mapa del servidor">
+            <svg ref={svgRef} viewBox={geo.viewBox} className="block h-auto select-none" style={{ width: 'max(100%, 760px)', touchAction: 'none' }} role="img" aria-label="Mapa del servidor">
               {map.zones.map(z => {
                 const [lx, ly] = iso(z.x + z.w, z.y + z.h);
                 const w = z.label.length * 6 + 14;
@@ -247,14 +312,26 @@ export function VpsMapView() {
                   </g>
                 );
               })}
+              {map.nodes.filter(n => n.role === 'cloud').map(n => (
+                <MapNodeShape key={n.id} n={n} selected={n.id === selected} onPointerDown={e => startDrag(n, e)} inCatalog={false} appsCount={0} />
+              ))}
               {geo.edgePaths.filter(e => e.tunnel).map(e => <path key={'b' + e.key} d={e.d} fill="none" stroke="#C3CFE0" strokeWidth={15} strokeLinecap="round" opacity={0.7} />)}
               {geo.edgePaths.map(e => (
                 <path key={e.key} ref={el => { pathRefs.current[e.key] = el; }} d={e.d} fill="none"
                   stroke={e.tunnel ? '#9DAEC6' : '#0B192C'} strokeWidth={e.tunnel ? 3.2 : 1.4} strokeDasharray={e.guess ? '4 4' : undefined} />
               ))}
               <g ref={dotsRef} />
-              {[...map.nodes].sort((p, q) => (p.x + p.y) - (q.x + q.y)).map(n => (
-                <MapNodeShape key={n.id} n={n} selected={n.id === selected} onSelect={() => setSelected(n.id)}
+              {geo.lock && (
+                <g transform={`translate(${geo.lock[0]},${geo.lock[1] - 4})`} pointerEvents="none">
+                  <circle r={13} fill="#fff" stroke="#9DAEC6" strokeWidth={2} />
+                  <path d="M-4,-2 V-5 A4,4 0 0 1 4,-5 V-2" fill="none" stroke="#0B192C" strokeWidth={1.6} strokeLinecap="round" />
+                  <rect x={-6} y={-2} width={12} height={9} rx={2} fill="#0B192C" />
+                  <rect x={-58} y={-36} width={116} height={15} rx={7.5} fill="#fff" stroke="#9DAEC6" strokeWidth={1.5} />
+                  <text x={0} y={-25} textAnchor="middle" fontSize={9} fontFamily="ui-monospace, monospace" fill="#0B192C">túnel cifrado · VPN</text>
+                </g>
+              )}
+              {[...map.nodes].filter(n => n.role !== 'cloud').sort((p, q) => (p.x + p.y) - (q.x + q.y)).map(n => (
+                <MapNodeShape key={n.id} n={n} selected={n.id === selected} onPointerDown={e => startDrag(n, e)}
                   inCatalog={!!n.serviceId} appsCount={apps.filter(a => a.service_id && a.service_id === n.serviceId).length} />
               ))}
             </svg>
@@ -269,9 +346,16 @@ export function VpsMapView() {
             <span className="inline-flex items-center gap-1.5"><svg width="24" height="8" aria-hidden="true"><line x1="2" y1="4" x2="22" y2="4" stroke="#C3CFE0" strokeWidth="8" strokeLinecap="round" /><line x1="2" y1="4" x2="22" y2="4" stroke="#9DAEC6" strokeWidth="3" /></svg> túnel VPN</span>
             <span className="inline-flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block ring-1 ring-slate-800" /> en el catálogo</span>
           </div>
+          <span className="flex gap-2">
+          {nodeOv.some(o => o.x != null) && (
+            <button onClick={resetPositions} className="inline-flex items-center gap-1 border border-gray-200 rounded-lg px-2.5 py-1 text-gray-700 hover:bg-gray-50" title="Volver a ubicar todo automáticamente">
+              <RefreshCw className="w-3.5 h-3.5" /> Acomodo automático
+            </button>
+          )}
           <button onClick={() => setRunning(v => !v)} className="inline-flex items-center gap-1 border border-gray-200 rounded-lg px-2.5 py-1 text-gray-700 hover:bg-gray-50">
             {running ? <><Pause className="w-3.5 h-3.5" /> Pausar</> : <><Play className="w-3.5 h-3.5" /> Reproducir</>}
           </button>
+          </span>
         </div>
       </div>
 
@@ -279,7 +363,7 @@ export function VpsMapView() {
         {/* Ficha del nodo */}
         <section className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 min-w-0">
           {!sel ? (
-            <p className="text-sm text-gray-500">Tocá una caja del mapa para ver qué es, corregir su rol o vincularla a un servicio del catálogo.</p>
+            <p className="text-sm text-gray-500">Tocá una caja del mapa para ver qué es, corregir su rol o vincularla a un servicio del catálogo. Arrastrala para moverla: la posición queda guardada.</p>
           ) : (
             <>
               <div className="flex items-start justify-between gap-2">
@@ -294,7 +378,7 @@ export function VpsMapView() {
               {sel.peer && (
                 <p className="text-xs text-gray-600">Tailscale {sel.peer.ip}{sel.peer.key_days_left != null ? ` · clave ${sel.peer.key_days_left < 0 ? 'vencida' : `vence en ${sel.peer.key_days_left} días`}` : ' · sin vencimiento'}</p>
               )}
-              {sel.role !== 'users' && (
+              {sel.role !== 'users' && sel.role !== 'cloud' && (
                 <div className="grid sm:grid-cols-2 gap-2">
                   {!sel.id.startsWith('ts:') && !sel.id.startsWith('__') && (
                     <label className="text-xs text-gray-500 space-y-1">
@@ -324,7 +408,7 @@ export function VpsMapView() {
                     : <ul className="text-sm text-gray-700 space-y-0.5">{apps.filter(a => a.service_id === sel.serviceId).map(a => <li key={a.id}>{appKind(a.kind).icon} {a.name}{a.vendor ? <span className="text-gray-400"> · {a.vendor}</span> : null}</li>)}</ul>}
                 </div>
               )}
-              {sel.role !== 'users' && (
+              {sel.role !== 'users' && sel.role !== 'cloud' && (
                 <button onClick={() => { saveNode(sel.id, { hidden: true }); setSelected(null); }} className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800">
                   <EyeOff className="w-3.5 h-3.5" /> Ocultar del mapa
                 </button>
@@ -377,12 +461,24 @@ export function VpsMapView() {
   );
 }
 
-function MapNodeShape({ n, selected, onSelect, inCatalog, appsCount }: { n: MapNode; selected: boolean; onSelect: () => void; inCatalog: boolean; appsCount: number }) {
+function MapNodeShape({ n, selected, onPointerDown, inCatalog, appsCount }: { n: MapNode; selected: boolean; onPointerDown: (e: React.PointerEvent) => void; inCatalog: boolean; appsCount: number }) {
   const line = '#0B192C';
   const outline = selected ? '#06B6D4' : line;
   const ow = selected ? 3 : 1.4;
   const label = n.label.length > 18 ? n.label.slice(0, 17) + '…' : n.label;
-  const common = { role: 'button', tabIndex: 0, onClick: onSelect, onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(); } }, style: { cursor: 'pointer' }, 'aria-label': n.label };
+  const common = { role: 'button', tabIndex: 0, onPointerDown, style: { cursor: 'grab' }, 'aria-label': n.label };
+
+  if (n.role === 'cloud') {
+    const [cx, cy] = iso(n.x + 1.2, n.y + 1.2, 1.1);
+    const C: [number, number, number][] = [[-22, 4, 13], [-6, -8, 17], [14, -4, 14], [26, 6, 10], [2, 8, 14]];
+    return (
+      <g {...common}>
+        {C.map(([dx, dy, r], i) => <circle key={'s' + i} cx={cx + dx} cy={cy + dy} r={r + 0.7} fill="none" stroke={selected ? '#06B6D4' : line} strokeWidth={selected ? 2.4 : 1.4} />)}
+        {C.map(([dx, dy, r], i) => <circle key={'f' + i} cx={cx + dx} cy={cy + dy} r={r} fill="#fff" />)}
+        <text x={cx + 2} y={cy + 3} textAnchor="middle" fontSize={9} fontFamily="ui-monospace, monospace" fill={line}>internet</text>
+      </g>
+    );
+  }
 
   if (n.role === 'users') {
     const pl = [iso(n.x, n.y, 0.25), iso(n.x + 3.2, n.y, 0.25), iso(n.x + 3.2, n.y + 2.8, 0.25), iso(n.x, n.y + 2.8, 0.25)];
