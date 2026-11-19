@@ -257,7 +257,7 @@ function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersi
       })}
     </div>
     {issues.length > 0 && (
-      <ul className={`mt-1.5 space-y-0.5 text-[11px] leading-snug ${hb.status === 'failed' ? 'text-red-700' : 'text-amber-700'}`}>
+      <ul className={`mt-1.5 space-y-0.5 text-[11px] leading-snug ${hb.status === 'error' ? 'text-red-700' : 'text-amber-700'}`}>
         {issues.map((t, i) => <li key={i} className="flex gap-1"><span aria-hidden="true">•</span><span>{t}</span></li>)}
       </ul>
     )}
