@@ -114,7 +114,15 @@ async function openTask(a: Alert): Promise<{ taskId: string | null; error: strin
   return { taskId, error: taskId ? null : "No se pudo crear la tarea (ver task_tracker_log)" };
 }
 
-Deno.serve(async () => {
+// Lo llama el cron (service role) y el botón "Revisar ahora" del Dashboard (navegador: necesita CORS)
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+};
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { status: 200, headers: corsHeaders });
   const now = new Date().toISOString();
   const alerts = await currentAlerts();
   const byKey = new Map(alerts.map(a => [a.key, a]));
@@ -169,5 +177,5 @@ Deno.serve(async () => {
   }
 
   console.log("[sync-alert-tickets]", JSON.stringify(result));
-  return new Response(JSON.stringify(result), { headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 });
