@@ -23,7 +23,7 @@ param(
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.3.1"
+$SCRIPT_VERSION = "1.3.2"
 
 if (-not (Get-Command Invoke-Kuma -ErrorAction SilentlyContinue)) {
     function Invoke-Kuma { param([string]$Status, [string]$Msg) }
@@ -202,10 +202,36 @@ function Parse-TaskBlock($block) {
 }
 
 # ---------- Parsear log de hoy ----------
-# Cobian escribe el log en UTF-16; ReadAllText detecta el BOM (Get-Content -Encoding UTF8 no siempre)
+# Cobian escribe el log en UTF-16 y lo deja abierto mientras corre: se abre compartido
+# (ReadAllText falla con el archivo en uso) y se detecta la codificación por el BOM.
 function Read-CobianLog($path) {
-    try { return [System.IO.File]::ReadAllText($path) } catch { return "" }
+    $fs = $null; $sr = $null
+    try {
+        $fs = [System.IO.File]::Open($path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        $sr = New-Object System.IO.StreamReader($fs, [System.Text.Encoding]::UTF8, $true)
+        $text = $sr.ReadToEnd()
+        # UTF-16 sin BOM: el texto queda lleno de caracteres nulos; se vuelve a leer como Unicode
+        if ($text.Length -gt 0 -and ($text.ToCharArray() | Select-Object -First 200 | Where-Object { $_ -eq [char]0 }).Count -gt 20) {
+            $fs.Position = 0
+            $text = (New-Object System.IO.StreamReader($fs, [System.Text.Encoding]::Unicode, $false)).ReadToEnd()
+        }
+        return $text
+    } catch { return "" }
+    finally { if ($sr) { $sr.Dispose() } elseif ($fs) { $fs.Dispose() } }
 }
+
+# Un bloque por task: desde cada "Backing up the task" hasta el siguiente (o el final).
+# (La expresión con lookahead que había antes devolvía bloques vacíos en .NET: todo salía "Unknown".)
+function Split-CobianBlocks([string]$text) {
+    $starts = @([regex]::Matches($text, '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} Backing up the task') | ForEach-Object { $_.Index })
+    $out = @()
+    for ($i = 0; $i -lt $starts.Count; $i++) {
+        $end = if ($i -lt $starts.Count - 1) { $starts[$i + 1] } else { $text.Length }
+        $out += [PSCustomObject]@{ Value = $text.Substring($starts[$i], $end - $starts[$i]) }
+    }
+    return ,$out
+}
+
 $today   = Get-Date -Format 'yyyy-MM-dd'
 $logPath = Join-Path $COBIAN_LOG_DIR "Cobian Reflector $today.txt"
 
@@ -255,7 +281,7 @@ if ([string]::IsNullOrWhiteSpace($content)) {
 
 # Separar en bloques por task (cada "Backing up the task" abre uno)
 # El cierre es la línea "** Backup for the task ... has ended **" + las dos líneas de stats
-$blocks = [regex]::Matches($content, '(?s)(?=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} Backing up the task).*?(?=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} Backing up the task|\z)')
+$blocks = Split-CobianBlocks $content
 
 if ($blocks.Count -eq 0) {
     Write-Log "No se encontraron bloques de tarea en el log"

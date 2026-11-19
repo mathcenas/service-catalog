@@ -18,7 +18,7 @@ param(
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.2.1"
+$SCRIPT_VERSION = "1.2.2"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -40,6 +40,36 @@ $headers = @{
     "apikey"          = $ANON_KEY
     "Authorization"   = "Bearer $ANON_KEY"
     "X-Ingest-Secret" = $SMB_INGEST_SECRET
+}
+
+# Cobian escribe el log en UTF-16 y lo deja abierto mientras corre: se abre compartido
+# (ReadAllText falla con el archivo en uso) y se detecta la codificación por el BOM.
+function Read-CobianLog($path) {
+    $fs = $null; $sr = $null
+    try {
+        $fs = [System.IO.File]::Open($path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        $sr = New-Object System.IO.StreamReader($fs, [System.Text.Encoding]::UTF8, $true)
+        $text = $sr.ReadToEnd()
+        # UTF-16 sin BOM: el texto queda lleno de caracteres nulos; se vuelve a leer como Unicode
+        if ($text.Length -gt 0 -and ($text.ToCharArray() | Select-Object -First 200 | Where-Object { $_ -eq [char]0 }).Count -gt 20) {
+            $fs.Position = 0
+            $text = (New-Object System.IO.StreamReader($fs, [System.Text.Encoding]::Unicode, $false)).ReadToEnd()
+        }
+        return $text
+    } catch { return "" }
+    finally { if ($sr) { $sr.Dispose() } elseif ($fs) { $fs.Dispose() } }
+}
+
+# Un bloque por task: desde cada "Backing up the task" hasta el siguiente (o el final).
+# (La expresión con lookahead que había antes devolvía bloques vacíos en .NET: todo salía "Unknown".)
+function Split-CobianBlocks([string]$text) {
+    $starts = @([regex]::Matches($text, '\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} Backing up the task') | ForEach-Object { $_.Index })
+    $out = @()
+    for ($i = 0; $i -lt $starts.Count; $i++) {
+        $end = if ($i -lt $starts.Count - 1) { $starts[$i + 1] } else { $text.Length }
+        $out += [PSCustomObject]@{ Value = $text.Substring($starts[$i], $end - $starts[$i]) }
+    }
+    return ,$out
 }
 
 function Send-BackupReport($status, $jobName, $tasks, $totalBytes, $totalSeconds, $backedUpAt) {
@@ -191,15 +221,14 @@ for ($i = $Days; $i -ge 1; $i--) {
         continue
     }
 
-    # Cobian escribe el log en UTF-16: ReadAllText detecta el BOM
-    $content = try { [System.IO.File]::ReadAllText($logPath) } catch { "" }
+    $content = Read-CobianLog $logPath
     if ([string]::IsNullOrWhiteSpace($content)) {
         Write-Log "[$dateStr] Log vacío — omitiendo"
         $totalSkipped++
         continue
     }
 
-    $blocks = [regex]::Matches($content, '(?s)(?=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} Backing up the task).*?(?=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} Backing up the task|\z)')
+    $blocks = Split-CobianBlocks $content
 
     if ($blocks.Count -eq 0) {
         Write-Log "[$dateStr] Sin bloques de tarea — omitiendo"

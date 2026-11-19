@@ -27,6 +27,22 @@ const EmailAuditAdminView = lazy(() => import('./EmailAuditAdminView').then(m =>
 const MonthlySummaryView = lazy(() => import('./MonthlySummaryView').then(m => ({ default: m.MonthlySummaryView })));
 const NotificationCenterView = lazy(() => import('./NotificationCenterView').then(m => ({ default: m.NotificationCenterView })));
 const NetworkTopologyPage = lazy(() => import('../pages/NetworkTopologyPage'));
+const VpsMapView = lazy(() => import('./VpsMapView').then(m => ({ default: m.VpsMapView })));
+
+/** Red: topología de la red del cliente, o el mapa de un servidor con sus contenedores */
+function NetworkTab() {
+  const [view, setView] = useState<'red' | 'servidores'>('red');
+  const pill = (on: boolean) => `px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${on ? 'bg-sky-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900'}`;
+  return (
+    <div className="space-y-3 h-full flex flex-col">
+      <div className="flex gap-2">
+        <button className={pill(view === 'red')} onClick={() => setView('red')}>Red</button>
+        <button className={pill(view === 'servidores')} onClick={() => setView('servidores')}>Servidores</button>
+      </div>
+      <div className="flex-1 min-h-0">{view === 'red' ? <NetworkTopologyPage /> : <VpsMapView />}</div>
+    </div>
+  );
+}
 
 type Stats = {
   totalClients: number;
@@ -529,9 +545,7 @@ export function Dashboard() {
           <InfrastructureView services={services} clients={clients} />
         )}
 
-        {activeTab === 'network' && (
-          <NetworkTopologyPage />
-        )}
+        {activeTab === 'network' && <NetworkTab />}
 
         {activeTab === 'notifications' && (
           <NotificationCenterView clients={clients} />
