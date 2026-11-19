@@ -13,7 +13,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.2.1"
+$SCRIPT_VERSION = "1.3.0"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -93,6 +93,69 @@ if (-not $kopiaExe) {
 if (-not $kopiaExe) {
     Write-Log "ERROR: no se encontró kopia.exe"
     exit 1
+}
+
+# ---------- Mantenimiento del repositorio ----------
+# Kopia limpia los datos de snapshots vencidos en el mantenimiento (rápido cada hora, completo cada
+# día) y solo lo corre desde el equipo "dueño". Si el dueño es un equipo que ya no existe o no llega
+# al repositorio, el repo crece sin que nadie se entere: se reporta como heartbeat "kopia-maintenance".
+# $KOPIA_MAINTENANCE_MAX_DAYS (config.ps1): días sin mantenimiento completo para avisar (3 por defecto).
+$CHECK_KOPIA_MAINTENANCE = if (Get-Variable 'CHECK_KOPIA_MAINTENANCE' -ErrorAction SilentlyContinue) { $CHECK_KOPIA_MAINTENANCE } else { $true }
+$KOPIA_MAINTENANCE_MAX_DAYS = if (Get-Variable 'KOPIA_MAINTENANCE_MAX_DAYS' -ErrorAction SilentlyContinue) { [int]$KOPIA_MAINTENANCE_MAX_DAYS } else { 3 }
+if ($CHECK_KOPIA_MAINTENANCE) {
+    try {
+        $mi = (& $kopiaExe maintenance info --json 2>$null | Out-String) | ConvertFrom-Json -ErrorAction Stop
+        # Formato de "kopia maintenance info --json": owner y schedule.runs en la raíz;
+        # cada tarea es una lista (la más nueva primero) de { start, end, success, error?, extra[] }
+        $owner = if ($mi.owner) { [string]$mi.owner } else { [string]$mi.params.owner }
+        $runs  = $mi.schedule.runs
+        $lastOf = {
+            param($task)
+            $list = @($runs.$task)
+            if (-not $list.Count) { return $null }
+            $list | Sort-Object { Parse-KopiaDate $_.end } -Descending | Select-Object -First 1
+        }
+        $gc    = & $lastOf 'snapshot-gc'
+        $quick = & $lastOf 'compact-single-epoch'
+        $gcEnd    = if ($gc)    { Parse-KopiaDate $gc.end }    else { $null }
+        $quickEnd = if ($quick) { Parse-KopiaDate $quick.end } else { $null }
+        # Tareas cuya última corrida falló
+        $failedTasks = @()
+        foreach ($t in $runs.PSObject.Properties) {
+            $last = @($t.Value) | Sort-Object { Parse-KopiaDate $_.end } -Descending | Select-Object -First 1
+            if ($last -and $last.success -eq $false) { $failedTasks += "$($t.Name): $([string]$last.error)" }
+        }
+        $gcDays = if ($gcEnd) { [math]::Round(((Get-Date).ToUniversalTime() - $gcEnd.ToUniversalTime()).TotalDays, 1) } else { $null }
+        $mStatus = 'success'; $problems = @()
+        if ($null -eq $gcDays)                        { $mStatus = 'warning'; $problems += "nunca corrió el mantenimiento completo" }
+        elseif ($gcDays -gt $KOPIA_MAINTENANCE_MAX_DAYS) { $mStatus = 'failed'; $problems += "sin mantenimiento completo hace $gcDays días" }
+        if ($failedTasks.Count)                       { $mStatus = 'failed'; $problems += $failedTasks }
+        # El último GC dice cuánto ocupa el repositorio (snapshotGCStats.inUseContentSize) y cuánto liberó
+        $inUseBytes = $null; $freedBytes = $null
+        $gcStats = @($gc.extra) | Where-Object { $_.kind -eq 'snapshotGCStats' } | Select-Object -First 1
+        if ($gcStats -and $gcStats.data) {
+            $inUseBytes = [int64]$gcStats.data.inUseContentSize
+            $freedBytes = [int64]$gcStats.data.deletedContentSize
+        }
+        $mBody = @{
+            service_id = $SERVICE_ID
+            source     = "kopia-maintenance"
+            status     = $mStatus
+            message    = if ($problems) { "Mantenimiento de Kopia: " + ($problems -join ' · ') } else { "Mantenimiento de Kopia OK (completo hace $gcDays días, dueño $owner)" }
+            payload    = @{
+                owner = $owner; owner_is_me = ($owner -ieq "$env:USERNAME@$env:COMPUTERNAME")
+                last_full = if ($gcEnd) { $gcEnd.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ") } else { $null }
+                last_quick = if ($quickEnd) { $quickEnd.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ") } else { $null }
+                full_days_ago = $gcDays; failed_tasks = $failedTasks; in_use_bytes = $inUseBytes; freed_bytes = $freedBytes
+                script_version = $SCRIPT_VERSION
+            }
+        } | ConvertTo-Json -Depth 4
+        $mHeaders = @{ "Content-Type" = "application/json; charset=utf-8"; "apikey" = $ANON_KEY; "Authorization" = "Bearer $ANON_KEY"; "X-Ingest-Secret" = $INGEST_SECRET }
+        Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $mHeaders -Body ([Text.Encoding]::UTF8.GetBytes($mBody)) | Out-Null
+        Write-Log "Mantenimiento: $mStatus (dueño $owner, completo hace $gcDays días)"
+    } catch {
+        Write-Log "No se pudo revisar el mantenimiento de Kopia: $($_.Exception.Message)"
+    }
 }
 
 # ---------- Leer snapshots de las últimas 25 horas ----------

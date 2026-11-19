@@ -48,6 +48,33 @@ Deno.serve(async (req: Request) => {
     const contentType = req.headers.get("content-type") || "";
     const rawBody = await req.text();
 
+    // Notificación de prueba de Kopia: no es un backup
+    if (/test notification from Kopia/i.test(rawBody)) {
+      return new Response(JSON.stringify({ success: true, skipped: "test notification" }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Operaciones que no son un snapshot (mantenimiento del repositorio): no son un backup, van a la
+    // telemetría como "kopia-maintenance". Antes quedaban como un backup "Kopia Backup" y además
+    // movían la fecha del último backup del servicio.
+    const operation = rawBody.match(/Operation:\s*([^\n\r<]+)/i)?.[1]?.trim() ?? "";
+    if (operation && !/snapshot/i.test(operation)) {
+      const failed = /unable to|despite \d+ retries|no such host|dial tcp|\bfailed\b|\berror:/i.test(rawBody);
+      const firstError = rawBody.split(/\r?\n/).map(l => l.trim()).find(l => /unable to|no such host|dial tcp|error/i.test(l)) ?? "";
+      const { error: hbErr } = await supabase.from("service_heartbeats").insert({
+        user_id: service.user_id,
+        service_id: serviceId,
+        source: "kopia-maintenance",
+        status: failed ? "failed" : "success",
+        message: failed ? `${operation}: ${firstError.slice(0, 200)}` : `${operation}: OK`,
+        payload: { operation, details: rawBody.slice(0, 1000) },
+      });
+      return new Response(JSON.stringify(hbErr ? { error: hbErr.message } : { success: true, kind: "maintenance" }), {
+        status: hbErr ? 500 : 201, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     let status = "success";
     let jobName = "Kopia Backup";
     let sizeBytes: number | null = null;

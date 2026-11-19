@@ -2,7 +2,7 @@
 # config.ps1 - Configuracion por cliente/servidor
 # Copiar este archivo por cada cliente y ajustar los valores
 # =============================================================
-$SCRIPT_VERSION = "1.6.0"
+$SCRIPT_VERSION = "1.6.1"
 
 $INGEST_URL    = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-backup"
 $HEARTBEAT_URL = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-heartbeat"
@@ -64,6 +64,8 @@ $CHECK_DISK_INIT   = $true  # discos sin inicializar o desconectados
 $CHECK_HYPERV_CHECKPOINTS = $true   # puntos de control viejos de Hyper-V (se omite si no hay Hyper-V)
 $CHECKPOINT_MAX_DAYS = 7            # dias para considerar viejo un punto de control
 $CHECKPOINT_IGNORE   = "*_replica,*replica*"   # VMs a ignorar (las replicas usan puntos de control a proposito)
+$CHECK_KOPIA_MAINTENANCE   = $true  # kopia-report: revisar que el mantenimiento del repositorio corra
+$KOPIA_MAINTENANCE_MAX_DAYS = 3      # dias sin mantenimiento completo para avisar
 
 function Invoke-Kuma {
     param([string]$Status, [string]$Msg, [string]$Url = "")
