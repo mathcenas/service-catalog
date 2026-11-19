@@ -8,6 +8,7 @@ import { addTaskNoteInTracker, pushTaskToTracker, resolveDefaultProject, resolve
 //   - alerta que sigue        → actualiza last_seen_at; si cambiaron los problemas (o pasó un día)
 //                               agrega una nota a la tarea con la novedad
 //   - alerta que desapareció  → después de 2 chequeos seguidos sin ella, cierra la tarea con una nota
+//     (hay una sola tarea abierta por alerta: mientras siga el problema, días o semanas, se suman notas)
 // Con eso cada tarea cerrada en Task Tracker es una confirmación de que el problema se resolvió.
 
 const DEFAULT_BACKUP_MAX_AGE_HOURS = 26;
@@ -38,7 +39,12 @@ const splitIssues = (s: string | null | undefined) =>
 // Firma sin números: que un contador suba (2483 → 2487 errores) no es una novedad
 const issueSig = (list: string[]) => list.map(t => t.replace(/[\d.,]+/g, "#")).sort().join(" | ");
 
+// Equipos sin un system-health reciente: no se sabe si el problema sigue, así que su ticket de salud
+// no cuenta ese chequeo para cerrarse (que deje de reportar no es lo mismo que se haya arreglado)
+const healthUnknown = new Set<string>();
+
 async function currentAlerts(): Promise<Alert[]> {
+  healthUnknown.clear();
   const { data: services } = await supabase
     .from("services")
     .select("id, name, business_name, client_id, user_id, status, operational_status, telemetry_enabled, last_backup_at, backup_max_age_hours")
@@ -109,7 +115,8 @@ async function currentAlerts(): Promise<Alert[]> {
     for (const h of hbs ?? []) if (!latest[h.service_id]) latest[h.service_id] = h;
     for (const s of monitored) {
       const h = latest[s.id];
-      if (!h || !["failed", "error"].includes(h.status)) continue;
+      if (!h) { healthUnknown.add(s.id); continue; }
+      if (!["failed", "error"].includes(h.status)) continue;
       const issues = splitIssues(h.payload?.issues);
       const serious = issues.filter(t => !TRANSIENT_ISSUE.test(t));
       if (!serious.length) continue;
@@ -210,6 +217,7 @@ Deno.serve(async (req) => {
   // Alertas que ya no están: cerrar después de CLEAR_CHECKS_TO_RESOLVE chequeos seguidos
   for (const row of openRows ?? []) {
     if (byKey.has(row.alert_key)) continue;
+    if (row.kind === "health" && healthUnknown.has(row.service_id)) continue;   // sin reporte: sigue abierta tal cual
     const clear = (row.clear_count ?? 0) + 1;
     if (clear < CLEAR_CHECKS_TO_RESOLVE) {
       await supabase.from("alert_tickets").update({ clear_count: clear }).eq("id", row.id);
