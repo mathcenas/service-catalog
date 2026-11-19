@@ -852,6 +852,8 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
           const byJob = new Map<string, ServiceBackup[]>();
           for (const b of svcBackups) {
             if (isOfflineBackup(b.job_name)) continue;
+            // El resumen diario de Veeam repite los trabajos que ya se listan (y su nombre cambia con la cantidad)
+            if (/^(veeam\s*-\s*)?resumen diario\b/i.test(b.job_name || '')) continue;
             const key = b.job_name || '';
             if (!byJob.has(key)) byJob.set(key, []);
             byJob.get(key)!.push(b);
@@ -881,8 +883,19 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
 
           // Jobs viejos (renombrados o dados de baja) no se muestran como vencidos
           const newestRun = svcBackups.find(b => !isOfflineBackup(b.job_name))?.backed_up_at ?? '';
-          const jobs = [...byJob.entries()].filter(([, entries]) => !isRetiredJob(entries[0].backed_up_at, newestRun));
+          const jobs = [...byJob.entries()]
+            .filter(([, entries]) => !isRetiredJob(entries[0].backed_up_at, newestRun))
+            .sort((a, b) => b[1][0].backed_up_at.localeCompare(a[1][0].backed_up_at));
           const multiJob = jobs.length > 1;
+          if (jobs.length === 0) return null;
+          // Se ven los 2 más recientes y cualquiera con problema; el resto queda en un desplegable
+          const jobHasProblem = ([jobName, entries]: [string, ServiceBackup[]]) => {
+            const hoursOld = (Date.now() - new Date(entries[0].backed_up_at).getTime()) / 3600000;
+            const maxAge = jobMaxAgeHours(backupMaxAgeHours(s), jobName, entries.map(e => e.backed_up_at));
+            return entries[0].status === 'failed' || ageLevel(hoursOld, maxAge) === 'late';
+          };
+          const shownJobs = jobs.filter((j, i) => i < 2 || jobHasProblem(j));
+          const moreJobs = jobs.filter(j => !shownJobs.includes(j));
 
           return (
             <div key={s.id} className="px-4 py-3 space-y-2.5">
@@ -897,7 +910,8 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
                   </button>
                 </div>
               )}
-              {jobs.map(([jobName, entries]) => {
+              {(() => {
+              const renderJob = ([jobName, entries]: [string, ServiceBackup[]]) => {
                 const last = entries[0];
                 const hoursOld = (Date.now() - new Date(last.backed_up_at).getTime()) / 3600000;
                 const history = entries.slice(0, 7);
@@ -948,7 +962,22 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
                     )}
                   </div>
                 );
-              })}
+              };
+              return (
+                <>
+                  {shownJobs.map(renderJob)}
+                  {moreJobs.length > 0 && (
+                    <details className="ml-3 group">
+                      <summary className="cursor-pointer list-none text-[11px] text-slate-500 hover:text-emerald-400 inline-flex items-center gap-1">
+                        <ChevronRight className="w-3 h-3 transition-transform group-open:rotate-90" aria-hidden="true" />
+                        Ver {moreJobs.length} {moreJobs.length === 1 ? 'backup más' : 'backups más'}
+                      </summary>
+                      <div className="mt-2.5 space-y-2.5">{moreJobs.map(renderJob)}</div>
+                    </details>
+                  )}
+                </>
+              );
+              })()}
             </div>
           );
         })}
