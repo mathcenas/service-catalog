@@ -105,7 +105,9 @@ $KOPIA_MAINTENANCE_MAX_DAYS = if (Get-Variable 'KOPIA_MAINTENANCE_MAX_DAYS' -Err
 if ($CHECK_KOPIA_MAINTENANCE) {
     try {
         $mi = (& $kopiaExe maintenance info --json 2>$null | Out-String) | ConvertFrom-Json -ErrorAction Stop
-        $owner = [string]$mi.params.owner
+        # Formato de "kopia maintenance info --json": owner y schedule.runs en la raíz;
+        # cada tarea es una lista (la más nueva primero) de { start, end, success, error?, extra[] }
+        $owner = if ($mi.owner) { [string]$mi.owner } else { [string]$mi.params.owner }
         $runs  = $mi.schedule.runs
         $lastOf = {
             param($task)
@@ -128,10 +130,12 @@ if ($CHECK_KOPIA_MAINTENANCE) {
         if ($null -eq $gcDays)                        { $mStatus = 'warning'; $problems += "nunca corrió el mantenimiento completo" }
         elseif ($gcDays -gt $KOPIA_MAINTENANCE_MAX_DAYS) { $mStatus = 'failed'; $problems += "sin mantenimiento completo hace $gcDays días" }
         if ($failedTasks.Count)                       { $mStatus = 'failed'; $problems += $failedTasks }
-        # El último GC dice cuánto ocupa el repositorio: "Found 589151(37991460986) in-use contents"
-        $inUseBytes = $null
-        if ($gc -and [string]$gc.error -eq '' -and $gc.PSObject.Properties['message']) {
-            if ([string]$gc.message -match 'Found \d+\((\d+)\) in-use contents') { $inUseBytes = [int64]$Matches[1] }
+        # El último GC dice cuánto ocupa el repositorio (snapshotGCStats.inUseContentSize) y cuánto liberó
+        $inUseBytes = $null; $freedBytes = $null
+        $gcStats = @($gc.extra) | Where-Object { $_.kind -eq 'snapshotGCStats' } | Select-Object -First 1
+        if ($gcStats -and $gcStats.data) {
+            $inUseBytes = [int64]$gcStats.data.inUseContentSize
+            $freedBytes = [int64]$gcStats.data.deletedContentSize
         }
         $mBody = @{
             service_id = $SERVICE_ID
@@ -142,7 +146,7 @@ if ($CHECK_KOPIA_MAINTENANCE) {
                 owner = $owner; owner_is_me = ($owner -ieq "$env:USERNAME@$env:COMPUTERNAME")
                 last_full = if ($gcEnd) { $gcEnd.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ") } else { $null }
                 last_quick = if ($quickEnd) { $quickEnd.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ") } else { $null }
-                full_days_ago = $gcDays; failed_tasks = $failedTasks; in_use_bytes = $inUseBytes
+                full_days_ago = $gcDays; failed_tasks = $failedTasks; in_use_bytes = $inUseBytes; freed_bytes = $freedBytes
                 script_version = $SCRIPT_VERSION
             }
         } | ConvertTo-Json -Depth 4
