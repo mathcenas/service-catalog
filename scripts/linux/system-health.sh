@@ -12,7 +12,7 @@
 # Version: 1.6.0
 # =============================================================
 
-SCRIPT_VERSION="1.10.2"
+SCRIPT_VERSION="1.11.1"
 
 # ---------- Verificación de dependencias ----------
 if ! command -v jq >/dev/null 2>&1; then
@@ -249,6 +249,54 @@ if command -v docker >/dev/null 2>&1; then
   if [[ -n "$DOCKER_DOWN" ]]; then
     [ "$STATUS" = "success" ] && STATUS="warning"
     ISSUES="${ISSUES}Containers caídos: ${DOCKER_DOWN}|"
+  fi
+fi
+
+# ---------- Tailscale ----------
+# Estado de la VPN y de los equipos que se ven por ella (para el mapa: qué servidor habla con cuál).
+# Funciona con tailscale instalado en el servidor o corriendo en un contenedor (nombre con "tailscale").
+TAILSCALE_JSON="null"
+ts_raw=""
+if command -v tailscale >/dev/null 2>&1; then
+  ts_raw=$(timeout 10 tailscale status --json 2>/dev/null || true)
+fi
+if [[ -z "$ts_raw" ]] && command -v docker >/dev/null 2>&1; then
+  ts_ctr=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -i -m1 'tailscale' || true)
+  [[ -n "$ts_ctr" ]] && ts_raw=$(timeout 10 docker exec "$ts_ctr" tailscale status --json 2>/dev/null || true)
+fi
+if [[ -n "$ts_raw" ]]; then
+  # key_days_left: días hasta que vence la clave (null = sin vencimiento, negativo = vencida)
+  TAILSCALE_JSON=$(jq -c --arg ctr "${ts_ctr:-}" '
+    def days: if (. // "") == "" then null
+              else ((sub("\\.[0-9]+"; "") | fromdateiso8601) - now) / 86400 | floor end;
+    {
+      container: (if $ctr == "" then null else $ctr end),
+      backend: .BackendState,
+      self: { name: .Self.HostName, ip: (.Self.TailscaleIPs[0] // null), online: .Self.Online,
+              key_expiry: .Self.KeyExpiry, key_days_left: (.Self.KeyExpiry | days) },
+      peers: [ (.Peer // {}) | to_entries[] | .value | {
+        name: .HostName, ip: (.TailscaleIPs[0] // null), os: .OS,
+        online: .Online, last_seen: .LastSeen,
+        key_expiry: .KeyExpiry, key_days_left: (.KeyExpiry | days)
+      } ] | sort_by(.name)
+    }' <<<"$ts_raw" 2>/dev/null || echo "null")
+  [[ -z "$TAILSCALE_JSON" ]] && TAILSCALE_JSON="null"
+
+  # Avisos: sesión vencida o clave (propia o de otro equipo) que vence en 7 días o menos.
+  # TAILSCALE_IGNORE en el .env: nombres a ignorar, separados por coma (notebooks, etc.).
+  if [[ "$TAILSCALE_JSON" != "null" ]]; then
+    ts_issues=$(jq -r --arg ignore "${TAILSCALE_IGNORE:-}" '
+      ($ignore | ascii_downcase | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))) as $ign
+      | [ (if .backend == "NeedsLogin" then "Tailscale: la sesión de este servidor venció, hay que volver a iniciar sesión" else empty end),
+          (.self | select(.key_days_left != null and .key_days_left <= 7)
+            | if .key_days_left < 0 then "Tailscale: la clave de este servidor venció" else "Tailscale: la clave de este servidor vence en \(.key_days_left) días" end),
+          (.peers[] | select(.key_days_left != null and .key_days_left <= 7 and ((.name | ascii_downcase) as $n | $ign | index($n) | not))
+            | if .key_days_left < 0 then "Tailscale: la clave de \(.name) venció" else "Tailscale: la clave de \(.name) vence en \(.key_days_left) días" end)
+        ] | .[]' <<<"$TAILSCALE_JSON" 2>/dev/null || true)
+    if [[ -n "$ts_issues" ]]; then
+      [ "$STATUS" = "success" ] && STATUS="warning"
+      while IFS= read -r line; do [[ -n "$line" ]] && ISSUES="${ISSUES}${line}|"; done <<<"$ts_issues"
+    fi
   fi
 fi
 
@@ -567,6 +615,7 @@ PAYLOAD=$(jq -n \
   --argjson docker "$DOCKER_JSON" \
   --argjson ports "$PORT_CHECKS_JSON" \
   --argjson smart "$DISK_SMART_JSON" \
+  --argjson tailscale "$TAILSCALE_JSON" \
   --arg public_ip "$PUBLIC_IP" \
   --arg local_ip "$LOCAL_IP" \
   --arg cpu_model "$CPU_MODEL" \
@@ -595,6 +644,7 @@ PAYLOAD=$(jq -n \
       docker_containers: $docker,
       port_checks: $ports,
       disk_smart: $smart,
+      tailscale: $tailscale,
       public_ip: (if $public_ip == "" then null else $public_ip end),
       local_ip: (if $local_ip == "" then null else $local_ip end),
       cpu_model: (if $cpu_model == "" then null else $cpu_model end),

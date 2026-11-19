@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.6.1"
+$SCRIPT_VERSION = "1.8.0"
 
 # ---------- IPs (pública WAN + local) ----------
 $publicIp = $null
@@ -262,8 +262,83 @@ elseif ($diskUsePct -gt 75) { $issueList += "Disco C alto ($diskUsePct%)" }
 foreach ($r in $raidList) {
     if ($r.status -ne 'ok') { $issueList += "Volumen $($r.name): $($r.health)" }
 }
+# ---------- Tailscale: sesión y vencimiento de claves ----------
+# Avisa si la sesión de este equipo venció o si la clave de este equipo o de otro del túnel
+# vence en 7 días o menos (o ya venció). $TAILSCALE_IGNORE (config.ps1): nombres a ignorar,
+# separados por coma (por ejemplo notebooks que se dejan con vencimiento a propósito).
+$tailscale = $null
+$tsExe = @("$env:ProgramFiles\Tailscale\tailscale.exe", "${env:ProgramFiles(x86)}\Tailscale\tailscale.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $tsExe) { $tsCmd = Get-Command tailscale -ErrorAction SilentlyContinue; if ($tsCmd) { $tsExe = $tsCmd.Source } }
+if ($tsExe) {
+    try {
+        $tsStatus = (& $tsExe status --json 2>$null | Out-String) | ConvertFrom-Json -ErrorAction Stop
+        $tsIgnore = @("$TAILSCALE_IGNORE" -split ',' | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
+        $tsNow = (Get-Date).ToUniversalTime()
+        function Get-TsDays($exp) {
+            if (-not $exp) { return $null }
+            try { return [math]::Floor(([datetime]::Parse($exp).ToUniversalTime() - $tsNow).TotalDays) } catch { return $null }
+        }
+        $tsIssues = @()
+        if ($tsStatus.BackendState -eq 'NeedsLogin') { $tsIssues += "Tailscale: la sesión de este equipo venció, hay que volver a iniciar sesión" }
+        $selfDays = Get-TsDays $tsStatus.Self.KeyExpiry
+        if ($null -ne $selfDays -and $selfDays -le 7) {
+            $tsIssues += if ($selfDays -lt 0) { "Tailscale: la clave de este equipo venció" } else { "Tailscale: la clave de este equipo vence en $selfDays días" }
+        }
+        $tsPeers = @()
+        if ($tsStatus.Peer) {
+            foreach ($prop in $tsStatus.Peer.PSObject.Properties) {
+                $pr = $prop.Value
+                $pDays = Get-TsDays $pr.KeyExpiry
+                $tsPeers += [ordered]@{
+                    name = $pr.HostName; ip = @($pr.TailscaleIPs)[0]; os = $pr.OS; online = [bool]$pr.Online
+                    last_seen = $pr.LastSeen; key_expiry = $pr.KeyExpiry; key_days_left = $pDays
+                }
+                if ($null -ne $pDays -and $pDays -le 7 -and $tsIgnore -notcontains "$($pr.HostName)".ToLower()) {
+                    $tsIssues += if ($pDays -lt 0) { "Tailscale: la clave de $($pr.HostName) venció" } else { "Tailscale: la clave de $($pr.HostName) vence en $pDays días" }
+                }
+            }
+        }
+        $tailscale = [ordered]@{
+            backend = $tsStatus.BackendState
+            self    = [ordered]@{ name = $tsStatus.Self.HostName; ip = @($tsStatus.Self.TailscaleIPs)[0]; online = [bool]$tsStatus.Self.Online; key_expiry = $tsStatus.Self.KeyExpiry; key_days_left = $selfDays }
+            peers   = $tsPeers
+        }
+        if ($tsIssues.Count -gt 0) {
+            $issueList += $tsIssues
+            if ($hwStatus -eq 'success') { $hwStatus = 'warning' }
+        }
+    } catch { Write-Log "Tailscale: no se pudo leer el estado ($($_.Exception.Message))" }
+}
+
 $issueList += $osuIssues
 $issues = if ($issueList.Count -gt 0) { $issueList -join ' · ' } else { 'Normal' }
+
+# ---------- Qué corre en este equipo (sugerencias para el portal) ----------
+# Carpetas compartidas (sin las del sistema), impresoras compartidas y servicios conocidos.
+# En el portal aparecen como "Detectado en el equipo" para sumarlos con un clic.
+$serverRoles = [ordered]@{ shares = @(); printers = @(); services = @() }
+try {
+    $serverRoles.shares = @(Get-SmbShare -ErrorAction Stop | Where-Object { -not $_.Special -and $_.Name -notmatch '\$$' -and $_.Name -notin @('print$', 'IPC$') } |
+        ForEach-Object { [ordered]@{ name = $_.Name; path = $_.Path; description = $_.Description } })
+} catch {}
+try {
+    $serverRoles.printers = @(Get-Printer -ErrorAction Stop | Where-Object { $_.Shared } |
+        ForEach-Object { [ordered]@{ name = $_.Name; share_name = $_.ShareName; driver = $_.DriverName } })
+} catch {}
+$knownServices = [ordered]@{
+    'MSSQL*'            = 'SQL Server';       'postgresql*'   = 'PostgreSQL';        'MySQL*'       = 'MySQL'
+    'W3SVC'             = 'IIS (sitios web)'; 'NTDS'          = 'Active Directory';  'DNS'          = 'DNS'
+    'DHCPServer'        = 'DHCP';             'vmms'          = 'Hyper-V';           'Veeam*'       = 'Veeam'
+    'Kopia*'            = 'Kopia';            'CobianReflector*' = 'Cobian Reflector'; 'AnyDesk'    = 'AnyDesk'
+    'TeamViewer'        = 'TeamViewer';       'FileZilla*'    = 'FileZilla Server';  'Apache*'      = 'Apache'
+}
+try {
+    $allSvc = Get-Service -ErrorAction Stop
+    foreach ($pattern in $knownServices.Keys) {
+        $hit = $allSvc | Where-Object { $_.Name -like $pattern } | Select-Object -First 1
+        if ($hit) { $serverRoles.services += [ordered]@{ name = $knownServices[$pattern]; svc = $hit.Name; status = $hit.Status.ToString() } }
+    }
+} catch {}
 
 $hwData = @{
     service_id = $SERVICE_ID
@@ -284,6 +359,8 @@ $hwData = @{
         uptime_seconds = $uptimeSecs
         issues         = $issues
         os_updates     = $osUpdates
+        tailscale      = $tailscale
+        server_roles   = $serverRoles
         disk_raid      = $raidList
         public_ip      = $publicIp
         local_ip       = $localIp

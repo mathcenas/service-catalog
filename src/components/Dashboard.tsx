@@ -4,6 +4,7 @@ import { supabase, Client, Service, Project, ServiceType } from '../lib/supabase
 import { backupMaxAgeHours } from '../lib/backupSchedule';
 import { useAuth } from '../contexts/AuthContext';
 import { AddClientModal } from './AddClientModal';
+import { AlertTicketsPanel } from './AlertTicketsPanel';
 import { AddServiceModal } from './AddServiceModal';
 import { AddProjectModal } from './AddProjectModal';
 
@@ -256,6 +257,8 @@ export function Dashboard() {
                 setActiveTab('telemetry');
               }}
             />
+
+            <AlertTicketsPanel clients={clients} />
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">

@@ -2,7 +2,7 @@
 # config.ps1 - Configuracion por cliente/servidor
 # Copiar este archivo por cada cliente y ajustar los valores
 # =============================================================
-$SCRIPT_VERSION = "1.5.0"
+$SCRIPT_VERSION = "1.5.1"
 
 $INGEST_URL    = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-backup"
 $HEARTBEAT_URL = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-heartbeat"
@@ -39,6 +39,10 @@ $VEEAM_INGEST_SECRET = ""
 # Si se configura, kopia-report.ps1 verifica conectividad antes de reportar
 # Dejar vacio para omitir el chequeo
 $TAILSCALE_IP  = ""
+
+# Equipos de Tailscale a los que no se les controla el vencimiento de clave (separados por coma).
+# Ej: notebooks que se dejan con vencimiento a propósito. Los servidores van con "Disable key expiry".
+$TAILSCALE_IGNORE = ""
 
 # Uptime Kuma - Push Monitors (opcional)
 # Pegar la URL base de cada monitor tipo Push. Si esta vacio, no se pinga.
