@@ -88,6 +88,8 @@ export function SharePage({ token }: Props) {
   const [supportHours, setSupportHours] = useState<SupportHour[]>([]);
   const [heartbeats, setHeartbeats] = useState<ServiceHeartbeat[]>([]);
   const [systemHeartbeats, setSystemHeartbeats] = useState<ServiceHeartbeat[]>([]);
+  // Heartbeats "tailscale" de kopia-report: a qué IP de la VPN manda el backup y si responde
+  const [vpnHeartbeats, setVpnHeartbeats] = useState<ServiceHeartbeat[]>([]);
   const [clientApps, setClientApps] = useState<ClientApp[]>([]);
   const [incidents, setIncidents] = useState<ServiceIncident[]>([]);
   const [backups, setBackups] = useState<ServiceBackup[]>([]);
@@ -179,12 +181,13 @@ export function SharePage({ token }: Props) {
 
         const [{ data: hbData }, { data: sysHbData }, { data: backupsData }, { data: uptimeData }] = await Promise.all([
           supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).eq('source', 'speedtest').gte('received_at', since48h).order('received_at', { ascending: true }),
-          supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check']).gte('received_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
+          supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check', 'tailscale']).gte('received_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
           supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(100),
           supabase.from('uptime_events').select('id,service_id,monitor_name,event_type,message,duration_seconds,occurred_at').in('service_id', serviceIds).gte('occurred_at', since30d).order('occurred_at', { ascending: false }),
         ]);
         setHeartbeats(hbData || []);
-        setSystemHeartbeats(sysHbData || []);
+        setSystemHeartbeats((sysHbData || []).filter(h => h.source !== 'tailscale'));
+        setVpnHeartbeats((sysHbData || []).filter(h => h.source === 'tailscale'));
         setBackups(backupsData || []);
         setUptimeEvents(uptimeData || []);
       }
@@ -217,10 +220,13 @@ export function SharePage({ token }: Props) {
       const serviceIds = (svcs || []).map((s: { id: string }) => s.id);
       if (serviceIds.length === 0) return;
       const [{ data: sysHbData }, { data: backupsData }] = await Promise.all([
-        supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check']).gte('received_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
+        supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check', 'tailscale']).gte('received_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
         supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(100),
       ]);
-      if (sysHbData) setSystemHeartbeats(sysHbData);
+      if (sysHbData) {
+        setSystemHeartbeats(sysHbData.filter(h => h.source !== 'tailscale'));
+        setVpnHeartbeats(sysHbData.filter(h => h.source === 'tailscale'));
+      }
       if (backupsData) setBackups(backupsData);
     };
     const interval = setInterval(refreshLive, 5 * 60 * 1000);
@@ -356,7 +362,7 @@ export function SharePage({ token }: Props) {
         </nav>
 
         <main className="max-w-5xl mx-auto px-4 py-6">
-          {section === 'overview' && <OverviewSection services={activeServices} roadmap={roadmap} changes={changes} getTypeName={getTypeName} backups={backups} uptimeEvents={uptimeEvents} supportHours={supportHours} systemHeartbeats={systemHeartbeats} clientApps={clientApps} licenses={licenses} riskFlags={client?.risk_flags ?? []} incidents={incidents} />}
+          {section === 'overview' && <OverviewSection services={activeServices} roadmap={roadmap} changes={changes} getTypeName={getTypeName} backups={backups} uptimeEvents={uptimeEvents} supportHours={supportHours} systemHeartbeats={systemHeartbeats} vpnHeartbeats={vpnHeartbeats} clientApps={clientApps} licenses={licenses} riskFlags={client?.risk_flags ?? []} incidents={incidents} />}
           {section === 'services' && <ServiceCatalog services={services} projects={projects} getTypeName={getTypeName} getProjectName={getProjectName} expandedService={expandedService} setExpandedService={setExpandedService} heartbeats={heartbeats} backups={backups} systemHeartbeats={systemHeartbeats} />}
           {section === 'licenses' && <LicensesSection licenses={licenses} services={services} />}
           {section === ('tickets' as Section) && <TicketsSection items={roadmap.filter(r => r.category === 'problem' || r.category === 'change_request')} updates={roadmapUpdates} />}
@@ -461,10 +467,10 @@ const RISK_FLAG_LABELS: Record<string, string> = {
   no_bco_plan:         'Sin plan de BCO documentado',
 };
 
-function OverviewSection({ services, roadmap, changes, getTypeName, backups, uptimeEvents, supportHours, systemHeartbeats, clientApps, licenses, riskFlags, incidents }: {
+function OverviewSection({ services, roadmap, changes, getTypeName, backups, uptimeEvents, supportHours, systemHeartbeats, vpnHeartbeats, clientApps, licenses, riskFlags, incidents }: {
   services: Service[]; roadmap: RoadmapItem[]; changes: ServiceChange[]; getTypeName: (id: string) => string;
   backups: ServiceBackup[]; uptimeEvents: UptimeEvent[]; supportHours: SupportHour[];
-  systemHeartbeats: ServiceHeartbeat[]; clientApps: ClientApp[]; licenses: ClientLicense[];
+  systemHeartbeats: ServiceHeartbeat[]; vpnHeartbeats: ServiceHeartbeat[]; clientApps: ClientApp[]; licenses: ClientLicense[];
   riskFlags: string[]; incidents: ServiceIncident[];
 }) {
   const upcoming = roadmap.filter(r => r.status !== 'Released');
@@ -513,7 +519,7 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
         }
       </div>
 
-      <BackupStatus services={services} backups={backups} />
+      <BackupStatus services={services} backups={backups} kopiaDest={kopiaDestinations(services, systemHeartbeats, vpnHeartbeats)} />
       <UptimeStatus services={services} uptimeEvents={uptimeEvents} />
 
       <IncidentPanel incidents={incidents} />
@@ -809,7 +815,33 @@ function isOfflineBackup(jobName: string | null): boolean {
   return !!(jobName && jobName.startsWith('Copia física'));
 }
 
-function BackupStatus({ services, backups }: { services: Service[]; backups: ServiceBackup[] }) {
+type KopiaDest = { name: string; ok: boolean; at: string };
+
+// Kopia manda el backup a una IP de Tailscale (TAILSCALE_IP en config.ps1). Esa IP es la de otro
+// equipo del cliente (la que reporta su system-health en tailscale.self.ip): así sabemos a qué
+// servidor en la nube va cada backup y si la VPN respondía en el último control.
+function kopiaDestinations(services: Service[], health: ServiceHeartbeat[], vpn: ServiceHeartbeat[]): Record<string, KopiaDest> {
+  const ipToName: Record<string, string> = {};
+  for (const h of health) {
+    const ip = (h.payload as any)?.tailscale?.self?.ip;
+    if (h.source !== 'system-health' || !ip) continue;
+    const svc = services.find(s => s.id === h.service_id);
+    if (!svc) continue;
+    // Varios servicios en el mismo VPS comparten la IP: preferir el que es el respaldo
+    const name = svc.business_name || svc.name;
+    if (!ipToName[ip] || (/backup|respaldo|nube|cloud/i.test(name) && !/backup|respaldo|nube|cloud/i.test(ipToName[ip]))) ipToName[ip] = name;
+  }
+  const out: Record<string, KopiaDest> = {};
+  for (const h of vpn) {   // vienen del más nuevo al más viejo
+    if (out[h.service_id]) continue;
+    const ip = (h.payload as any)?.target_ip as string | undefined;
+    if (!ip) continue;
+    out[h.service_id] = { name: ipToName[ip] ?? 'servidor en la nube', ok: ['success', 'ok'].includes(String(h.status)), at: h.received_at };
+  }
+  return out;
+}
+
+function BackupStatus({ services, backups, kopiaDest = {} }: { services: Service[]; backups: ServiceBackup[]; kopiaDest?: Record<string, KopiaDest> }) {
   const withBackup = services.filter(s => s.last_backup_at || backups.some(b => b.service_id === s.id));
   if (withBackup.length === 0) return null;
 
@@ -929,6 +961,15 @@ function BackupStatus({ services, backups }: { services: Service[]; backups: Ser
                         {jobName && (
                           <span className="text-xs text-slate-400">
                             <span className="mr-1">{backupIcon(jobName)}</span>{jobName}
+                          </span>
+                        )}
+                        {/^kopia/i.test(jobName) && kopiaDest[s.id] && (
+                          <span className={`flex items-center gap-1 text-[11px] mt-0.5 ${kopiaDest[s.id].ok ? 'text-slate-500' : 'text-amber-400'}`}
+                            title={`Último control de la VPN ${formatTimeAgo(kopiaDest[s.id].at)}`}>
+                            <Lock className="w-3 h-3 shrink-0" aria-hidden="true" />
+                            {kopiaDest[s.id].ok
+                              ? `Copia en ${kopiaDest[s.id].name}, por VPN cifrada`
+                              : `Copia en ${kopiaDest[s.id].name}: la VPN no respondió en el último control`}
                           </span>
                         )}
                       </div>
