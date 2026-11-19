@@ -4,7 +4,7 @@
 # Windows Server 2022
 # ==========================================
 
-$SCRIPT_VERSION = "1.1.1"
+$SCRIPT_VERSION = "1.1.2"
 
 # ---------------------------
 # 1. Cargar config.ps1
@@ -192,14 +192,14 @@ try { $null = $body | ConvertFrom-Json } catch {
 # 8. Enviar a Supabase
 # ==========================================
 $headers = @{
-    "Content-Type"    = "application/json"
+    "Content-Type"    = "application/json; charset=utf-8"
     "apikey"          = $ANON_KEY
     "Authorization"   = "Bearer $ANON_KEY"
     "X-Ingest-Secret" = $INGEST_SECRET
 }
 
 try {
-    Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body -TimeoutSec 30 | Out-Null
+    Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body ([Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 30 | Out-Null
     "Reportado al Service Catalog: $globalStatus" | Tee-Object -FilePath $LogFile -Append
 } catch {
     "ERROR al reportar al Service Catalog: $($_.Exception.Message)" | Tee-Object -FilePath $LogFile -Append

@@ -18,7 +18,7 @@ param(
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.2.2"
+$SCRIPT_VERSION = "1.2.3"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -36,7 +36,7 @@ function Write-Log($msg) {
 }
 
 $headers = @{
-    "Content-Type"    = "application/json"
+    "Content-Type"    = "application/json; charset=utf-8"
     "apikey"          = $ANON_KEY
     "Authorization"   = "Bearer $ANON_KEY"
     "X-Ingest-Secret" = $SMB_INGEST_SECRET
@@ -98,7 +98,7 @@ function Send-BackupReport($status, $jobName, $tasks, $totalBytes, $totalSeconds
         return
     }
     try {
-        Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body -ErrorAction Stop | Out-Null
+        Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ErrorAction Stop | Out-Null
         Write-Log "  ✅ Reportado: [$status] $jobName"
     } catch {
         Write-Log "  ❌ ERROR al reportar: $_"

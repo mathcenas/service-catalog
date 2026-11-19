@@ -141,3 +141,24 @@ export async function resolveTaskInTracker(
     return { ok: false, error: String(err) };
   }
 }
+
+// Agrega una nota a una tarea creada por una integración (POST /api/tasks/:id/notes en Task Tracker).
+export async function addTaskNoteInTracker(
+  taskId: string,
+  note: string,
+  apiKey: string,
+  baseUrl: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${baseUrl}/api/tasks/${encodeURIComponent(taskId)}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+      body: JSON.stringify({ note }),
+    });
+    if (res.ok) return { ok: true };
+    const text = await res.text().catch(() => "");
+    return { ok: false, error: `${res.status}: ${text.slice(0, 200)}` };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}

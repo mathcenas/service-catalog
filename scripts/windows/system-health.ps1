@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.14.0"
+$SCRIPT_VERSION = "1.14.1"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -29,7 +29,7 @@ function Write-Log($msg) {
 Get-ChildItem "$LogDir\system-health-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) } | Remove-Item -Force
 
 $headers = @{
-    "Content-Type"    = "application/json"
+    "Content-Type"    = "application/json; charset=utf-8"
     "apikey"          = $ANON_KEY
     "Authorization"   = "Bearer $ANON_KEY"
     "X-Ingest-Secret" = $INGEST_SECRET
@@ -587,7 +587,7 @@ $hwData = @{
 $hwBody = $hwData | ConvertTo-Json -Depth 5
 
 try {
-    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $hwBody | Out-Null
+    Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body ([Text.Encoding]::UTF8.GetBytes($hwBody)) | Out-Null
     Write-Log "✅ system-health → $hwStatus | CPU: $cpuUsage% | RAM: $ramUsePct% | Disk: $diskUsePct%"
 } catch {
     Write-Log "❌ system-health Error: $($_.Exception.Message)"
@@ -602,7 +602,7 @@ foreach ($extra in @($EXTRA_HEALTH_SERVICES)) {
     $extraHeaders = $headers.Clone()
     $extraHeaders["X-Ingest-Secret"] = $extra.IngestSecret
     try {
-        Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $extraHeaders -Body ($hwData | ConvertTo-Json -Depth 5) | Out-Null
+        Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $extraHeaders -Body ([Text.Encoding]::UTF8.GetBytes(($hwData | ConvertTo-Json -Depth 5))) | Out-Null
         Write-Log "✅ system-health [$label] → $hwStatus"
     } catch {
         Write-Log "❌ system-health [$label] Error: $($_.Exception.Message)"
@@ -697,7 +697,7 @@ if ($CHECK_SPEEDTEST) {
     } | ConvertTo-Json -Depth 3
 
     try {
-        Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $netBody | Out-Null
+        Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body ([Text.Encoding]::UTF8.GetBytes($netBody)) | Out-Null
         Write-Log "✅ speedtest → $netStatus | $netMsg"
     } catch {
         Write-Log "❌ speedtest Error: $($_.Exception.Message)"
@@ -708,7 +708,7 @@ if ($CHECK_SPEEDTEST) {
         message = "Deshabilitado (CHECK_SPEEDTEST = false)"
         payload = @{ disabled = $true; script_version = $SCRIPT_VERSION }
     } | ConvertTo-Json -Depth 3
-    try { Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $disabledBody | Out-Null } catch {}
+    try { Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body ([Text.Encoding]::UTF8.GetBytes($disabledBody)) | Out-Null } catch {}
     Write-Log "⏭️ speedtest — omitido (CHECK_SPEEDTEST = false en config.ps1)"
 }
 
@@ -847,7 +847,7 @@ if ($CHECK_RDP) {
     } | ConvertTo-Json -Depth 3
 
     try {
-        Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $rdpBody | Out-Null
+        Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body ([Text.Encoding]::UTF8.GetBytes($rdpBody)) | Out-Null
         $icon = if ($rdpStatus -eq 'failed') {'❌'} elseif ($rdpStatus -eq 'warning') {'⚠️'} else {'✅'}
         Write-Log "$icon rdp → $rdpStatus | $rdpMsg"
     } catch {
@@ -859,7 +859,7 @@ if ($CHECK_RDP) {
         message = "Deshabilitado (CHECK_RDP = false)"
         payload = @{ disabled = $true; anydesk_id = $anydeskId; anydesk_status = $adStatus; script_version = $SCRIPT_VERSION }
     } | ConvertTo-Json -Depth 3
-    try { Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body $disabledBody | Out-Null } catch {}
+    try { Invoke-RestMethod -Uri $HEARTBEAT_URL -Method POST -Headers $headers -Body ([Text.Encoding]::UTF8.GetBytes($disabledBody)) | Out-Null } catch {}
     Write-Log "⏭️ rdp — omitido (CHECK_RDP = false en config.ps1)"
 }
 

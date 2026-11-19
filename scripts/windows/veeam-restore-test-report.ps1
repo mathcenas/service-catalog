@@ -51,7 +51,7 @@ if (-not $env:SC_VEEAM_RELAUNCHED) {
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.0.2"
+$SCRIPT_VERSION = "1.0.3"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -96,7 +96,7 @@ $details  = "RestoreJob=$($session.Name) Result=$($session.Result) Duration=$([m
 $RESTORE_URL = $INGEST_URL -replace "ingest-backup", "ingest-restore-test"
 
 $headers = @{
-    "Content-Type"    = "application/json"
+    "Content-Type"    = "application/json; charset=utf-8"
     "apikey"          = $ANON_KEY
     "Authorization"   = "Bearer $ANON_KEY"
     "X-Ingest-Secret" = $INGEST_SECRET
@@ -111,7 +111,7 @@ $body = @{
 } | ConvertTo-Json
 
 try {
-    Invoke-RestMethod -Uri $RESTORE_URL -Method POST -Headers $headers -Body $body | Out-Null
+    Invoke-RestMethod -Uri $RESTORE_URL -Method POST -Headers $headers -Body ([Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
     Write-Log "✅ Restore test reported: $result | $details"
 } catch {
     Write-Log "❌ Error reporting restore test: $($_.Exception.Message)"

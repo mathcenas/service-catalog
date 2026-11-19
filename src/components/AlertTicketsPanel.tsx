@@ -9,7 +9,7 @@ import { supabase, Client } from '../lib/supabase';
 type Row = {
   id: string; alert_key: string; kind: string; client_id: string | null; title: string; detail: string | null;
   status: 'open' | 'resolved'; tt_task_id: string | null; tt_error: string | null;
-  opened_at: string; last_seen_at: string; clear_count: number; resolved_at: string | null; resolve_note: string | null;
+  opened_at: string; last_seen_at: string; clear_count: number; resolved_at: string | null; resolve_note: string | null; notes_sent?: number;
 };
 
 const fmt = (iso: string) => new Date(iso).toLocaleString('es-UY', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -76,7 +76,8 @@ export function AlertTicketsPanel({ clients }: { clients: Client[] }) {
             <div key={r.id} className="px-5 py-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-gray-900">{r.title}</p>
-                <p className="text-xs text-gray-500">{clientName(r.client_id)}{r.detail ? ` · ${r.detail}` : ''}</p>
+                <p className="text-xs text-gray-500 whitespace-pre-line">{clientName(r.client_id)}{r.detail ? ` · ${r.detail}` : ''}</p>
+                {!!r.notes_sent && <p className="text-[11px] text-gray-400">{r.notes_sent} {r.notes_sent === 1 ? 'novedad enviada' : 'novedades enviadas'} a la tarea</p>}
                 {r.tt_error && <p className="text-xs text-amber-700 mt-0.5">{r.tt_error}</p>}
               </div>
               <div className="flex flex-wrap items-center gap-1.5 text-xs">

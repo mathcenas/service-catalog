@@ -5,7 +5,7 @@
 # Schedulear (opcional, ej: semanalmente):
 #   schtasks /create /tn "SMB ACL Report" /tr "powershell -File C:\Scripts\report-smb-acl.ps1" /sc weekly /d MON /st 06:00
 # =============================================================
-$SCRIPT_VERSION = "1.0.0"
+$SCRIPT_VERSION = "1.0.1"
 
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
@@ -33,7 +33,7 @@ if (-not $BaseUrl) { $BaseUrl = ($HEARTBEAT_URL -replace '/functions/v1/.*', '')
 $AclIngestUrl = "$BaseUrl/functions/v1/ingest-nas-acl"
 
 $headers = @{
-    "Content-Type"    = "application/json"
+    "Content-Type"    = "application/json; charset=utf-8"
     "apikey"          = $ANON_KEY
     "Authorization"   = "Bearer $ANON_KEY"
     "X-Ingest-Secret" = $INGEST_SECRET
@@ -142,7 +142,7 @@ $payload = @{
 # ---------- Enviar ----------
 Write-Log "Enviando a $AclIngestUrl ..."
 try {
-    $response = Invoke-RestMethod -Uri $AclIngestUrl -Method Post -Headers $headers -Body $payload -ErrorAction Stop
+    $response = Invoke-RestMethod -Uri $AclIngestUrl -Method Post -Headers $headers -Body ([Text.Encoding]::UTF8.GetBytes($payload)) -ErrorAction Stop
     Write-Log "OK: shares=$($response.shares) usuarios=$($response.users)"
     Write-Log "=== fin OK ==="
     Invoke-Kuma -Status "up" -Msg "smb-acl OK | shares=$($response.shares) users=$($response.users)"

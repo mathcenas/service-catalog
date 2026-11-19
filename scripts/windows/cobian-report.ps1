@@ -23,7 +23,7 @@ param(
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.3.2"
+$SCRIPT_VERSION = "1.3.3"
 
 if (-not (Get-Command Invoke-Kuma -ErrorAction SilentlyContinue)) {
     function Invoke-Kuma { param([string]$Status, [string]$Msg) }
@@ -51,7 +51,7 @@ function Write-Log($msg) {
 Get-ChildItem "$LogDir\cobian-report-*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-90) } | Remove-Item -Force
 
 $headers = @{
-    "Content-Type"    = "application/json"
+    "Content-Type"    = "application/json; charset=utf-8"
     "apikey"          = $ANON_KEY
     "Authorization"   = "Bearer $ANON_KEY"
     "X-Ingest-Secret" = $SMB_INGEST_SECRET
@@ -79,7 +79,7 @@ function Send-BackupReport($status, $jobName, $tasks, $totalBytes, $totalSeconds
         script_version   = $SCRIPT_VERSION
     } | ConvertTo-Json -Compress -Depth 5
     try {
-        Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body $body -ErrorAction Stop | Out-Null
+        Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ErrorAction Stop | Out-Null
         Write-Log "  ✅ Reportado: [$status] $jobName ($($tasks.Count) tarea(s))"
     } catch {
         Write-Log "  ❌ ERROR al reportar: $_"
