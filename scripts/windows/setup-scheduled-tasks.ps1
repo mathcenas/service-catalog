@@ -12,7 +12,7 @@
 #Requires -RunAsAdministrator
 
 # Con versión para que update-scripts.ps1 lo actualice (sin versión nunca se bajaba de nuevo)
-$SCRIPT_VERSION = "1.2.1"
+$SCRIPT_VERSION = "1.3.0"
 
 $ScriptsDir = $PSScriptRoot
 
@@ -43,13 +43,27 @@ $SCRIPT_VERSION = $setupVersion
 $KopiaUser = if (Get-Variable 'KOPIA_TASK_USER' -ErrorAction SilentlyContinue) { [string]$KOPIA_TASK_USER } else { '' }
 $KopiaTime = if ((Get-Variable 'KOPIA_REPORT_TIME' -ErrorAction SilentlyContinue) -and $KOPIA_REPORT_TIME) { [string]$KOPIA_REPORT_TIME } else { '19:30' }
 
+# ---------- Qué hay en este equipo ----------
+# Solo se registra lo que aplica: antes se registraban todas las tareas cuyo script estaba en la
+# carpeta (update-scripts baja todos) y en equipos sin Veeam o sin C:\Respaldos reportaban fallas falsas.
+$IsServer   = try { (Get-CimInstance Win32_OperatingSystem).ProductType -ne 1 } catch { $false }
+$HasVeeamBR = [bool](Get-Service -Name 'VeeamBackupSvc' -ErrorAction SilentlyContinue)
+$HasVeeamAg = [bool](Get-Service -Name 'VeeamEndpointBackupSvc' -ErrorAction SilentlyContinue)
+$HasBkpDir  = Test-Path 'C:\Respaldos'   # carpeta que revisa backup-folder-check.ps1
+# system-health.ps1 en todos los equipos: es el que trae SMART, errores de disco y speedtest.
+# (system-health-server.ps1 es otro reporte, de red y sesiones RDP; no lo reemplaza)
+$HealthScript = 'system-health.ps1'
+Write-Host ("Equipo: {0} · Veeam B&R: {1} · Veeam Agent: {2} · C:\Respaldos: {3}" -f ($(if ($IsServer) { 'servidor' } else { 'PC' })), $HasVeeamBR, $HasVeeamAg, $HasBkpDir) -ForegroundColor Cyan
+
 # ---------- Definición de tareas ----------
-# Cada entrada: TaskName, Script, Trigger (objeto), Description
+# Cada entrada: TaskName, Script, Trigger (objeto), Description, Applies (si es $false no se registra
+# y, si existía de antes, se borra)
 $Tasks = @(
 
     @{
         Name        = "ServiceCatalog-SystemHealth"
-        Script      = "system-health.ps1"
+        Script      = $HealthScript
+        Applies     = $true
         Trigger     = New-ScheduledTaskTrigger -RepetitionInterval (New-TimeSpan -Minutes 60) -Once -At (Get-Date)
         Description = "Reporta CPU, RAM, disco, RDP y AnyDesk al Service Catalog. Cada 1 hora."
     }
@@ -57,6 +71,7 @@ $Tasks = @(
     @{
         Name        = "ServiceCatalog-VeeamReport"
         Script      = "veeam-report.ps1"
+        Applies     = $HasVeeamBR
         Trigger     = New-ScheduledTaskTrigger -Daily -At "07:00"
         Description = "Reporta jobs de Veeam completados al Service Catalog. Diario a las 07:00."
     }
@@ -64,6 +79,7 @@ $Tasks = @(
     @{
         Name        = "ServiceCatalog-VeeamAgentReport"
         Script      = "veeam-agent-report.ps1"
+        Applies     = $HasVeeamAg
         Trigger     = New-ScheduledTaskTrigger -Daily -At "07:15"
         Description = "Reporta jobs de Veeam Agent al Service Catalog. Diario a las 07:15."
     }
@@ -71,6 +87,7 @@ $Tasks = @(
     @{
         Name        = "ServiceCatalog-BackupFolderCheck"
         Script      = "backup-folder-check.ps1"
+        Applies     = $HasBkpDir
         Trigger     = New-ScheduledTaskTrigger -Daily -At "07:30"
         Description = "Verifica carpetas de backup locales. Diario a las 07:30."
     }
@@ -78,6 +95,7 @@ $Tasks = @(
     @{
         Name        = "ServiceCatalog-UpdateScripts"
         Script      = "update-scripts.ps1"
+        Applies     = $true
         Trigger     = New-ScheduledTaskTrigger -RepetitionInterval (New-TimeSpan -Hours 48) -Once -At (Get-Date)
         Description = "Auto-actualiza los scripts desde GitHub. Cada 48 horas."
     }
@@ -87,6 +105,16 @@ $Tasks = @(
 # ---------- Registro ----------
 foreach ($t in $Tasks) {
     $scriptPath = Join-Path $ScriptsDir $t.Script
+
+    if (-not $t.Applies) {
+        if (Get-ScheduledTask -TaskName $t.Name -ErrorAction SilentlyContinue) {
+            Unregister-ScheduledTask -TaskName $t.Name -Confirm:$false
+            Write-Host "  BORRADA      $($t.Name) (no aplica en este equipo)" -ForegroundColor DarkYellow
+        } else {
+            Write-Host "  OMITIDA      $($t.Name) (no aplica en este equipo)" -ForegroundColor DarkGray
+        }
+        continue
+    }
 
     if (-not (Test-Path $scriptPath)) {
         Write-Warning "Script no encontrado, se omite: $scriptPath"
@@ -126,6 +154,16 @@ foreach ($t in $Tasks) {
             -Principal   $principal `
             -Description $t.Description | Out-Null
         Write-Host "  REGISTRADA   $($t.Name)" -ForegroundColor Green
+    }
+
+    # Tareas viejas (otro nombre) que corren el mismo script: se deshabilitan para no reportar doble.
+    $same = '(^|[\\/" ])' + [regex]::Escape($t.Script)
+    Get-ScheduledTask | Where-Object {
+        $_.TaskName -ne $t.Name -and $_.State -ne 'Disabled' -and
+        ($_.Actions | Where-Object { "$($_.Execute) $($_.Arguments)" -match $same })
+    } | ForEach-Object {
+        Disable-ScheduledTask -TaskName $_.TaskName -TaskPath $_.TaskPath | Out-Null
+        Write-Host "  DESHABILITADA $($_.TaskName) (también corría $($t.Script))" -ForegroundColor Yellow
     }
 }
 
