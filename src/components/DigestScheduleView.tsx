@@ -9,7 +9,8 @@ import { DigestPreviewModal, DIGEST_LABEL, type DigestVersion } from './DigestPr
 //   - contactos 'weekly'  → resumen semanal, los lunes (UTC)
 //   - contactos 'monthly' → resumen mensual, el primer lunes del mes
 //   - alerta de backups   → si hubo algún backup con advertencia o fallido en las 24 h previas,
-//                           a los contactos que NO tienen resumen diario ni 'none'
+//                           un mail INTERNO a Cenas IT (no a los contactos del cliente: ellos ven
+//                           los backups en su resumen, con la frecuencia que eligieron)
 // Un mail por grupo de frecuencia (todos los contactos del grupo en el mismo mail).
 const RUN_HOUR_UTC = 11;
 const RESEND_DAILY_LIMIT = 100;
@@ -90,14 +91,14 @@ export function DigestScheduleView() {
       if (monthly.length) groups.push({ version: 'monthly', contacts: monthly });
     }
     const problems = problemsByClient[client.id] ?? 0;
-    const alertContacts = mine.filter(c => c.digest_frequency !== 'none' && c.digest_frequency !== 'all');
-    const alert = withAlerts && problems > 0 ? { problems, contacts: alertContacts } : null;
+    // La alerta es interna: no va a contactos del cliente
+    const alert = withAlerts && problems > 0 ? { problems, contacts: [] as Contact[] } : null;
     return { client, groups, alert };
   });
 
   const days = runs.map((run, i) => {
     const plan = planFor(run, i === 0);
-    const mails = plan.reduce((n, p) => n + p.groups.length + (p.alert?.contacts.length ? 1 : 0), 0);
+    const mails = plan.reduce((n, p) => n + p.groups.length + (p.alert ? 1 : 0), 0);
     const recipients = plan.reduce((n, p) => n + p.groups.reduce((m, g) => m + g.contacts.length, 0) + (p.alert?.contacts.length ?? 0), 0);
     return { run, plan, mails, recipients };
   });
@@ -184,7 +185,7 @@ export function DigestScheduleView() {
                             title="Ver cómo le llega">
                             {it.version === 'alert' && <AlertTriangle className="w-3 h-3" />}
                             {DIGEST_LABEL[it.version]}{it.extra ? ` · ${it.extra}` : ''}
-                            {it.version === 'alert' && it.contacts.length === 0 && ' · sin destinatarios'}
+                            {it.version === 'alert' && ' · interna, te llega a vos'}
                           </button>
                         ))}
                       </div>

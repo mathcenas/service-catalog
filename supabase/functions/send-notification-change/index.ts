@@ -131,9 +131,9 @@ Deno.serve(async (req: Request) => {
                 <div style="background:#FEF3C7;border-radius:50%;width:28px;height:28px;text-align:center;line-height:28px;font-size:14px;">📋</div>
               </td>
               <td valign="top">
-                <div style="font-size:13px;font-weight:700;color:${B.primary};margin-bottom:3px;">Resumen diario de alertas</div>
+                <div style="font-size:13px;font-weight:700;color:${B.primary};margin-bottom:3px;">Alertas de backup</div>
                 <div style="font-size:12px;color:${B.textMid};line-height:1.5;">
-                  Si algún backup falló o tuvo advertencias, recibís un único correo a las 8am con el detalle de todos tus servicios. Si todo estuvo bien, no recibís nada.
+                  Si algún backup falló o tuvo advertencias, nos llega el aviso a nosotros y lo resolvemos. Vos lo ves en el portal y en tu resumen, sin mails extra.
                 </div>
               </td>
             </tr>
