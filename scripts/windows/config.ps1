@@ -66,6 +66,8 @@ $CHECKPOINT_MAX_DAYS = 7            # dias para considerar viejo un punto de con
 $CHECKPOINT_IGNORE   = "*_replica,*replica*"   # VMs a ignorar (las replicas usan puntos de control a proposito)
 $CHECK_KOPIA_MAINTENANCE   = $true  # kopia-report: revisar que el mantenimiento del repositorio corra
 $KOPIA_MAINTENANCE_MAX_DAYS = 3      # dias sin mantenimiento completo para avisar
+# $KOPIA_EXE    = "C:\Users\PC\AppData\Local\Programs\KopiaUI\resources\server\kopia.exe"  # si la tarea corre con otro usuario
+# $KOPIA_CONFIG = "C:\Users\PC\AppData\Roaming\kopia\repository.config"
 
 function Invoke-Kuma {
     param([string]$Status, [string]$Msg, [string]$Url = "")
