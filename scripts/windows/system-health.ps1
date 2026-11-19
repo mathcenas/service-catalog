@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.12.0"
+$SCRIPT_VERSION = "1.14.0"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -217,6 +217,131 @@ try {
     }
 } catch {}
 
+# ---------- Errores de disco en el Visor de eventos ----------
+# Discos detrás de una controladora RAID (Intel RST / iaStor, PERC, etc.) aparecen como un solo
+# disco "Healthy" para Get-PhysicalDisk, aunque un disco físico esté fallando. Windows sí lo
+# registra en el log System: se cuentan esos eventos de las últimas $DISK_EVENT_HOURS horas.
+$CHECK_DISK_EVENTS = if (Get-Variable 'CHECK_DISK_EVENTS' -ErrorAction SilentlyContinue) { $CHECK_DISK_EVENTS } else { $true }
+$DISK_EVENT_HOURS = if (Get-Variable 'DISK_EVENT_HOURS' -ErrorAction SilentlyContinue) { [int]$DISK_EVENT_HOURS } else { 24 }
+$diskEvents = @()
+$diskEventIssues = @()
+if ($CHECK_DISK_EVENTS) { try {
+    $evSince = (Get-Date).AddHours(-$DISK_EVENT_HOURS)
+    # Proveedor → IDs graves (falla) y leves (aviso). Las controladoras RAID: cualquier error.
+    $evRules = @(
+        @{ p = 'disk';                   bad = @(7, 154);        warn = @(11, 51, 153) },
+        @{ p = 'Microsoft-Windows-Ntfs'; bad = @(55, 140, 137);  warn = @(98) },
+        @{ p = 'Ntfs';                   bad = @(55, 140, 137);  warn = @(98) }
+    )
+    foreach ($ctl in 'iaStorVD', 'iaStorAC', 'iaStorA', 'iaStorAVC', 'iaStorV', 'megasas', 'megasas2i', 'percsas2i', 'percsas3i', 'arcsas', 'HpCISSs3', 'SmartPqi') {
+        $evRules += @{ p = $ctl; bad = 'error'; warn = @() }
+    }
+    foreach ($rule in $evRules) {
+        $evs = $null
+        try {
+            $evs = Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = $rule.p; Level = 1, 2, 3; StartTime = $evSince } -MaxEvents 5000 -ErrorAction Stop
+        } catch { continue }   # proveedor inexistente o sin eventos
+        foreach ($g in ($evs | Group-Object Id)) {
+            $id = [int]$g.Name
+            $first = $g.Group | Select-Object -Last 1
+            $last  = $g.Group | Select-Object -First 1
+            if ($rule.bad -eq 'error') { $sev = if ($last.Level -le 2) { 'error' } else { $null } }
+            elseif ($id -in $rule.bad)  { $sev = 'error' }
+            elseif ($id -in $rule.warn) { $sev = 'warning' }
+            else { $sev = $null }
+            if (-not $sev) { continue }
+            $msg = [string]$last.Message
+            $vol    = if ($msg -match 'Volum(?:e|en)Id:\s*([^;\s]+)') { $Matches[1] } else { $null }
+            $serial = if ($msg -match '(?:serie del dispositivo|Device Serial Number):\s*(\S+)') { $Matches[1] }
+                      elseif ($msg -match 'disk\s*:\s*(\S+)') { $Matches[1] } else { $null }
+            $diskNo = if ($msg -match '(?:disco|disk)\s+(\d+)\b') { $Matches[1] } else { $null }
+            $model  = if ($msg -match '(?:Modelo de dispositivo|Device Model):\s*(.+)') { $Matches[1].Trim() } else { $null }
+            $diskEvents += @{
+                source = $rule.p; id = $id; severity = $sev; count = $g.Count
+                first  = $first.TimeCreated.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                last   = $last.TimeCreated.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                volume = $vol; serial = $serial; disk = $diskNo; model = $model
+                sample = ($msg -split "`r?`n")[0].Trim()
+            }
+        }
+    }
+    foreach ($e in $diskEvents) {
+        $what = switch -Regex ($e.source) {
+            '^disk$' { if ($e.id -in 7, 154) { "error de hardware" } elseif ($e.id -eq 153) { "reintentos de lectura/escritura" } else { "errores de E/S" } }
+            'Ntfs'   { "NTFS no pudo escribir" }
+            default  { "controladora RAID ($($e.source))" }
+        }
+        $where = @()
+        if ($e.disk)   { $where += "disco $($e.disk)" }
+        if ($e.volume) { $where += $e.volume }
+        if ($e.model)  { $where += $e.model }
+        if ($e.serial) { $where += "serie $($e.serial)" }
+        $diskEventIssues += "Visor de eventos: $($e.count)× $what$(if ($where) { ' (' + ($where -join ', ') + ')' })"
+        if ($e.severity -eq 'error') { $hwStatus = 'failed' }
+        elseif ($hwStatus -eq 'success') { $hwStatus = 'warning' }
+    }
+    if ($diskEvents.Count) { Write-Log "⚠️ Errores de disco en el Visor de eventos: $($diskEventIssues -join ' · ')" }
+} catch {
+    Write-Log "⚠️ Visor de eventos (discos): $($_.Exception.Message)"
+} }
+
+# ---------- Discos que Windows no puede usar ----------
+# Un disco sin inicializar (RAW), desconectado (Offline) o que la controladora ve pero Windows
+# no lista (se cayó) suele ser un disco que falló o que salió de un RAID.
+$CHECK_DISK_INIT = if (Get-Variable 'CHECK_DISK_INIT' -ErrorAction SilentlyContinue) { $CHECK_DISK_INIT } else { $true }
+$diskInitIssues = @()
+if ($CHECK_DISK_INIT) {
+    try {
+        $wDisks = @(Get-Disk -ErrorAction Stop)
+        foreach ($d in $wDisks) {
+            $label = "Disco $($d.Number) $([string]$d.FriendlyName)$(if ($d.SerialNumber) { ' (serie ' + ([string]$d.SerialNumber).Trim() + ')' })"
+            if ($d.PartitionStyle -eq 'RAW')        { $diskInitIssues += "${label}: sin inicializar" }
+            elseif ($d.OperationalStatus -ne 'Online') { $diskInitIssues += "${label}: $($d.OperationalStatus)" }
+        }
+        $known = @($wDisks | ForEach-Object { [string]$_.Number })
+        # Los discos de un grupo de Espacios de almacenamiento no aparecen en Get-Disk: no son una falla
+        $pooled = @(Get-StoragePool -IsPrimordial $false -ErrorAction SilentlyContinue | Get-PhysicalDisk -ErrorAction SilentlyContinue | ForEach-Object { [string]$_.UniqueId })
+        foreach ($pd in @(Get-PhysicalDisk -ErrorAction SilentlyContinue)) {
+            if ($pd.DeviceId -ne $null -and ([string]$pd.DeviceId) -notin $known -and ([string]$pd.UniqueId) -notin $pooled) {
+                $diskInitIssues += "Disco $($pd.DeviceId) $([string]$pd.FriendlyName) (serie $(([string]$pd.SerialNumber).Trim())): la controladora lo ve pero Windows no"
+            }
+        }
+        if ($diskInitIssues.Count -and $hwStatus -eq 'success') { $hwStatus = 'warning' }
+    } catch { Write-Log "⚠️ Discos: $($_.Exception.Message)" }
+}
+
+# ---------- Puntos de control viejos de Hyper-V ----------
+# Una VM con un punto de control abierto escribe todo en un .avhdx que crece sin límite y
+# puede llenar el disco del host (Hyper-V pausa la VM). Las réplicas (Veeam / Hyper-V Replica)
+# usan puntos de control a propósito: se ignoran por nombre con $CHECKPOINT_IGNORE.
+$CHECK_HYPERV_CHECKPOINTS = if (Get-Variable 'CHECK_HYPERV_CHECKPOINTS' -ErrorAction SilentlyContinue) { $CHECK_HYPERV_CHECKPOINTS } else { $true }
+$CHECKPOINT_MAX_DAYS = if (Get-Variable 'CHECKPOINT_MAX_DAYS' -ErrorAction SilentlyContinue) { [int]$CHECKPOINT_MAX_DAYS } else { 7 }
+$CHECKPOINT_IGNORE   = if (Get-Variable 'CHECKPOINT_IGNORE' -ErrorAction SilentlyContinue) { [string]$CHECKPOINT_IGNORE } else { '*_replica,*replica*' }
+$hvCheckpoints = @()
+$hvIssues = @()
+if ($CHECK_HYPERV_CHECKPOINTS -and (Get-Command Get-VMSnapshot -ErrorAction SilentlyContinue)) {
+    try {
+        $cpIgnore = @($CHECKPOINT_IGNORE -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        $cpLimit = (Get-Date).AddDays(-$CHECKPOINT_MAX_DAYS)
+        foreach ($vm in @(Get-VM -ErrorAction Stop)) {
+            if (@($cpIgnore | Where-Object { $vm.Name -like $_ }).Count) { continue }
+            $snaps = @(Get-VMSnapshot -VMName $vm.Name -ErrorAction SilentlyContinue | Where-Object { $_.SnapshotType -ne 'Replica' -and $_.CreationTime -lt $cpLimit })
+            if (-not $snaps.Count) { continue }
+            $oldest = ($snaps | Sort-Object CreationTime | Select-Object -First 1).CreationTime
+            $avhdxGB = 0
+            foreach ($dir in @(Get-VMHardDiskDrive -VMName $vm.Name -ErrorAction SilentlyContinue | ForEach-Object { Split-Path $_.Path -Parent } | Sort-Object -Unique)) {
+                $avhdxGB += (Get-ChildItem $dir -Filter *.avhdx -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum / 1GB
+            }
+            $avhdxGB = [math]::Round($avhdxGB, 1)
+            $days = [int]((Get-Date) - $oldest).TotalDays
+            $hvCheckpoints += @{ vm = $vm.Name; count = $snaps.Count; oldest = $oldest.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'"); days = $days; avhdx_gb = $avhdxGB }
+            $hvIssues += "VM $($vm.Name): $($snaps.Count) punto(s) de control, el más viejo de hace $days días$(if ($avhdxGB) { " ($avhdxGB GB en .avhdx)" })"
+        }
+        if ($hvIssues.Count -and $hwStatus -eq 'success') { $hwStatus = 'warning' }
+    } catch { Write-Log "⚠️ Hyper-V: $($_.Exception.Message)" }
+}
+
+
 # ---------- Actualizaciones del SO (solo lectura, no instala nada) ----------
 # La consulta a Windows Update es lenta: se hace 1 vez por día y el resultado queda en cache.
 function ConvertTo-UtcDate($v) {
@@ -346,6 +471,9 @@ foreach ($d in $diskSmartList) {
 foreach ($r in $raidList) {
     if ($r.status -ne 'ok') { $issueList += "Volumen $($r.name): $($r.health)" }
 }
+$issueList += $diskEventIssues
+$issueList += $diskInitIssues
+$issueList += $hvIssues
 # ---------- Tailscale: sesión y vencimiento de claves ----------
 # Avisa si la sesión de este equipo venció o si la clave de este equipo o de otro del túnel
 # vence en 7 días o menos (o ya venció). $TAILSCALE_IGNORE (config.ps1): nombres a ignorar,
@@ -447,6 +575,8 @@ $hwData = @{
         server_roles   = $serverRoles
         disk_smart     = $diskSmartList
         disk_raid      = $raidList
+        disk_events    = $diskEvents
+        hyperv_checkpoints = $hvCheckpoints
         public_ip      = $publicIp
         local_ip       = $localIp
         is_server      = $false
