@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.14.2"
+$SCRIPT_VERSION = "1.14.3"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -217,6 +217,51 @@ try {
     }
 } catch {}
 
+# ---------- Espejos de Windows (discos dinámicos, Administración de discos) ----------
+# Un espejo armado desde Administración de discos (discos dinámicos) no es un "Espacio de
+# almacenamiento": Get-StoragePool / Get-VirtualDisk no lo ven. Se lee con diskpart (list volume).
+# Funciona con Windows en inglés y en español. $CHECK_DYNAMIC_RAID = $false en config.ps1 para omitirlo.
+$CHECK_DYNAMIC_RAID = if (Get-Variable 'CHECK_DYNAMIC_RAID' -ErrorAction SilentlyContinue) { $CHECK_DYNAMIC_RAID } else { $true }
+$dynamicRaidRaw = @()
+if ($CHECK_DYNAMIC_RAID) {
+    try {
+        $dpScript = Join-Path $env:TEMP "sc-diskpart-list.txt"
+        "list volume" | Set-Content -Path $dpScript -Encoding ASCII
+        # diskpart puede tardar o colgarse con un disco que falla: se corre aparte con tiempo máximo
+        $dpJob = Start-Job -ScriptBlock { param($f) & diskpart.exe /s $f 2>&1 } -ArgumentList $dpScript
+        $dpOut = if (Wait-Job $dpJob -Timeout 60) { @(Receive-Job $dpJob) } else { Stop-Job $dpJob; Write-Log "⚠️ diskpart no respondió en 60 s"; @() }
+        Remove-Job $dpJob -Force -ErrorAction SilentlyContinue
+        Remove-Item $dpScript -Force -ErrorAction SilentlyContinue
+        foreach ($line in $dpOut) {
+            $l = [string]$line
+            if ($l -notmatch '^\s*(Volume|Volumen)\s+\d+\s') { continue }
+            # Tipo: Mirror / RAID-5 (inglés) · Reflejado / Espejo / RAID-5 (español)
+            if ($l -notmatch '(?i)\b(Mirror|Reflej\w*|Espejo|RAID-5)\b') { continue }
+            $vType = $Matches[1]
+            $rest  = ($l -replace '^\s*(Volume|Volumen)\s+\d+\s+', '')
+            $ltr   = if ($rest -match '^([A-Za-z])\s{2,}') { $Matches[1].ToUpper() + ':' } else { '' }
+            $okRx  = '(?i)\b(Healthy|Correcto|En buen estado)\b'
+            $badRx = '(?i)(Failed Rd|Failed|At Risk|Rebuild|Resynching|Regenerating|Error de redundancia|Error|En riesgo|Regenerando|Resincronizando|Sincronizando)'
+            $vStatus = if ($rest -match $badRx) { $Matches[1] } elseif ($rest -match $okRx) { $Matches[1] } else { 'desconocido' }
+            $isOk  = $rest -match $okRx -and $rest -notmatch $badRx
+            $isResync = $vStatus -match '(?i)Rebuild|Resynch|Regener|Resincron|Sincron'
+            $rStatus = if ($isOk) { 'ok' } elseif ($isResync) { 'warning' } else { 'error' }
+            if ($rStatus -ne 'ok' -and $hwStatus -eq 'success') { $hwStatus = 'warning' }
+            if ($rStatus -eq 'error') { $hwStatus = 'failed' }
+            $raidList += @{
+                pool        = 'Windows (discos dinámicos)'
+                name        = $(if ($ltr) { "$ltr (espejo de Windows)" } else { 'Volumen espejado de Windows' })
+                resiliency  = $(if ($vType -match '(?i)RAID-5') { 'Parity' } else { 'Mirror' })
+                health      = $vStatus
+                operational = $vStatus
+                status      = $rStatus
+            }
+            $dynamicRaidRaw += $l.Trim()
+        }
+        if ($dynamicRaidRaw.Count) { Write-Log "Espejos de Windows: $($dynamicRaidRaw -join ' | ')" }
+    } catch { Write-Log "⚠️ Espejos de Windows (diskpart): $($_.Exception.Message)" }
+}
+
 # ---------- Errores de disco en el Visor de eventos ----------
 # Discos detrás de una controladora RAID (Intel RST / iaStor, PERC, etc.) aparecen como un solo
 # disco "Healthy" para Get-PhysicalDisk, aunque un disco físico esté fallando. Windows sí lo
@@ -232,6 +277,10 @@ if ($CHECK_DISK_EVENTS) { try {
         @{ p = 'disk';                   bad = @(7, 154);        warn = @(11, 51, 153) },
         @{ p = 'Microsoft-Windows-Ntfs'; bad = @(55, 140, 137);  warn = @(98) },
         @{ p = 'Ntfs';                   bad = @(55, 140, 137);  warn = @(98) }
+    )
+    # Discos dinámicos (espejos de Windows): dmio avisa cuando un espejo pierde redundancia
+    $evRules += @(
+        @{ p = 'dmio'; bad = 'error'; warn = @() }
     )
     foreach ($ctl in 'iaStorVD', 'iaStorAC', 'iaStorA', 'iaStorAVC', 'iaStorV', 'megasas', 'megasas2i', 'percsas2i', 'percsas3i', 'arcsas', 'HpCISSs3', 'SmartPqi') {
         $evRules += @{ p = $ctl; bad = 'error'; warn = @() }
@@ -269,6 +318,7 @@ if ($CHECK_DISK_EVENTS) { try {
         $what = switch -Regex ($e.source) {
             '^disk$' { if ($e.id -in 7, 154) { "error de hardware" } elseif ($e.id -eq 153) { "reintentos de lectura/escritura" } else { "errores de E/S" } }
             'Ntfs'   { "NTFS no pudo escribir" }
+            '^dmio$' { "espejo de Windows (discos dinámicos) con errores" }
             default  { "controladora RAID ($($e.source))" }
         }
         $where = @()
