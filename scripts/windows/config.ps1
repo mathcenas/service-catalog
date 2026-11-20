@@ -2,7 +2,7 @@
 # config.ps1 - Configuracion por cliente/servidor
 # Copiar este archivo por cada cliente y ajustar los valores
 # =============================================================
-$SCRIPT_VERSION = "1.6.3"
+$SCRIPT_VERSION = "1.6.4"
 
 $INGEST_URL    = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-backup"
 $HEARTBEAT_URL = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-heartbeat"
@@ -61,6 +61,7 @@ $CHECK_OS_UPDATES = $true  # actualizaciones pendientes de Windows (solo lectura
 $CHECK_DISK_EVENTS = $true  # errores de disco en el Visor de eventos (detecta discos detras de RAID)
 $DISK_EVENT_HOURS  = 24     # horas hacia atras que se revisan
 $CHECK_DISK_INIT   = $true  # discos sin inicializar o desconectados
+$CHECK_DYNAMIC_RAID = $true  # espejos armados en Administracion de discos (discos dinamicos), leidos con diskpart
 $CHECK_HYPERV_CHECKPOINTS = $true   # puntos de control viejos de Hyper-V (se omite si no hay Hyper-V)
 $CHECKPOINT_MAX_DAYS = 7            # dias para considerar viejo un punto de control
 $CHECKPOINT_IGNORE   = "*_replica,*replica*"   # VMs a ignorar (las replicas usan puntos de control a proposito)
