@@ -6,6 +6,7 @@ Scripts que se ejecutan **en el router** (Terminal de Winbox o SSH) y lo que cor
 |---------|-------------|---------|
 | `setup.rsc` | Router (una vez) | Usuario `monitor` de solo lectura (REST) + syslog de seguridad hacia el VPS |
 | `net-topology-report.rsc` | Router (scheduler, cada 1 h) | Manda el router y sus vecinos (LLDP/CDP/MNDP) a la topología del portal |
+| `mk-network-report.rsc` | Router (scheduler, cada 1 h) | Redes LAN/WAN, IP pública, DDNS, túneles WireGuard e IPsec; ticket si un túnel se cae |
 | `scripts/linux/mk-monitor.sh` | VPS (cron, cada 5 min) | Recursos, ping a un equipo interno, sesiones REST; alerta por cambios |
 | `scripts/linux/mk-syslog.sh` | VPS (servicio systemd) | Recibe el syslog del router: logins fallidos y desde IPs desconocidas |
 | `scripts/linux/mk-wifi-report.sh` | VPS (cron, cada 1 h) | Dispositivos Wi-Fi al reporte del portal (ver abajo) |
@@ -52,6 +53,33 @@ Requiere RouterOS 7 y salida a internet desde el router. Que los switches y APs 
 - El mapa muestra solo la **infraestructura** (routers, switches, APs) y los enlaces con el puerto en cada punta. Teléfonos y PCs quedan en **"Descubiertos"**, donde podés mostrarlos u ocultar cualquier equipo.
 - Si un equipo descubierto es un **servicio que cargaste a mano** (misma MAC o misma IP), el servicio lo "absorbe": se ve un solo nodo, el del servicio, y el servicio completa la MAC y el modelo si no los tenía. También se puede vincular a mano desde "Descubiertos".
 - El estado del router sale del heartbeat que manda `mk-monitor.sh` (v1.1.0) cada 5 minutos, y si el servicio tiene página de Uptime Kuma, un monitor caído en Kuma lo marca en rojo.
+
+## 3. `mk-network-report.rsc` — redes y VPN del router
+
+Lo manda **el router** directo al portal (no necesita el VPS ni el usuario `monitor`), así que sirve también para routers que el VPS no alcanza. Requiere **RouterOS 7.13+**.
+
+Qué reporta (heartbeat `mk-network` del servicio del router):
+- **Redes**: cada IP del router separada en LAN y WAN (PPPoE, DHCP client o IP pública), la **IP pública** y el nombre **DDNS** de IP Cloud.
+- **WireGuard**: interfaces y peers (nombre, endpoint, redes permitidas, último handshake, tráfico). Solo claves **públicas**: las privadas nunca salen del router.
+- **IPsec**: peers (establecido o no) y policies con su `ph2-state`.
+
+El portal actualiza solo la IP pública, la IP LAN, el modelo, la versión de RouterOS, el DDNS y las redes LAN del servicio.
+
+**Alertas**: si un túnel está caído el reporte sale en `failed` y se abre un ticket "Problema en el equipo" con el detalle (se cierra solo con dos reportes limpios). Se vigilan:
+- peers WireGuard con `endpoint-address` (el sitio remoto que llama al centro): caído si pasan más de 5 min sin handshake;
+- del lado del centro, solo los peers con **`[monitor]` en el comentario** (los peers de notebooks o celulares no deberían alertar);
+- policies IPsec habilitadas que no están en `established`.
+
+**En el mapa** (Infraestructura → Topología): cada túnel vigilado se dibuja como enlace "VPN / Túnel" (violeta, rojo si está caído). Si el otro extremo es otro router del mismo mapa se unen los dos (por nombre DDNS, IP pública o redes LAN); si es de otro sitio u otro cliente aparece un nodo "Otro extremo de la VPN".
+
+**En el portal del cliente**: un servicio de tipo **VPN** con `specifications.vpn = {"protocol":"WireGuard","peer":"<nombre del peer>","sites":"A ↔ B","access":"Escritorio remoto a 10.10.10.1"}` muestra el estado del túnel ("conectado · último contacto hace…") tomado del reporte del router del mismo cliente que tiene ese peer.
+
+Instalación:
+1. El router tiene que estar cargado como servicio (tipo Router / Firewall) con **telemetría activada**. Copiá su `id` y su ingest secret.
+2. Editá las variables del principio: `serviceId`, `ingestSecret`, `supabaseUrl`, `supabaseAnon`.
+3. **System → Scripts → Add**: nombre `mk-network-report`, pegar el contenido.
+4. **System → Scheduler → Add**: intervalo `1h`, On Event: `/system/script/run mk-network-report`.
+5. Probá: `/system/script/run mk-network-report` y `/log print where message~"mk-network"`.
 
 ## Reporte de dispositivos Wi-Fi
 

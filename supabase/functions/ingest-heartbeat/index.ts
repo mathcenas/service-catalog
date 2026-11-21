@@ -125,6 +125,46 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // source = "mk-network" (scripts/mikrotik/mk-network-report.rsc): IP pública, LAN y datos
+    // del router quedan en el servicio. Sin claves: el script solo manda claves públicas.
+    if (source === "mk-network" && payload && typeof payload === "object") {
+      try {
+        const svcUpdate: Record<string, unknown> = {};
+        const pub = typeof payload.public_ip === "string" ? payload.public_ip.trim() : "";
+        if (pub && pub !== service.ip_public) svcUpdate.ip_public = pub;
+        const lans = Array.isArray(payload.lans) ? payload.lans : [];
+        const firstLan = lans.find((l: any) => typeof l?.address === "string");
+        const lanIp = firstLan ? String(firstLan.address).split("/")[0] : "";
+        if (lanIp && lanIp !== service.ip_internal) svcUpdate.ip_internal = lanIp;
+
+        const specsUpdate: Record<string, unknown> = {};
+        if (typeof payload.board === "string" && payload.board) specsUpdate.model = payload.board;
+        if (typeof payload.routeros_version === "string" && payload.routeros_version) specsUpdate.routeros_version = payload.routeros_version;
+        if (typeof payload.identity === "string" && payload.identity) specsUpdate.hostname = payload.identity;
+        if (typeof payload.ddns_name === "string" && payload.ddns_name) specsUpdate.ddns_name = payload.ddns_name;
+        const nets = lans.map((l: any) => l?.network).filter((n: unknown) => typeof n === "string");
+        if (nets.length) specsUpdate.lan_networks = nets;
+        const wg = Array.isArray(payload.wireguard) ? payload.wireguard : [];
+        if (wg.length) {
+          specsUpdate.wireguard = wg.map((w: any) => ({
+            name: w?.name, address: w?.address, listen_port: w?.listen_port,
+            peers: (Array.isArray(w?.peers) ? w.peers : []).map((p: any) => ({
+              name: p?.name || p?.comment || "", endpoint: p?.endpoint || "", allowed_address: p?.allowed_address || "",
+            })),
+          }));
+        }
+        if (Object.keys(specsUpdate).length) {
+          const existingSpecs = (service.specifications && typeof service.specifications === "object") ? service.specifications as Record<string, unknown> : {};
+          svcUpdate.specifications = { ...existingSpecs, ...specsUpdate };
+        }
+        if (Object.keys(svcUpdate).length) {
+          await supabaseAdmin.from("services").update(svcUpdate).eq("id", service_id);
+        }
+      } catch (e) {
+        console.error("mk-network: no se pudo actualizar el servicio", e);
+      }
+    }
+
     // source = "rdp" — persistir anydesk_id en specifications
     if (source === "rdp" && payload) {
       // Solo IDs válidos (numérico o alias nombre@ad). Scripts < 1.9.3 mandaban "a" por un bug.

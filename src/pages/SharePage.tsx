@@ -90,6 +90,8 @@ export function SharePage({ token }: Props) {
   const [systemHeartbeats, setSystemHeartbeats] = useState<ServiceHeartbeat[]>([]);
   // Heartbeats "tailscale" de kopia-report: a qué IP de la VPN manda el backup y si responde
   const [vpnHeartbeats, setVpnHeartbeats] = useState<ServiceHeartbeat[]>([]);
+  // Reporte de red de los routers MikroTik (mk-network-report.rsc): estado de los túneles VPN
+  const [netHeartbeats, setNetHeartbeats] = useState<ServiceHeartbeat[]>([]);
   // cpu-watch.ps1: resumen diario de los picos de CPU en horario laboral (evidencia antes/después de un cambio)
   const [cpuWatch, setCpuWatch] = useState<ServiceHeartbeat[]>([]);
   const [clientApps, setClientApps] = useState<ClientApp[]>([]);
@@ -196,6 +198,10 @@ export function SharePage({ token }: Props) {
           .in('service_id', serviceIds).eq('source', 'cpu-watch')
           .gte('received_at', new Date(Date.now() - 21 * 86_400_000).toISOString()).order('received_at', { ascending: true });
         setCpuWatch((cpuData || []) as ServiceHeartbeat[]);
+        const { data: netData } = await supabase.from('service_heartbeats').select('id,service_id,status,payload,received_at')
+          .in('service_id', serviceIds).eq('source', 'mk-network')
+          .gte('received_at', new Date(Date.now() - 6 * 3_600_000).toISOString()).order('received_at', { ascending: false }).limit(50);
+        setNetHeartbeats((netData || []) as ServiceHeartbeat[]);
       }
 
       const { data: appsData } = await supabase
@@ -234,6 +240,10 @@ export function SharePage({ token }: Props) {
         setVpnHeartbeats(sysHbData.filter(h => h.source === 'tailscale'));
       }
       if (backupsData) setBackups(backupsData);
+      const { data: netData } = await supabase.from('service_heartbeats').select('id,service_id,status,payload,received_at')
+        .in('service_id', serviceIds).eq('source', 'mk-network')
+        .gte('received_at', new Date(Date.now() - 6 * 3_600_000).toISOString()).order('received_at', { ascending: false }).limit(50);
+      if (netData) setNetHeartbeats(netData as ServiceHeartbeat[]);
     };
     const interval = setInterval(refreshLive, 5 * 60 * 1000);
     return () => clearInterval(interval);
@@ -369,7 +379,7 @@ export function SharePage({ token }: Props) {
 
         <main className="max-w-5xl mx-auto px-4 py-6">
           {section === 'overview' && <OverviewSection services={activeServices} roadmap={roadmap} changes={changes} getTypeName={getTypeName} backups={backups} uptimeEvents={uptimeEvents} supportHours={supportHours} systemHeartbeats={systemHeartbeats} vpnHeartbeats={vpnHeartbeats} cpuWatch={cpuWatch} clientApps={clientApps} licenses={licenses} riskFlags={client?.risk_flags ?? []} incidents={incidents} />}
-          {section === 'services' && <ServiceCatalog services={services} projects={projects} getTypeName={getTypeName} getProjectName={getProjectName} expandedService={expandedService} setExpandedService={setExpandedService} heartbeats={heartbeats} backups={backups} systemHeartbeats={systemHeartbeats} />}
+          {section === 'services' && <ServiceCatalog services={services} projects={projects} getTypeName={getTypeName} getProjectName={getProjectName} expandedService={expandedService} setExpandedService={setExpandedService} heartbeats={heartbeats} backups={backups} systemHeartbeats={systemHeartbeats} netHeartbeats={netHeartbeats} />}
           {section === 'licenses' && <LicensesSection licenses={licenses} services={services} />}
           {section === ('tickets' as Section) && <TicketsSection items={roadmap.filter(r => r.category === 'problem' || r.category === 'change_request')} updates={roadmapUpdates} />}
           {section === 'hours' && <SupportHoursSection hours={supportHours} roadmapItems={roadmap} services={services} />}
@@ -1225,9 +1235,9 @@ function CostSummary({ services }: { services: Service[] }) {
   );
 }
 
-function ServiceCatalog({ services, projects, getTypeName, getProjectName, expandedService, setExpandedService, heartbeats, backups, systemHeartbeats }: {
+function ServiceCatalog({ services, projects, getTypeName, getProjectName, expandedService, setExpandedService, heartbeats, backups, systemHeartbeats, netHeartbeats }: {
   services: Service[]; projects: Project[]; getTypeName: (id: string) => string; getProjectName: (id?: string) => string | null;
-  expandedService: string | null; setExpandedService: (id: string | null) => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; systemHeartbeats: ServiceHeartbeat[];
+  expandedService: string | null; setExpandedService: (id: string | null) => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; systemHeartbeats: ServiceHeartbeat[]; netHeartbeats: ServiceHeartbeat[];
 }) {
   // latest db-check heartbeat per service
   const latestDbCheck: Record<string, ServiceHeartbeat> = {};
@@ -1262,6 +1272,7 @@ function ServiceCatalog({ services, projects, getTypeName, getProjectName, expan
       backups={backups.filter(b => b.service_id === s.id)}
       latestHealth={systemHeartbeats.find(h => h.service_id === s.id && h.source !== 'db-check' && h.source !== 'backup-folder') ?? null}
       latestDbCheck={latestDbCheck[s.id] ?? null}
+      netHeartbeats={netHeartbeats}
       showCosts={showCosts} />
   ));
 
@@ -1606,8 +1617,43 @@ function HealthDot({ hb }: { hb: ServiceHeartbeat | null }) {
   );
 }
 
-function ServiceCard({ service, typeName, projectName, expanded, onToggle, heartbeats, backups, latestHealth, latestDbCheck, showCosts }: {
-  service: Service; typeName: string; projectName: string | null; expanded: boolean; onToggle: () => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; latestHealth: ServiceHeartbeat | null; latestDbCheck: ServiceHeartbeat | null; showCosts: boolean;
+// VPN anotada como servicio (specifications.vpn): el estado sale del reporte de red del router
+// que tiene ese peer de WireGuard (mk-network-report.rsc).
+type VpnSpec = { protocol?: string; peer?: string; access?: string; sites?: string };
+type WgPeerReport = { name?: string; comment?: string; disabled?: boolean; last_handshake_s?: number };
+
+function VpnTunnelStatus({ vpn, net }: { vpn: VpnSpec; net: ServiceHeartbeat[] }) {
+  // El reporte más nuevo que trae ese peer
+  let found: { peer: WgPeerReport; at: string } | null = null;
+  for (const hb of net) {
+    const wgs = ((hb.payload as Record<string, unknown> | null)?.wireguard ?? []) as { peers?: WgPeerReport[] }[];
+    const peer = wgs.flatMap(w => w.peers ?? []).find(p => !p.disabled && vpn.peer && (p.name === vpn.peer || (p.comment ?? '').toLowerCase().startsWith(vpn.peer.toLowerCase())));
+    if (peer) { found = { peer, at: hb.received_at }; break; }
+  }
+  const hs = found?.peer.last_handshake_s ?? -1;
+  const up = found && hs >= 0 && hs <= 300;
+  const ago = (sec: number) => sec < 120 ? `${sec} s` : sec < 7200 ? `${Math.round(sec / 60)} min` : `${Math.round(sec / 3600)} h`;
+  const color = !found ? 'bg-gray-300 dark:bg-gray-600' : up ? 'bg-emerald-500' : 'bg-red-500';
+  const text = !found ? 'Monitoreo del túnel en preparación'
+    : up ? `Túnel conectado · último contacto hace ${ago(hs)}`
+    : hs < 0 ? 'Túnel sin conexión' : `Túnel sin conexión hace ${ago(hs)}`;
+  return (
+    <div className="mt-3 space-y-1">
+      <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+        <span className={`w-2 h-2 rounded-full shrink-0 ${color}`} />
+        <span>{text}</span>
+        {found && <span className="text-gray-400">(revisado {formatTimeAgo(found.at)})</span>}
+      </div>
+      {(vpn.protocol || vpn.sites) && (
+        <div className="text-xs text-gray-500 dark:text-gray-400">{[vpn.protocol, vpn.sites].filter(Boolean).join(' · ')}</div>
+      )}
+      {vpn.access && <div className="text-xs text-gray-500 dark:text-gray-400">Acceso: <span className="font-mono text-gray-700 dark:text-gray-300">{vpn.access}</span></div>}
+    </div>
+  );
+}
+
+function ServiceCard({ service, typeName, projectName, expanded, onToggle, heartbeats, backups, latestHealth, latestDbCheck, netHeartbeats, showCosts }: {
+  service: Service; typeName: string; projectName: string | null; expanded: boolean; onToggle: () => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; latestHealth: ServiceHeartbeat | null; latestDbCheck: ServiceHeartbeat | null; netHeartbeats: ServiceHeartbeat[]; showCosts: boolean;
 }) {
   const title = service.business_name || service.name;
   const desc = service.business_description || service.description;
@@ -1694,6 +1740,8 @@ function ServiceCard({ service, typeName, projectName, expanded, onToggle, heart
             )}
           </div>
         ) : null}
+
+        {service.specifications?.vpn && <VpnTunnelStatus vpn={service.specifications.vpn as VpnSpec} net={netHeartbeats} />}
 
         {service.last_backup_at && (
           <div className="flex items-center gap-2 mt-3">

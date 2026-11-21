@@ -34,8 +34,10 @@ const TT_BASE = Deno.env.get("TASK_TRACKER_URL");
 const fmtUY = (iso: string) => new Date(iso).toLocaleString("es-UY", { timeZone: "America/Montevideo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 const hoursSince = (iso: string) => (Date.now() - new Date(iso).getTime()) / 3_600_000;
 // "RAM alta (92.4%) · Visor de eventos: 2487× error…" → lista de problemas
-const splitIssues = (s: string | null | undefined) =>
-  String(s ?? "").split(/\s+[·\uFFFD]\s+/).map(t => t.trim()).filter(t => t && t !== "Normal");
+// (el reporte de red de los MikroTik ya manda una lista)
+const splitIssues = (s: string | string[] | null | undefined) =>
+  (Array.isArray(s) ? s.map(String) : String(s ?? "").split(/\s+[·\uFFFD]\s+/))
+    .map(t => t.trim()).filter(t => t && t !== "Normal");
 // Firma sin números: que un contador suba (2483 → 2487 errores) no es una novedad
 const issueSig = (list: string[]) => list.map(t => t.replace(/[\d.,]+/g, "#")).sort().join(" | ");
 
@@ -97,8 +99,8 @@ async function currentAlerts(): Promise<Alert[]> {
       const [{ data: any1 }, { data: sh }] = await Promise.all([
         supabase.from("service_heartbeats").select("received_at")
           .eq("service_id", s.id).order("received_at", { ascending: false }).limit(1).maybeSingle(),
-        supabase.from("service_heartbeats").select("service_id, status, payload, received_at")
-          .eq("service_id", s.id).eq("source", "system-health").order("received_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("service_heartbeats").select("service_id, source, status, payload, received_at")
+          .eq("service_id", s.id).in("source", ["system-health", "mk-network"]).order("received_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
       lastBeat[s.id] = any1?.received_at ?? null;
       if (sh) lastHealth[s.id] = sh;
@@ -118,7 +120,8 @@ async function currentAlerts(): Promise<Alert[]> {
   }
 
   // Salud del equipo: el último system-health está en "failed" por algo más que un pico de CPU/RAM
-  // (disco con errores de hardware, disco lleno, RAID, discos que Windows dejó de ver…)
+  // (disco con errores de hardware, disco lleno, RAID, discos que Windows dejó de ver…).
+  // En los routers, el reporte de red (mk-network) cumple el mismo papel: túnel VPN caído.
   if (monitored.length) {
     for (const s of monitored) {
       const h = lastHealth[s.id] && hoursSince(lastHealth[s.id].received_at) < HEALTH_HOURS ? lastHealth[s.id] : null;
@@ -129,7 +132,7 @@ async function currentAlerts(): Promise<Alert[]> {
       if (!serious.length) continue;
       alerts.push({ ...base(s), key: `health:${s.id}`, kind: "health", priority: "high", issues,
         title: `Problema en el equipo — ${name(s)}`,
-        detail: issues.map(t => `• ${t}`).join("\n") + `\n(reporte de system-health del ${fmtUY(h.received_at)})` });
+        detail: issues.map(t => `• ${t}`).join("\n") + `\n(reporte de ${h.source === "mk-network" ? "red del router" : "system-health"} del ${fmtUY(h.received_at)})` });
     }
   }
 
