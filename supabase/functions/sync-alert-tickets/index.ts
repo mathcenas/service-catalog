@@ -34,8 +34,10 @@ const TT_BASE = Deno.env.get("TASK_TRACKER_URL");
 const fmtUY = (iso: string) => new Date(iso).toLocaleString("es-UY", { timeZone: "America/Montevideo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 const hoursSince = (iso: string) => (Date.now() - new Date(iso).getTime()) / 3_600_000;
 // "RAM alta (92.4%) · Visor de eventos: 2487× error…" → lista de problemas
-const splitIssues = (s: string | null | undefined) =>
-  String(s ?? "").split(/\s+[·\uFFFD]\s+/).map(t => t.trim()).filter(t => t && t !== "Normal");
+// (el reporte de red de los MikroTik ya manda una lista)
+const splitIssues = (s: string | string[] | null | undefined) =>
+  (Array.isArray(s) ? s.map(String) : String(s ?? "").split(/\s+[·\uFFFD]\s+/))
+    .map(t => t.trim()).filter(t => t && t !== "Normal");
 // Firma sin números: que un contador suba (2483 → 2487 errores) no es una novedad
 const issueSig = (list: string[]) => list.map(t => t.replace(/[\d.,]+/g, "#")).sort().join(" | ");
 
