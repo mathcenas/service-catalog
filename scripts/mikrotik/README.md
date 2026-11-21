@@ -70,6 +70,10 @@ El portal actualiza solo la IP pública, la IP LAN, el modelo, la versión de Ro
 - del lado del centro, solo los peers con **`[monitor]` en el comentario** (los peers de notebooks o celulares no deberían alertar);
 - policies IPsec habilitadas que no están en `established`.
 
+**En el mapa** (Infraestructura → Topología): cada túnel vigilado se dibuja como enlace "VPN / Túnel" (violeta, rojo si está caído). Si el otro extremo es otro router del mismo mapa se unen los dos (por nombre DDNS, IP pública o redes LAN); si es de otro sitio u otro cliente aparece un nodo "Otro extremo de la VPN".
+
+**En el portal del cliente**: un servicio de tipo **VPN** con `specifications.vpn = {"protocol":"WireGuard","peer":"<nombre del peer>","sites":"A ↔ B","access":"Escritorio remoto a 10.10.10.1"}` muestra el estado del túnel ("conectado · último contacto hace…") tomado del reporte del router del mismo cliente que tiene ese peer.
+
 Instalación:
 1. El router tiene que estar cargado como servicio (tipo Router / Firewall) con **telemetría activada**. Copiá su `id` y su ingest secret.
 2. Editá las variables del principio: `serviceId`, `ingestSecret`, `supabaseUrl`, `supabaseAnon`.

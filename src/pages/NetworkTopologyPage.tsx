@@ -20,8 +20,30 @@ type ServiceRow = {
   ip_internal?: string | null;
   ip_public?: string | null;
   site_id?: string;
+  specifications?: Record<string, unknown> | null;
   service_types: { name: string } | null;
 };
+
+/** Peer de WireGuard tal como lo manda mk-network-report.rsc */
+type WgPeer = {
+  name?: string; comment?: string; disabled?: boolean; endpoint?: string; current_endpoint?: string;
+  allowed_address?: string; public_key?: string; last_handshake_s?: number; watched?: boolean;
+};
+type NetReport = { ddns_name?: string; public_ip?: string; lans?: { network?: string }[]; wireguard?: { name?: string; peers?: WgPeer[] }[] };
+
+/** Id estable con forma de uuid (las posiciones se guardan en una columna uuid) */
+function stableUuid(str: string): string {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57, h3 = 0x1b873593, h4 = 0x85ebca6b;
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677);
+    h3 = Math.imul(h3 ^ c, 2246822507); h4 = Math.imul(h4 ^ c, 3266489909);
+  }
+  const hex = [h1, h2, h3, h4].map(h => (h >>> 0).toString(16).padStart(8, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+const tunnelAgo = (sec: number) => sec < 120 ? `${sec} s` : sec < 7200 ? `${Math.round(sec / 60)} min` : `${Math.round(sec / 3600)} h`;
 
 /** Equipo que descubre el router (net-topology-report.rsc) */
 export type DiscoveredDevice = {
@@ -210,7 +232,7 @@ export default function NetworkTopologyPage() {
 
     let svcQuery = supabase
       .from('services')
-      .select('id, name, business_name, server_ip, ip_internal, ip_public, mac_address, status, operational_status, telemetry_enabled, uptime_status_url, site_id, service_types(name)')
+      .select('id, name, business_name, server_ip, ip_internal, ip_public, mac_address, status, operational_status, telemetry_enabled, uptime_status_url, site_id, specifications, service_types(name)')
       .eq('client_id', clientId)
       .neq('status', 'Cancelled');
     if (siteId) svcQuery = svcQuery.eq('site_id', siteId);
@@ -346,11 +368,81 @@ export default function NetworkTopologyPage() {
         };
       });
 
+    // Túneles VPN que reporta cada router (mk-network-report.rsc): si el otro extremo es un router
+    // de este mapa se unen los dos; si no (otro sitio u otro cliente), aparece como un nodo aparte.
+    const netReports = new Map<string, NetReport>();
+    if (services.length) {
+      const { data: netHbs } = await supabase.from('service_heartbeats')
+        .select('service_id, payload, received_at')
+        .in('service_id', services.map(s => s.id)).eq('source', 'mk-network')
+        .gte('received_at', new Date(Date.now() - 6 * 3_600_000).toISOString())
+        .order('received_at', { ascending: false }).limit(200);
+      for (const h of (netHbs ?? []) as { service_id: string; payload: NetReport | null }[])
+        if (!netReports.has(h.service_id)) netReports.set(h.service_id, h.payload ?? {});
+    }
+    const routerInfo = services.map(s => {
+      const r = netReports.get(s.id) ?? {};
+      const sp = (s.specifications ?? {}) as { ddns_name?: string; lan_networks?: string[] };
+      return {
+        id: s.id,
+        ddns: String(r.ddns_name || sp.ddns_name || '').toLowerCase(),
+        pub: String(r.public_ip || s.ip_public || ''),
+        nets: [...(r.lans ?? []).map(l => l.network ?? ''), ...(sp.lan_networks ?? [])].filter(Boolean),
+      };
+    });
+    const tunnelTarget = (srcId: string, p: WgPeer) => {
+      const ep = String(p.endpoint || '').toLowerCase();
+      const cur = String(p.current_endpoint || '').split(':')[0];
+      const allowed = String(p.allowed_address || '').split(/[,;\s]+/).filter(Boolean);
+      return routerInfo.find(r => r.id !== srcId &&
+        ((ep && r.ddns && ep === r.ddns) || (ep && r.pub && ep === r.pub) || (cur && r.pub && cur === r.pub) || r.nets.some(n => allowed.includes(n))))?.id ?? null;
+    };
+    type Tunnel = { a: string; b: string; up: boolean; hs: number; label: string };
+    const tunnels = new Map<string, Tunnel>();
+    const vpnNodes: Node[] = [];
+    for (const [svcId, rep] of netReports) {
+      if (!nodeIds.has(svcId)) continue;
+      for (const wg of rep.wireguard ?? []) {
+        for (const p of wg.peers ?? []) {
+          // Solo los túneles entre sitios (los que el router vigila), no notebooks ni celulares
+          if (p.disabled || !p.watched) continue;
+          const hs = typeof p.last_handshake_s === 'number' ? p.last_handshake_s : -1;
+          const up = hs >= 0 && hs <= 300;
+          let other = tunnelTarget(svcId, p);
+          if (!other || !nodeIds.has(other)) {
+            other = stableUuid(`vpn:${svcId}:${p.public_key || p.name || p.endpoint}`);
+            if (!nodeIds.has(other)) {
+              nodeIds.add(other);
+              const o = overrides[other];
+              const name = String(p.name || p.comment || '').replace(/\[monitor\]/i, '').trim();
+              vpnNodes.push({
+                id: other, type: 'device', position: o ? { x: o.x, y: o.y } : { x: 0, y: 0 },
+                data: {
+                  label: name || p.endpoint || 'Sitio remoto',
+                  ip: p.endpoint || String(p.allowed_address || '').split(',').find(a => !a.endsWith('/32')) || '',
+                  note: 'Otro extremo de la VPN',
+                  kind: (o?.kind as DeviceKind) || 'router',
+                  status: up ? 'up' : 'down',
+                  statusText: up ? `VPN OK · hace ${tunnelAgo(hs)}` : 'VPN caída',
+                } satisfies DeviceNodeData,
+              });
+            }
+          }
+          const key = [svcId, other].sort().join('|');
+          const prev = tunnels.get(key);
+          // Si los dos routers reportan el mismo túnel, vale el contacto más reciente
+          if (!prev || (up && !prev.up) || (hs >= 0 && (prev.hs < 0 || hs < prev.hs)))
+            tunnels.set(key, { a: svcId, b: other, up, hs, label: wg.name ? `WireGuard (${wg.name})` : 'WireGuard' });
+        }
+      }
+    }
+
     // Enlaces que detecta el router (LLDP), con el puerto en cada punta. Un enlace dibujado
     // a mano entre los mismos equipos tiene prioridad.
-    const allNodes = [...serviceNodes, ...customNodes, ...discoveredNodes];
+    const allNodes = [...serviceNodes, ...customNodes, ...discoveredNodes, ...vpnNodes];
     autoLayout(allNodes, new Set(Object.keys(overrides).concat(customNodes.map(n => n.id))),
       [...builtEdges.map(e => [e.source, e.target] as [string, string]),
+       ...[...tunnels.values()].map(t => [t.a, t.b] as [string, string]),
        ...((linkRows ?? []) as unknown as NetLink[]).map(l => [discNodeId.get(l.source_device_id) ?? '', discNodeId.get(l.target_device_id) ?? ''] as [string, string])]);
     const pos = new Map(allNodes.map(n => [n.id, n.position]));
     const manualPairs = new Set(builtEdges.flatMap(e => [`${e.source}|${e.target}`, `${e.target}|${e.source}`]));
@@ -368,6 +460,20 @@ export default function NetworkTopologyPage() {
         id: `auto-${l.source_device_id}-${l.target_device_id}`, source: a, target: b, type: 'port',
         sourceHandle: sh, targetHandle: th, style: edgeStyleFor(type),
         data: { type, sourcePort: cleanPort(l.source_port), targetPort: cleanPort(l.target_port), auto: true } as StoredEdgeStyle,
+      });
+    }
+
+    for (const t of tunnels.values()) {
+      if (manualPairs.has(`${t.a}|${t.b}`)) continue;
+      const pa = pos.get(t.a), pb = pos.get(t.b);
+      if (!pa || !pb) continue;
+      const vertical = Math.abs(pb.y - pa.y) >= Math.abs(pb.x - pa.x);
+      const [sh, th] = vertical ? (pb.y > pa.y ? ['bottom', 'top'] : ['top', 'bottom']) : (pb.x > pa.x ? ['right', 'left'] : ['left', 'right']);
+      autoEdges.push({
+        id: `vpn-${t.a}-${t.b}`, source: t.a, target: t.b, type: 'port',
+        sourceHandle: sh, targetHandle: th,
+        style: t.up ? edgeStyleFor('vpn') : { ...edgeStyleFor('vpn'), stroke: '#ef4444' },
+        data: { type: 'vpn', midLabel: t.up ? t.label : `${t.label} · caída`, auto: true } as StoredEdgeStyle,
       });
     }
 
