@@ -66,7 +66,7 @@ Qué reporta (heartbeat `mk-network` del servicio del router):
 El portal actualiza solo la IP pública, la IP LAN, el modelo, la versión de RouterOS, el DDNS y las redes LAN del servicio.
 
 **Alertas**: si un túnel está caído el reporte sale en `failed` y se abre un ticket "Problema en el equipo" con el detalle (se cierra solo con dos reportes limpios). Se vigilan:
-- peers WireGuard con `endpoint-address` o `persistent-keepalive` (el sitio remoto que llama al centro): caído si pasan más de 5 min sin handshake;
+- peers WireGuard con `endpoint-address` (el sitio remoto que llama al centro): caído si pasan más de 5 min sin handshake;
 - del lado del centro, solo los peers con **`[monitor]` en el comentario** (los peers de notebooks o celulares no deberían alertar);
 - policies IPsec habilitadas que no están en `established`.
 

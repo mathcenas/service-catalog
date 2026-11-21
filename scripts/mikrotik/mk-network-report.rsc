@@ -23,8 +23,8 @@
 # y salida a internet desde el router.
 #
 # Túneles que se vigilan:
-#   - Peers WireGuard con endpoint o persistent-keepalive (este router llama al otro
-#     extremo: sitio remoto). Caído = más de 5 min sin handshake.
+#   - Peers WireGuard con endpoint (este router llama al otro extremo: sitio remoto).
+#     Caído = más de 5 min sin handshake.
 #   - Peers WireGuard del lado del centro (sin endpoint): solo si el peer tiene
 #     "[monitor]" en el comentario.
 #   - Policies IPsec activas (no template) que no están en ph2-state=established.
@@ -108,7 +108,9 @@
 
     # ¿Este router tiene que mantener el túnel arriba?
     :local watched false
-    :if ($pEndpoint != "" || ($pKeep != "" && $pKeep != "0s" && $pKeep != "00:00:00")) do={ :set watched true }
+    # Solo los peers con endpoint: este router llama al otro extremo (sitio remoto -> centro).
+    # Los de notebooks y celulares (sin endpoint) no alertan aunque tengan keepalive.
+    :if ($pEndpoint != "") do={ :set watched true }
     :if ([:typeof [:find $pComment "[monitor]"]] = "num") do={ :set watched true }
     :local up ($hsSec >= 0 && $hsSec <= ($wgDownMinutes * 60))
     :if ($watched && !$pDisabled && !$up) do={
