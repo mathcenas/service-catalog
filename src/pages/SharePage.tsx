@@ -1,11 +1,20 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, createContext, useContext } from 'react';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   Server, Globe, Calendar, Clock, Shield, CheckCircle2,
   HardDrive, Wifi, ChevronDown, ChevronRight, Mail, X,
   Sparkles, Rocket, DollarSign, Send, Loader2, HelpCircle, ShieldCheck, Lock,
   AlertTriangle, AlertCircle, Eye, CheckCheck,
 } from 'lucide-react';
-import { createShareClient, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapItemUpdate, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat, ClientApp, ServiceIncident } from '../lib/supabase';
+import { createShareClient, ManagedRole, RoadmapStatus } from '../lib/supabase';
+import {
+  shareSelect, type ShareUserSettings,
+  type ShareClient as Client, type ShareService as Service, type ShareServiceType as ServiceType,
+  type ShareProject as Project, type ShareServiceChange as ServiceChange, type ShareRoadmapItem as RoadmapItem,
+  type ShareRoadmapItemUpdate as RoadmapItemUpdate, type ShareClientLicense as ClientLicense,
+  type ShareSupportHour as SupportHour, type ShareServiceHeartbeat as ServiceHeartbeat,
+  type ShareClientApp as ClientApp, type ShareServiceIncident as ServiceIncident,
+} from '../lib/shareColumns';
 import { BackupMetricsModal } from '../components/BackupMetricsModal';
 import { backupMaxAgeHours, jobMaxAgeHours, isRetiredJob } from '../lib/backupSchedule';
 import { ReferencesSection } from '../components/share/ReferencesSection';
@@ -13,6 +22,9 @@ import { appKind } from '../lib/appKinds';
 import { hardwareAlerts, type HardwareAlert } from '../lib/hardwareAlerts';
 
 type Props = { token: string };
+
+// Cliente supabase del portal (manda x-share-token); lo usan los modales que consultan por su cuenta.
+const ShareClientContext = createContext<SupabaseClient | undefined>(undefined);
 type Section = 'overview' | 'services' | 'licenses' | 'changes' | 'hours' | 'support' | 'tickets' | 'referencias';
 
 interface ServiceBackup {
@@ -98,7 +110,7 @@ export function SharePage({ token }: Props) {
   const [incidents, setIncidents] = useState<ServiceIncident[]>([]);
   const [backups, setBackups] = useState<ServiceBackup[]>([]);
   const [uptimeEvents, setUptimeEvents] = useState<UptimeEvent[]>([]);
-  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
+  const [userSettings, setUserSettings] = useState<ShareUserSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   // #referencias abre directo la página de referencias (link desde los mails)
@@ -116,10 +128,12 @@ export function SharePage({ token }: Props) {
     return () => mq.removeEventListener('change', handler);
   }, []);
 
+  // Cliente propio del portal: manda el token en `x-share-token`, que las políticas
+  // RLS anon exigen (sin él, o con el token de otro cliente, las tablas vienen vacías).
+  const shareClient = useMemo(() => createShareClient(token), [token]);
+
   useEffect(() => {
-    // Cliente propio del portal: manda el token en `x-share-token`, que las políticas
-    // RLS anon exigen (sin él, o con el token de otro cliente, las tablas vienen vacías).
-    const supabase = createShareClient(token);
+    const supabase = shareClient;
 
     const load = async () => {
       const { data: tokenRows, error: tokenError } = await supabase
@@ -128,25 +142,25 @@ export function SharePage({ token }: Props) {
 
       if (tokenError || !tokenRow) { setNotFound(true); setLoading(false); return; }
 
-      const servicesQuery = supabase.from('services').select('*').eq('client_id', tokenRow.client_id).order('created_at');
+      const servicesQuery = supabase.from('services').select(shareSelect('services')).eq('client_id', tokenRow.client_id).order('created_at');
       if (tokenRow.service_ids && tokenRow.service_ids.length > 0) {
         servicesQuery.in('id', tokenRow.service_ids);
       }
 
       const [{ data: clientData }, { data: servicesData }, { data: projectsData }, { data: typesData }, { data: roadmapData }, { data: settingsData }] = await Promise.all([
-        supabase.from('clients').select('*').eq('id', tokenRow.client_id).maybeSingle(),
+        supabase.from('clients').select(shareSelect('clients')).eq('id', tokenRow.client_id).maybeSingle(),
         servicesQuery,
-        supabase.from('projects').select('*').eq('client_id', tokenRow.client_id).order('created_at'),
-        supabase.from('service_types').select('*'),
-        supabase.from('roadmap_items').select('*').eq('user_id', tokenRow.user_id).eq('is_public', true).or(`client_id.eq.${tokenRow.client_id},client_id.is.null`).order('sort_order').order('created_at'),
-        supabase.from('user_settings').select('company_name, logo_url').eq('user_id', tokenRow.user_id).maybeSingle(),
+        supabase.from('projects').select(shareSelect('projects')).eq('client_id', tokenRow.client_id).order('created_at'),
+        supabase.from('service_types').select(shareSelect('service_types')),
+        supabase.from('roadmap_items').select(shareSelect('roadmap_items')).eq('user_id', tokenRow.user_id).eq('is_public', true).or(`client_id.eq.${tokenRow.client_id},client_id.is.null`).order('sort_order').order('created_at'),
+        supabase.from('user_settings').select('company_name,logo_url').eq('user_id', tokenRow.user_id).maybeSingle(),
       ]);
 
       if (roadmapData && roadmapData.length > 0) {
         const ids = roadmapData.map((r: RoadmapItem) => r.id);
         const { data: updatesData } = await supabase
           .from('roadmap_item_updates')
-          .select('*')
+          .select(shareSelect('roadmap_item_updates'))
           .in('roadmap_item_id', ids)
           .order('created_at', { ascending: true });
         setRoadmapUpdates(updatesData || []);
@@ -166,18 +180,18 @@ export function SharePage({ token }: Props) {
       const ids = (servicesData || []).map(s => s.id);
       if (ids.length > 0) {
         const { data: changesData } = await supabase
-          .from('service_changes').select('*').in('service_id', ids)
+          .from('service_changes').select(shareSelect('service_changes')).in('service_id', ids)
           .gte('change_date', currentYearStart)
           .order('change_date', { ascending: false });
         setChanges(changesData || []);
       }
 
       const { data: licensesData } = await supabase
-        .from('client_licenses').select('*').eq('client_id', tokenRow.client_id).order('expiration_date', { ascending: true, nullsFirst: false });
+        .from('client_licenses').select(shareSelect('client_licenses')).eq('client_id', tokenRow.client_id).order('expiration_date', { ascending: true, nullsFirst: false });
       setLicenses(licensesData || []);
 
       const { data: hoursData } = await supabase
-        .from('support_hours').select('*').eq('client_id', tokenRow.client_id)
+        .from('support_hours').select(shareSelect('support_hours')).eq('client_id', tokenRow.client_id)
         .gte('work_date', currentYearStart)
         .order('work_date', { ascending: false });
       setSupportHours(hoursData || []);
@@ -188,8 +202,8 @@ export function SharePage({ token }: Props) {
         const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
         const [{ data: hbData }, { data: sysHbData }, { data: backupsData }, { data: uptimeData }] = await Promise.all([
-          supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).eq('source', 'speedtest').gte('received_at', since48h).order('received_at', { ascending: true }),
-          supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check', 'tailscale']).gte('received_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
+          supabase.from('service_heartbeats').select(shareSelect('service_heartbeats')).in('service_id', serviceIds).eq('source', 'speedtest').gte('received_at', since48h).order('received_at', { ascending: true }),
+          supabase.from('service_heartbeats').select(shareSelect('service_heartbeats')).in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check', 'tailscale']).gte('received_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
           supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(100),
           supabase.from('uptime_events').select('id,service_id,monitor_name,event_type,message,duration_seconds,occurred_at').in('service_id', serviceIds).gte('occurred_at', since30d).order('occurred_at', { ascending: false }),
         ]);
@@ -209,13 +223,13 @@ export function SharePage({ token }: Props) {
       }
 
       const { data: appsData } = await supabase
-        .from('client_apps').select('*').eq('client_id', tokenRow.client_id).order('sort_order');
+        .from('client_apps').select(shareSelect('client_apps')).eq('client_id', tokenRow.client_id).order('sort_order');
       setClientApps(appsData || []);
 
       const since90d = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
       const { data: incidentsData } = await supabase
         .from('service_incidents')
-        .select('*')
+        .select(shareSelect('service_incidents'))
         .eq('client_id', tokenRow.client_id)
         .gte('started_at', since90d)
         .order('started_at', { ascending: false });
@@ -236,7 +250,7 @@ export function SharePage({ token }: Props) {
       const serviceIds = (svcs || []).map((s: { id: string }) => s.id);
       if (serviceIds.length === 0) return;
       const [{ data: sysHbData }, { data: backupsData }] = await Promise.all([
-        supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check', 'tailscale']).gte('received_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
+        supabase.from('service_heartbeats').select(shareSelect('service_heartbeats')).in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check', 'tailscale']).gte('received_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
         supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(100),
       ]);
       if (sysHbData) {
@@ -251,7 +265,7 @@ export function SharePage({ token }: Props) {
     };
     const interval = setInterval(refreshLive, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [token]);
+  }, [token, shareClient]);
 
   const getTypeName = (id: string) => serviceTypes.find(t => t.id === id)?.name || 'Service';
   const getProjectName = (id?: string): string | null => id ? projects.find(p => p.id === id)?.name || null : null;
@@ -295,6 +309,7 @@ export function SharePage({ token }: Props) {
   );
 
   return (
+    <ShareClientContext.Provider value={shareClient}>
     <div className={`${dark ? 'dark' : ''}`}>
       <div className="min-h-screen bg-slate-50 dark:bg-gray-950">
         {/* Watermark logo */}
@@ -407,6 +422,7 @@ export function SharePage({ token }: Props) {
         </footer>
       </div>
     </div>
+    </ShareClientContext.Provider>
   );
 }
 
@@ -862,6 +878,7 @@ function kopiaDestinations(services: Service[], health: ServiceHeartbeat[], vpn:
 }
 
 function BackupStatus({ services, backups, kopiaDest = {} }: { services: Service[]; backups: ServiceBackup[]; kopiaDest?: Record<string, KopiaDest> }) {
+  const shareClient = useContext(ShareClientContext);
   const withBackup = services.filter(s => s.last_backup_at || backups.some(b => b.service_id === s.id));
   if (withBackup.length === 0) return null;
 
@@ -1076,6 +1093,7 @@ function BackupStatus({ services, backups, kopiaDest = {} }: { services: Service
           serviceId={historyModal.serviceId}
           serviceName={historyModal.name}
           onClose={() => setHistoryModal(null)}
+          client={shareClient}
         />
       )}
     </section>
