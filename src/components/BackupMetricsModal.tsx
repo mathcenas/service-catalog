@@ -4,12 +4,15 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, ReferenceArea,
 } from 'recharts';
-import { supabase } from '../lib/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { supabase as defaultClient } from '../lib/supabase';
 
 type Props = {
   serviceId: string;
   serviceName: string;
   onClose: () => void;
+  /** Cliente a usar; el portal (/share) pasa el suyo, que manda x-share-token. */
+  client?: SupabaseClient;
 };
 
 type BackupPoint = {
@@ -38,7 +41,7 @@ function weekendAreas(pts: BackupPoint[]) {
   return areas;
 }
 
-export function BackupMetricsModal({ serviceId, serviceName, onClose }: Props) {
+export function BackupMetricsModal({ serviceId, serviceName, onClose, client = defaultClient }: Props) {
   const [days, setDays] = useState(30);
   const [data, setData] = useState<BackupPoint[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,7 +53,7 @@ export function BackupMetricsModal({ serviceId, serviceName, onClose }: Props) {
       setLoading(true);
       const since = new Date(Date.now() - days * 86400000).toISOString();
 
-      const { data: rows } = await supabase
+      const { data: rows } = await client
         .from('service_backups')
         .select('id, status, size_bytes, duration_seconds, backed_up_at, job_name, details')
         .eq('service_id', serviceId)
