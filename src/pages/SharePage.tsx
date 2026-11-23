@@ -541,6 +541,11 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
   const completedHours = roadmap
     .filter(r => r.status === 'Released' && r.amount_type === 'hours' && r.amount && r.amount > 0)
     .reduce((sum, r) => sum + (r.amount ?? 0), 0);
+  // Horas trabajadas este mes (tareas terminadas del Task Tracker o cargadas a mano)
+  const monthPrefix = new Date().toISOString().slice(0, 7);
+  const hasLoggedHours = supportHours.length > 0;
+  const monthHours = supportHours.filter(h => h.work_date.startsWith(monthPrefix)).reduce((sum, h) => sum + Number(h.hours), 0);
+  const fmtH = (n: number) => `${Number.isInteger(n) ? n : n.toFixed(1)}h`;
 
   return (
     <div className="space-y-6">
@@ -549,7 +554,9 @@ function OverviewSection({ services, roadmap, changes, getTypeName, backups, upt
         <StatCard label="Active Services" value={services.length.toString()} tooltip="Cantidad de servicios activos que Cenas IT gestiona para tu empresa (internet, servidores, backups, licencias, etc.)." />
         <StatCard label="Upcoming Updates" value={upcoming.length.toString()} accent={upcoming.length > 0} tooltip="Mejoras, cambios o tareas planificadas que están en progreso o pendientes de implementar." />
         <StatCard label="Completed Updates" value={roadmap.filter(r => r.status === 'Released').length.toString()} tooltip="Cantidad de actualizaciones y mejoras ya implementadas en tu infraestructura." />
-        {completedHours > 0
+        {hasLoggedHours
+          ? <StatCard label="Hours this month" value={totalAllocated > 0 ? `${fmtH(monthHours)} / ${fmtH(totalAllocated)}` : fmtH(monthHours)} accent={totalAllocated > 0 && monthHours > totalAllocated} tooltip={totalAllocated > 0 ? `Horas de trabajo técnico de este mes (tareas terminadas) sobre las ${fmtH(totalAllocated)} confirmadas por mes en tus servicios. El detalle está en la pestaña Hours.` : 'Horas de trabajo técnico de este mes (tareas terminadas). El detalle está en la pestaña Hours.'} />
+          : completedHours > 0
           ? <StatCard label="Hours worked" value={`${completedHours}h`} tooltip="Horas de trabajo técnico registradas en tareas y proyectos completados." />
           : totalAllocated > 0 && <StatCard label="Hours/month" value={`${totalAllocated}h`} tooltip="Horas de soporte técnico incluidas en tu plan mensual." />
         }
@@ -2147,13 +2154,16 @@ function SupportHoursSection({ hours, roadmapItems, services }: { hours: Support
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
 
-  type UnifiedEntry = { id: string; work_date: string; hours: number; description: string; service_id?: string; source: 'manual' | 'pipeline' };
+  type UnifiedEntry = { id: string; work_date: string; hours: number; description: string; service_id?: string; source: 'manual' | 'pipeline' | 'task-tracker'; project?: string | null };
 
   const allEntries = useMemo((): UnifiedEntry[] => {
     const manual: UnifiedEntry[] = hours.map(h => ({
       id: h.id, work_date: h.work_date, hours: Number(h.hours),
-      description: h.description || '', service_id: h.service_id, source: 'manual',
+      description: h.description || '', service_id: h.service_id,
+      source: h.source === 'task-tracker' ? 'task-tracker' : 'manual', project: h.project_name,
     }));
+    // Con las horas del Task Tracker, los items del roadmap ya están ahí como tareas: no se suman dos veces
+    if (hours.some(h => h.source === 'task-tracker')) return manual.sort((a, b) => b.work_date.localeCompare(a.work_date));
     const pipeline: UnifiedEntry[] = roadmapItems
       .filter(r => r.amount_type === 'hours' && r.amount && r.amount > 0 && (r.scheduled_date || r.eta))
       .map(r => ({
@@ -2224,6 +2234,7 @@ function SupportHoursSection({ hours, roadmapItems, services }: { hours: Support
                   <span className="text-xs text-gray-400">{new Date(entry.work_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
                   {getServiceName(entry.service_id) && <span className="text-xs text-brand-accent dark:text-brand-accent font-medium">{getServiceName(entry.service_id)}</span>}
                   {entry.source === 'pipeline' && <span className="text-[10px] bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 rounded-full font-medium">Pipeline</span>}
+                  {entry.project && <span className="text-xs text-gray-500 dark:text-gray-400">{entry.project}</span>}
                 </div>
                 {entry.description && <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5">{entry.description}</p>}
               </div>

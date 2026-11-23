@@ -336,6 +336,10 @@ export type SupportHour = {
   type: 'work' | 'incident';
   title?: string;
   created_at: string;
+  /** 'manual' (cargada en el portal) o 'task-tracker' (sync-support-hours) */
+  source?: string;
+  tt_task_id?: string | null;
+  project_name?: string | null;
 };
 
 export type ClientApp = {
