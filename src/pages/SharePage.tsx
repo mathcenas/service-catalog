@@ -5,7 +5,7 @@ import {
   Sparkles, Rocket, DollarSign, Send, Loader2, HelpCircle, ShieldCheck, Lock,
   AlertTriangle, AlertCircle, Eye, CheckCheck,
 } from 'lucide-react';
-import { supabase, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapItemUpdate, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat, ClientApp, ServiceIncident } from '../lib/supabase';
+import { createShareClient, Client, Service, ServiceType, Project, ServiceChange, ManagedRole, RoadmapItem, RoadmapStatus, RoadmapItemUpdate, ClientLicense, UserSettings, SupportHour, ServiceHeartbeat, ClientApp, ServiceIncident } from '../lib/supabase';
 import { BackupMetricsModal } from '../components/BackupMetricsModal';
 import { backupMaxAgeHours, jobMaxAgeHours, isRetiredJob } from '../lib/backupSchedule';
 import { ReferencesSection } from '../components/share/ReferencesSection';
@@ -117,6 +117,10 @@ export function SharePage({ token }: Props) {
   }, []);
 
   useEffect(() => {
+    // Cliente propio del portal: manda el token en `x-share-token`, que las políticas
+    // RLS anon exigen (sin él, o con el token de otro cliente, las tablas vienen vacías).
+    const supabase = createShareClient(token);
+
     const load = async () => {
       const { data: tokenRows, error: tokenError } = await supabase
         .rpc('resolve_share_token', { p_token: token });
