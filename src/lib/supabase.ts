@@ -9,6 +9,24 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+/**
+ * Cliente para el portal del cliente (/share/<token>). Manda el token en el header
+ * `x-share-token`, que las políticas RLS anon validan (has_valid_share_token y
+ * compañía). Sin sesión: siempre consulta como anon, aunque el admin esté logueado
+ * en el mismo navegador, y no pisa la sesión del cliente principal.
+ */
+export function createShareClient(token: string) {
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { 'x-share-token': token } },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      storageKey: 'sb-share-portal',
+    },
+  });
+}
+
 export type Client = {
   id: string;
   user_id: string;
