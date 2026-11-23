@@ -16,7 +16,8 @@ import type {
 // payment_card_last4, provider_email, notification_email, server_ip, ip_*,
 // login_url...; client_licenses.license_key, cost, paid_by, payment_card_last4,
 // notes; clients.notes, email, phone, contact_name...; uptime_events.monitor_url;
-// user_settings.weekly_digest_email; service_incidents.external_id, reported_by.
+// user_settings.weekly_digest_email; service_incidents.external_id, reported_by;
+// support_hours.tt_task_id.
 export const SHARE_COLUMNS = {
   clients: ['id', 'company_name', 'risk_flags', 'spof_free', 'uptime_status_url'],
   services: [
@@ -40,7 +41,7 @@ export const SHARE_COLUMNS = {
   roadmap_item_updates: ['id', 'roadmap_item_id', 'note', 'status', 'created_at'],
   service_changes: ['id', 'service_id', 'change_date', 'summary', 'details'],
   client_licenses: ['id', 'client_id', 'service_id', 'software_name', 'quantity', 'quantity_label', 'expiration_date'],
-  support_hours: ['id', 'client_id', 'service_id', 'work_date', 'hours', 'type', 'title', 'description'],
+  support_hours: ['id', 'client_id', 'service_id', 'work_date', 'hours', 'type', 'title', 'description', 'source', 'project_name'],
   service_heartbeats: ['id', 'service_id', 'source', 'status', 'message', 'payload', 'received_at'],
   client_apps: ['id', 'client_id', 'service_id', 'name', 'vendor', 'kind', 'support_phone', 'whatsapp_url', 'notes', 'sort_order'],
   service_incidents: ['id', 'client_id', 'service_id', 'title', 'description', 'status', 'notes', 'started_at', 'resolved_at'],

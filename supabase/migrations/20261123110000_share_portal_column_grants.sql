@@ -84,7 +84,8 @@ GRANT SELECT (
 -- support_hours
 REVOKE SELECT ON public.support_hours FROM anon;
 GRANT SELECT (
-  id, client_id, service_id, work_date, hours, type, title, description
+  id, client_id, service_id, work_date, hours, type, title, description, source,
+  project_name
 ) ON public.support_hours TO anon;
 
 -- service_heartbeats
