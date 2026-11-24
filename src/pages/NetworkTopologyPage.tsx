@@ -507,7 +507,15 @@ export default function NetworkTopologyPage() {
 
     // Equipos de la LAN de un router que no tienen ningún otro enlace (ni a mano, ni LLDP, ni VPN):
     // se cuelgan del router con un enlace "LAN" (puede haber un switch en el medio que no se anuncia)
+    // Máquinas virtuales: van unidas a su host (specifications.vm_host_id, se carga en la ficha), no al router
+    const vmLinks: { a: string; b: string }[] = [];
+    for (const svc of services) {
+      const hostId = String((svc.specifications as Record<string, unknown> | null)?.vm_host_id ?? '');
+      if (hostId && hostId !== svc.id && nodeIds.has(svc.id) && nodeIds.has(hostId)) vmLinks.push({ a: hostId, b: svc.id });
+    }
+
     const linked = new Set<string>([
+      ...vmLinks.map(l => l.b),
       ...builtEdges.flatMap(e => [e.source, e.target]),
       ...[...tunnels.values()].flatMap(t => [t.a, t.b]),
       ...((linkRows ?? []) as unknown as NetLink[]).flatMap(l => [discNodeId.get(l.source_device_id) ?? '', discNodeId.get(l.target_device_id) ?? '']),
@@ -528,6 +536,7 @@ export default function NetworkTopologyPage() {
        ...[...tunnels.values()].map(t => [t.a, t.b] as [string, string]),
        ...wanLinks.map(l => [l.a, l.b] as [string, string]),
        ...lanLinks.map(l => [l.a, l.b] as [string, string]),
+       ...vmLinks.map(l => [l.a, l.b] as [string, string]),
        ...((linkRows ?? []) as unknown as NetLink[]).map(l => [discNodeId.get(l.source_device_id) ?? '', discNodeId.get(l.target_device_id) ?? ''] as [string, string])]);
     const pos = new Map(allNodes.map(n => [n.id, n.position]));
     const manualPairs = new Set(builtEdges.flatMap(e => [`${e.source}|${e.target}`, `${e.target}|${e.source}`]));
@@ -573,6 +582,14 @@ export default function NetworkTopologyPage() {
       autoEdges.push({
         id: `wan-${l.a}`, source: l.a, target: l.b, type: 'port', sourceHandle: sh, targetHandle: th,
         style: edgeStyleFor('fibra'), data: { type: 'fibra', midLabel: l.label, auto: true } as StoredEdgeStyle,
+      });
+    }
+    for (const l of vmLinks) {
+      if (!pos.get(l.a) || !pos.get(l.b) || manualPairs.has(`${l.a}|${l.b}`)) continue;
+      const [sh, th] = handlesFor(l.a, l.b);
+      autoEdges.push({
+        id: `vm-${l.a}-${l.b}`, source: l.a, target: l.b, type: 'port', sourceHandle: sh, targetHandle: th,
+        style: edgeStyleFor('vm'), data: { type: 'vm', midLabel: 'VM', auto: true } as StoredEdgeStyle,
       });
     }
     for (const l of lanLinks) {

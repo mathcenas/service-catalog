@@ -21,6 +21,7 @@ export const EDGE_TYPES = [
   { id: 'fibra', label: 'Fibra',        style: { stroke: '#0891b2', strokeWidth: 2 } },
   { id: 'vpn',   label: 'VPN / Túnel',  style: { stroke: '#7c3aed', strokeWidth: 1.5, strokeDasharray: '8 4' } },
   { id: 'wifi',  label: 'Wi-Fi',        style: { stroke: '#16a34a', strokeWidth: 1.5, strokeDasharray: '3 3' } },
+  { id: 'vm',    label: 'VM en host',   style: { stroke: '#94a3b8', strokeWidth: 1.5, strokeDasharray: '1 4' } },
 ] as const;
 export type EdgeTypeId = typeof EDGE_TYPES[number]['id'];
 

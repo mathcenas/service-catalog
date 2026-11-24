@@ -87,6 +87,9 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
   const [error, setError] = useState('');
   const [sites, setSites] = useState<{ id: string; name: string }[]>([]);
   const [siteId, setSiteId] = useState<string>(service.site_id ?? '');
+  // Máquina virtual: en qué host corre (specifications.vm_host_id). El mapa de red la une a ese host.
+  const [vmHostId, setVmHostId] = useState<string>(String((service.specifications as Record<string, unknown> | null)?.vm_host_id ?? ''));
+  const [clientServices, setClientServices] = useState<{ id: string; name: string; business_name: string | null }[]>([]);
 
   useEffect(() => {
     const fetchServiceTypes = async () => {
@@ -103,7 +106,9 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
     if (!formData.client_id) return;
     supabase.from('sites').select('id, name').eq('client_id', formData.client_id).order('name')
       .then(({ data }) => setSites((data ?? []) as { id: string; name: string }[]));
-  }, [formData.client_id]);
+    supabase.from('services').select('id, name, business_name').eq('client_id', formData.client_id).neq('status', 'Cancelled').order('name')
+      .then(({ data }) => setClientServices(((data ?? []) as { id: string; name: string; business_name: string | null }[]).filter(x => x.id !== service.id)));
+  }, [formData.client_id, service.id]);
 
   const currentTypeName = useMemo(
     () => serviceTypes.find(t => t.id === formData.service_type_id)?.name,
@@ -132,8 +137,12 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
       cloud_account_payer: null,
       ip_internal: null,
     };
-    const specifications: Record<string, any> = {};
+    // Se parte de lo que ya tiene el servicio: los scripts completan datos que el formulario no muestra
+    // (AnyDesk, hostname, SO, Tailscale, redes del router, la VPN del portal…) y no se pueden perder al guardar.
+    // Los campos del formulario se reescriben (vaciar uno lo borra).
+    const specifications: Record<string, any> = { ...((service.specifications as Record<string, any> | null) ?? {}) };
     for (const field of fields) {
+      delete specifications[field.key];
       const raw = typeValues[field.key];
       if (raw === undefined || raw === '' || raw === null) continue;
       const value = field.kind === 'number' ? Number(raw) : raw;
@@ -143,6 +152,7 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
         specifications[field.key] = value;
       }
     }
+    if (vmHostId) specifications.vm_host_id = vmHostId; else delete specifications.vm_host_id;
 
     const { error: updateError } = await supabase
       .from('services')
@@ -567,6 +577,17 @@ export function EditServiceModal({ service, clients, projects, onClose, onSucces
                 >
                   <option value="">— Sin site —</option>
                   {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Corre en el host (si es VM)</label>
+                <select
+                  value={vmHostId}
+                  onChange={e => setVmHostId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                >
+                  <option value="">— No es una VM —</option>
+                  {clientServices.map(x => <option key={x.id} value={x.id}>{x.business_name || x.name}</option>)}
                 </select>
               </div>
               {/* ip_internal is shown in DynamicServiceFields for types that define it (e.g. Database) */}
