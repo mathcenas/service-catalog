@@ -1,10 +1,21 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Plus, Trash2, CreditCard as Edit3, X, Save, Shield, AlertTriangle, Calendar, Bell } from 'lucide-react';
+import { Plus, Trash2, CreditCard as Edit3, X, Save, Shield, AlertTriangle, Calendar, Bell, RefreshCw } from 'lucide-react';
 import { supabase, Client, Service, ClientLicense, PAID_BY_OPTIONS } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 const BILLING_CYCLES = ['Monthly', 'Quarterly', 'Annually', 'Biennially', 'Perpetual'];
 const QUANTITY_LABELS = ['Licenses', 'Users', 'Devices', 'Cores', 'Seats', 'Endpoints'];
+const CYCLE_MONTHS: Record<string, number> = { Monthly: 1, Quarterly: 3, Annually: 12, Biennially: 24 };
+
+/** Próximo vencimiento: desde el vencimiento actual (o desde hoy si ya venció) + el ciclo */
+function nextExpiration(lic: ClientLicense): string {
+  const months = CYCLE_MONTHS[lic.billing_cycle] ?? 12;
+  const today = new Date();
+  const base = lic.expiration_date && new Date(`${lic.expiration_date}T12:00:00`) > today
+    ? new Date(`${lic.expiration_date}T12:00:00`) : today;
+  base.setMonth(base.getMonth() + months);
+  return base.toISOString().slice(0, 10);
+}
 
 type Props = {
   clients: Client[];
@@ -18,6 +29,10 @@ export function LicenseManager({ clients, services }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ClientLicense | null>(null);
   const [filterClient, setFilterClient] = useState<string>('all');
+  // Renovación: nueva fecha, costo, nota y aviso al cliente ("Licencia renovada")
+  const [renewing, setRenewing] = useState<ClientLicense | null>(null);
+  const [renewForm, setRenewForm] = useState({ new_expiration: '', cost: '', notes: '', notify: true });
+  const [renewBusy, setRenewBusy] = useState(false);
   const [sendingReminders, setSendingReminders] = useState(false);
 
   const [form, setForm] = useState({
@@ -97,6 +112,43 @@ export function LicenseManager({ clients, services }: Props) {
       await supabase.from('client_licenses').insert(payload);
     }
     resetForm();
+    load();
+  };
+
+  const openRenew = (lic: ClientLicense) => {
+    setRenewForm({ new_expiration: nextExpiration(lic), cost: lic.cost != null ? String(lic.cost) : '', notes: '', notify: true });
+    setRenewing(lic);
+  };
+
+  const saveRenewal = async () => {
+    if (!renewing || !renewForm.new_expiration) return;
+    setRenewBusy(true);
+    const now = new Date().toISOString();
+    const cost = renewForm.cost ? parseFloat(renewForm.cost) : null;
+    const { data: ren, error } = await supabase.from('license_renewals').insert({
+      user_id: user!.id, license_id: renewing.id, client_id: renewing.client_id,
+      previous_expiration: renewing.expiration_date || null, new_expiration: renewForm.new_expiration,
+      cost, currency: renewing.currency || 'USD', notes: renewForm.notes.trim() || null, renewed_at: now,
+    }).select('id').single();
+    if (error || !ren) {
+      alert(`No se pudo guardar la renovación: ${error?.message ?? 'error desconocido'}`);
+      setRenewBusy(false);
+      return;
+    }
+    await supabase.from('client_licenses').update({
+      expiration_date: renewForm.new_expiration, last_renewed_at: now, updated_at: now,
+      ...(cost != null ? { cost } : {}),
+    }).eq('id', renewing.id);
+    let msg = 'Renovación guardada.';
+    if (renewForm.notify) {
+      const { data, error: fnErr } = await supabase.functions.invoke('notify-license-renewed', { body: { renewal_id: ren.id } });
+      msg = fnErr || data?.error
+        ? `Renovación guardada, pero no se pudo avisar al cliente: ${data?.error ?? fnErr?.message}`
+        : `Renovación guardada y aviso enviado a ${(data?.sent_to ?? []).join(', ')}.`;
+    }
+    setRenewBusy(false);
+    setRenewing(null);
+    alert(msg);
     load();
   };
 
@@ -338,7 +390,12 @@ export function LicenseManager({ clients, services }: Props) {
                     <td className="px-4 py-3 text-gray-600 text-xs">{getServiceName(lic.service_id) || '--'}</td>
                     <td className="px-4 py-3 text-gray-700">{lic.quantity} {lic.quantity_label}</td>
                     <td className="px-4 py-3 text-gray-600">{lic.billing_cycle}</td>
-                    <td className="px-4 py-3">{expiryBadge(lic.expiration_date)}</td>
+                    <td className="px-4 py-3">
+                      {expiryBadge(lic.expiration_date)}
+                      {lic.last_renewed_at && (
+                        <div className="text-[11px] text-emerald-700 mt-0.5">Renovada el {new Date(lic.last_renewed_at).toLocaleDateString()}</div>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       {lic.paid_by ? (
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
@@ -349,6 +406,9 @@ export function LicenseManager({ clients, services }: Props) {
                     <td className="px-4 py-3 text-right text-gray-700">{lic.cost != null ? `${lic.currency || '$'}${lic.cost.toLocaleString()}` : '--'}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex gap-1">
+                        <button onClick={() => openRenew(lic)} title="Renovar y avisar al cliente" className="p-1.5 hover:bg-emerald-50 text-gray-500 hover:text-emerald-600 rounded-md">
+                          <RefreshCw className="w-3.5 h-3.5" />
+                        </button>
                         <button onClick={() => openEdit(lic)} className="p-1.5 hover:bg-blue-50 text-gray-500 hover:text-blue-600 rounded-md">
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
@@ -361,6 +421,51 @@ export function LicenseManager({ clients, services }: Props) {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {renewing && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => !renewBusy && setRenewing(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Renovar licencia</h3>
+                <p className="text-sm text-gray-500">{renewing.software_name} · {getClientName(renewing.client_id)}</p>
+              </div>
+              <button onClick={() => setRenewing(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="text-xs text-gray-500">
+              Vencimiento actual: {renewing.expiration_date ? new Date(`${renewing.expiration_date}T12:00:00`).toLocaleDateString() : '—'} · ciclo {renewing.billing_cycle}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nuevo vencimiento</label>
+              <input type="date" value={renewForm.new_expiration} onChange={e => setRenewForm({ ...renewForm, new_expiration: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Costo de la renovación ({renewing.currency || 'USD'})</label>
+              <input type="number" step="0.01" value={renewForm.cost} onChange={e => setRenewForm({ ...renewForm, cost: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+              <p className="text-[11px] text-gray-400 mt-1">Queda en el historial; no se le muestra al cliente.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nota para el cliente (opcional)</label>
+              <textarea rows={2} value={renewForm.notes} onChange={e => setRenewForm({ ...renewForm, notes: e.target.value })}
+                placeholder="Ej.: se renovó por 12 meses, mismas 5 licencias"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={renewForm.notify} onChange={e => setRenewForm({ ...renewForm, notify: e.target.checked })} className="rounded border-gray-300" />
+              Avisar al cliente por mail ("Licencia renovada")
+            </label>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setRenewing(null)} disabled={renewBusy} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Cancelar</button>
+              <button onClick={saveRenewal} disabled={renewBusy || !renewForm.new_expiration}
+                className="px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg disabled:opacity-50">
+                {renewBusy ? 'Guardando…' : renewForm.notify ? 'Renovar y avisar' : 'Renovar'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -2109,6 +2109,9 @@ function LicensesSection({ licenses, services }: { licenses: ClientLicense[]; se
                   <span className="text-xs text-gray-400">{lic.quantity} {lic.quantity_label}</span>
                 </div>
                 {getServiceName(lic.service_id) && <span className="text-xs text-gray-400">{getServiceName(lic.service_id)}</span>}
+                {lic.last_renewed_at && Date.now() - new Date(lic.last_renewed_at).getTime() < 90 * 86_400_000 && (
+                  <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">✓ Renovada el {new Date(lic.last_renewed_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                )}
               </div>
               <div className="shrink-0">
                 {isExpired ? <span className="text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950 px-2 py-0.5 rounded-full">Expired</span>
