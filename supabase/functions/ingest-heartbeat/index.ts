@@ -49,7 +49,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: service, error: svcErr } = await supabaseAdmin
       .from("services")
-      .select("user_id, ingest_secret, ip_public, ip_internal, specifications, name, mac_address, infrastructure_type")
+      .select("user_id, ingest_secret, ip_public, ip_internal, specifications, name, mac_address, infrastructure_type, site_id")
       .eq("id", service_id)
       .maybeSingle();
 
@@ -177,11 +177,38 @@ Deno.serve(async (req: Request) => {
           const existingSpecs = (service.specifications && typeof service.specifications === "object") ? service.specifications as Record<string, unknown> : {};
           svcUpdate.specifications = { ...existingSpecs, ...specsUpdate };
         }
+        // MAC del router: une el servicio con el equipo que descubre el mapa
+        const rMac = typeof payload.router_mac === "string" ? payload.router_mac.trim().toUpperCase() : "";
+        if (!service.mac_address && /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(rMac)) svcUpdate.mac_address = rMac;
         if (Object.keys(svcUpdate).length) {
           await supabaseAdmin.from("services").update(svcUpdate).eq("id", service_id);
         }
       } catch (e) {
         console.error("mk-network: no se pudo actualizar el servicio", e);
+      }
+
+      // Vecinos LLDP/CDP/MNDP (script 1.1.0+): van al mapa del sitio del router, con la misma lógica
+      // que net-topology-report.rsc (ingest-net-topology). Sin sitio asignado no hay mapa que armar.
+      const topo = payload.topology;
+      if (service.site_id && topo && Array.isArray(topo.devices) && topo.devices.length) {
+        try {
+          // Llamada interna entre funciones (no sale del servidor): pasa la verificación de JWT
+          const anon = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+          const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/ingest-net-topology`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json", "X-Ingest-Secret": ingestSecret,
+              apikey: anon, Authorization: `Bearer ${anon}`,
+            },
+            body: JSON.stringify({
+              site_id: service.site_id, source: "mikrotik",
+              devices: topo.devices, edges: Array.isArray(topo.edges) ? topo.edges : [],
+            }),
+          });
+          if (!r.ok) console.error("mk-network: topología", r.status, (await r.text()).slice(0, 200));
+        } catch (e) {
+          console.error("mk-network: no se pudo mandar la topología", e);
+        }
       }
     }
 

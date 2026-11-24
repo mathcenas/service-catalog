@@ -29,7 +29,22 @@ type WgPeer = {
   name?: string; comment?: string; disabled?: boolean; endpoint?: string; current_endpoint?: string;
   allowed_address?: string; public_key?: string; last_handshake_s?: number; watched?: boolean;
 };
-type NetReport = { ddns_name?: string; public_ip?: string; lans?: { network?: string }[]; wireguard?: { name?: string; peers?: WgPeer[] }[] };
+type NetReport = {
+  ddns_name?: string; public_ip?: string; lans?: { network?: string }[];
+  wans?: { interface?: string; address?: string }[];
+  wireguard?: { name?: string; peers?: WgPeer[] }[];
+  ipsec_policies?: { dst_address?: string; peer?: string; disabled?: boolean; ph2_state?: string }[];
+};
+
+/** ¿La IPv4 está dentro de la red "a.b.c.d/nn"? */
+function ipInNet(ip: string, net: string): boolean {
+  const toInt = (v: string) => v.split('.').reduce((acc, o) => (acc << 8) + (Number(o) & 255), 0) >>> 0;
+  const [base, bitsRaw] = net.split('/');
+  const bits = Number(bitsRaw);
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip) || !base || !(bits >= 0 && bits <= 32)) return false;
+  const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
+  return ((toInt(ip) & mask) >>> 0) === ((toInt(base) & mask) >>> 0);
+}
 
 /** Id estable con forma de uuid (las posiciones se guardan en una columna uuid) */
 function stableUuid(str: string): string {
@@ -437,12 +452,82 @@ export default function NetworkTopologyPage() {
       }
     }
 
+    // Túneles IPsec (policies del router). Una red remota que no es de ningún router del mapa
+    // aparece como un nodo propio, compartido si varios routers llegan a ella (ej. otra oficina).
+    for (const [svcId, rep] of netReports) {
+      if (!nodeIds.has(svcId)) continue;
+      for (const pol of rep.ipsec_policies ?? []) {
+        const dst = String(pol.dst_address || '');
+        if (pol.disabled || !dst.includes('/') || dst.startsWith('0.0.0.0')) continue;
+        const up = pol.ph2_state === 'established';
+        let other = routerInfo.find(r => r.id !== svcId && nodeIds.has(r.id) && r.nets.includes(dst))?.id ?? null;
+        if (!other) {
+          other = stableUuid(`ipsec-net:${dst}`);
+          if (!nodeIds.has(other)) {
+            nodeIds.add(other);
+            const o = overrides[other];
+            vpnNodes.push({
+              id: other, type: 'device', position: o ? { x: o.x, y: o.y } : { x: 0, y: 0 },
+              data: {
+                label: pol.peer ? `Sitio ${pol.peer.replace(/^peer[-_]?/i, '')}` : 'Sitio remoto',
+                ip: dst, note: 'Red remota por IPsec', kind: (o?.kind as DeviceKind) || 'router',
+                status: up ? 'up' : 'down', statusText: up ? 'IPsec OK' : 'IPsec caído',
+              } satisfies DeviceNodeData,
+            });
+          }
+        }
+        const key = [svcId, other].sort().join('|');
+        const prev = tunnels.get(key);
+        if (prev) {
+          if (!prev.label.includes('IPsec')) prev.label = `${prev.label} + IPsec`;
+          prev.up = prev.up || up;
+        } else {
+          tunnels.set(key, { a: svcId, b: other, up, hs: -1, label: 'IPsec' });
+        }
+      }
+    }
+
+    // Internet de cada router (sus WAN): salvo que ya hayas dibujado a mano una nube de Internet
+    const customInternet = new Set(customNodes.filter(n => (n.data as DeviceNodeData).kind === 'internet').map(n => n.id));
+    const routersWithInternet = new Set(builtEdges.flatMap(e =>
+      customInternet.has(e.source) ? [e.target] : customInternet.has(e.target) ? [e.source] : []));
+    const wanLinks: { a: string; b: string; label: string }[] = [];
+    for (const [svcId, rep] of netReports) {
+      const wan = (rep.wans ?? [])[0];
+      if (!nodeIds.has(svcId) || !wan || routersWithInternet.has(svcId)) continue;
+      const id = stableUuid(`wan:${svcId}`);
+      const o = overrides[id];
+      nodeIds.add(id);
+      vpnNodes.push({
+        id, type: 'device', position: o ? { x: o.x, y: o.y } : { x: 0, y: 0 },
+        data: { label: 'Internet', ip: rep.public_ip || '', note: wan.interface?.startsWith('pppoe') ? 'PPPoE' : (wan.interface ?? ''), kind: 'internet', status: 'up' } satisfies DeviceNodeData,
+      });
+      wanLinks.push({ a: svcId, b: id, label: `WAN · ${wan.interface ?? ''}`.trim() });
+    }
+
+    // Equipos de la LAN de un router que no tienen ningún otro enlace (ni a mano, ni LLDP, ni VPN):
+    // se cuelgan del router con un enlace "LAN" (puede haber un switch en el medio que no se anuncia)
+    const linked = new Set<string>([
+      ...builtEdges.flatMap(e => [e.source, e.target]),
+      ...[...tunnels.values()].flatMap(t => [t.a, t.b]),
+      ...((linkRows ?? []) as unknown as NetLink[]).flatMap(l => [discNodeId.get(l.source_device_id) ?? '', discNodeId.get(l.target_device_id) ?? '']),
+    ]);
+    const lanLinks: { a: string; b: string }[] = [];
+    for (const svc of services) {
+      if (netReports.has(svc.id) || linked.has(svc.id) || !nodeIds.has(svc.id)) continue;
+      const ip = svc.ip_internal || svc.server_ip || '';
+      const router = routerInfo.find(r => netReports.has(r.id) && nodeIds.has(r.id) && r.nets.some(n => ipInNet(ip, n)));
+      if (router) lanLinks.push({ a: router.id, b: svc.id });
+    }
+
     // Enlaces que detecta el router (LLDP), con el puerto en cada punta. Un enlace dibujado
     // a mano entre los mismos equipos tiene prioridad.
     const allNodes = [...serviceNodes, ...customNodes, ...discoveredNodes, ...vpnNodes];
     autoLayout(allNodes, new Set(Object.keys(overrides).concat(customNodes.map(n => n.id))),
       [...builtEdges.map(e => [e.source, e.target] as [string, string]),
        ...[...tunnels.values()].map(t => [t.a, t.b] as [string, string]),
+       ...wanLinks.map(l => [l.a, l.b] as [string, string]),
+       ...lanLinks.map(l => [l.a, l.b] as [string, string]),
        ...((linkRows ?? []) as unknown as NetLink[]).map(l => [discNodeId.get(l.source_device_id) ?? '', discNodeId.get(l.target_device_id) ?? ''] as [string, string])]);
     const pos = new Map(allNodes.map(n => [n.id, n.position]));
     const manualPairs = new Set(builtEdges.flatMap(e => [`${e.source}|${e.target}`, `${e.target}|${e.source}`]));
@@ -474,6 +559,29 @@ export default function NetworkTopologyPage() {
         sourceHandle: sh, targetHandle: th,
         style: t.up ? edgeStyleFor('vpn') : { ...edgeStyleFor('vpn'), stroke: '#ef4444' },
         data: { type: 'vpn', midLabel: t.up ? t.label : `${t.label} · caída`, auto: true } as StoredEdgeStyle,
+      });
+    }
+
+    const handlesFor = (a: string, b: string) => {
+      const pa = pos.get(a)!, pb = pos.get(b)!;
+      const vertical = Math.abs(pb.y - pa.y) >= Math.abs(pb.x - pa.x);
+      return vertical ? (pb.y > pa.y ? ['bottom', 'top'] : ['top', 'bottom']) : (pb.x > pa.x ? ['right', 'left'] : ['left', 'right']);
+    };
+    for (const l of wanLinks) {
+      if (!pos.get(l.a) || !pos.get(l.b)) continue;
+      const [sh, th] = handlesFor(l.a, l.b);
+      autoEdges.push({
+        id: `wan-${l.a}`, source: l.a, target: l.b, type: 'port', sourceHandle: sh, targetHandle: th,
+        style: edgeStyleFor('fibra'), data: { type: 'fibra', midLabel: l.label, auto: true } as StoredEdgeStyle,
+      });
+    }
+    for (const l of lanLinks) {
+      if (!pos.get(l.a) || !pos.get(l.b) || manualPairs.has(`${l.a}|${l.b}`)) continue;
+      const [sh, th] = handlesFor(l.a, l.b);
+      autoEdges.push({
+        id: `lan-${l.a}-${l.b}`, source: l.a, target: l.b, type: 'port', sourceHandle: sh, targetHandle: th,
+        style: { ...edgeStyleFor('utp'), strokeDasharray: '2 4', opacity: 0.6 },
+        data: { type: 'utp', midLabel: 'LAN', auto: true } as StoredEdgeStyle,
       });
     }
 

@@ -6,7 +6,7 @@ Scripts que se ejecutan **en el router** (Terminal de Winbox o SSH) y lo que cor
 |---------|-------------|---------|
 | `setup.rsc` | Router (una vez) | Usuario `monitor` de solo lectura (REST) + syslog de seguridad hacia el VPS |
 | `net-topology-report.rsc` | Router (scheduler, cada 1 h) | Manda el router y sus vecinos (LLDP/CDP/MNDP) a la topología del portal |
-| `mk-network-report.rsc` | Router (scheduler, cada 1 h) | Redes LAN/WAN, IP pública, DDNS, túneles WireGuard e IPsec; ticket si un túnel se cae |
+| `mk-network-report.rsc` | Router (scheduler, cada 1 h) | Redes LAN/WAN, IP pública, DDNS, túneles WireGuard e IPsec y vecinos LLDP (arma el mapa); ticket si un túnel se cae |
 | `scripts/linux/mk-monitor.sh` | VPS (cron, cada 5 min) | Recursos, ping a un equipo interno, sesiones REST; alerta por cambios |
 | `scripts/linux/mk-syslog.sh` | VPS (servicio systemd) | Recibe el syslog del router: logins fallidos y desde IPs desconocidas |
 | `scripts/linux/mk-wifi-report.sh` | VPS (cron, cada 1 h) | Dispositivos Wi-Fi al reporte del portal (ver abajo) |
@@ -69,6 +69,10 @@ El portal actualiza solo la IP pública, la IP LAN, el modelo, la versión de Ro
 - peers WireGuard con `endpoint-address` (el sitio remoto que llama al centro): caído si pasan más de 5 min sin handshake;
 - del lado del centro, solo los peers con **`[monitor]` en el comentario** (los peers de notebooks o celulares no deberían alertar);
 - policies IPsec habilitadas que no están en `established`.
+
+**Desde la 1.1.0 también manda los vecinos LLDP/CDP/MNDP** (switches, APs, otros MikroTik, con el puerto de cada enlace) al mapa del **sitio del servicio del router**: no hace falta instalar además `net-topology-report.rsc`. El router tiene que tener un sitio asignado.
+
+**El mapa se arma solo** con lo que manda el router: la nube de **Internet** en su WAN (salvo que hayas dibujado una a mano), los **túneles WireGuard e IPsec** (una red remota que no es de ningún router del mapa aparece como "Sitio …"), los equipos descubiertos por LLDP con sus puertos y, para los servidores de la LAN del router que no tienen otro enlace, una línea punteada **"LAN"** hasta el router.
 
 **En el mapa** (Infraestructura → Topología): cada túnel vigilado se dibuja como enlace "VPN / Túnel" (violeta, rojo si está caído). Si el otro extremo es otro router del mismo mapa se unen los dos (por nombre DDNS, IP pública o redes LAN); si es de otro sitio u otro cliente aparece un nodo "Otro extremo de la VPN".
 
