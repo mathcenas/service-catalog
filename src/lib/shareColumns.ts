@@ -40,7 +40,7 @@ export const SHARE_COLUMNS = {
   ],
   roadmap_item_updates: ['id', 'roadmap_item_id', 'note', 'status', 'created_at'],
   service_changes: ['id', 'service_id', 'change_date', 'summary', 'details'],
-  client_licenses: ['id', 'client_id', 'service_id', 'software_name', 'quantity', 'quantity_label', 'expiration_date'],
+  client_licenses: ['id', 'client_id', 'service_id', 'software_name', 'quantity', 'quantity_label', 'expiration_date', 'last_renewed_at'],
   support_hours: ['id', 'client_id', 'service_id', 'work_date', 'hours', 'type', 'title', 'description', 'source', 'project_name'],
   service_heartbeats: ['id', 'service_id', 'source', 'status', 'message', 'payload', 'received_at'],
   client_apps: ['id', 'client_id', 'service_id', 'name', 'vendor', 'kind', 'support_phone', 'whatsapp_url', 'notes', 'sort_order'],

@@ -1,10 +1,12 @@
 # ==============================================================
-# mk-network-report.rsc  v1.0.1
+# mk-network-report.rsc  v1.1.0
 # Manda al portal Cenas IT cómo está armada la red del router:
 #   - redes LAN, WAN e IP pública (PPPoE / DHCP / IP Cloud)
 #   - nombre DDNS de IP Cloud
 #   - túneles WireGuard: peers, endpoint, redes permitidas, último handshake
 #   - IPsec: peers y policies, con su estado (ph2-state)
+#   - vecinos por LLDP/CDP/MNDP (switches, APs, otros MikroTik) con el puerto de cada enlace:
+#     el portal arma con eso el mapa del sitio (reemplaza a net-topology-report.rsc)
 # Si un túnel que este router debería mantener está caído, el reporte sale
 # en "failed" con el problema en "issues" y el portal abre un ticket.
 #
@@ -39,7 +41,7 @@
 :local wgDownMinutes 5
 # ─────────────────────────────────────────────────────────────
 
-:local scriptVersion "1.0.1"
+:local scriptVersion "1.1.0"
 :local issues [:toarray ""]
 
 # ── Redes (LAN / WAN) ─────────────────────────────────────────
@@ -180,6 +182,61 @@
   :set ($ipsecPeers->[:len $ipsecPeers]) {"name"=$pName; "address"=$pAddr; "disabled"=$pDis; "established"=$active; "remote_address"=$activeRemote; "uptime"=$activeUptime}
 }
 
+# ── Vecinos (LLDP/CDP/MNDP) para el mapa del sitio ───────────
+# Mismo criterio que net-topology-report.rsc: el portal muestra en el mapa la infraestructura
+# (router, switch, AP) y deja teléfonos y PCs en "Descubiertos".
+:local routerMac ""
+:foreach iface in=[/interface/ethernet/find] do={
+  :if ($routerMac = "") do={ :set routerMac [/interface/ethernet/get $iface mac-address] }
+}
+:local routerLanIp ""
+:if ([:len $lans] > 0) do={
+  :local a (($lans->0)->"address")
+  :set routerLanIp [:pick $a 0 [:find $a "/"]]
+}
+:local topoDevices [:toarray ""]
+:local topoEdges [:toarray ""]
+:set ($topoDevices->0) {"name"=[/system/identity/get name]; "device_type"="router"; "ip_address"=$routerLanIp; "mac_address"=$routerMac; "model"=[/system/resource/get board-name]; "status"="online"}
+:foreach n in=[/ip/neighbor/find] do={
+  :local nMac ""
+  :do { :set nMac [:tostr [/ip/neighbor/get $n mac-address]] } on-error={}
+  :if ($nMac != "") do={
+    :local nIp ""
+    :local nName ""
+    :local nPlatform ""
+    :local nBoard ""
+    :local nCaps ""
+    :local nIface ""
+    :local nRemote ""
+    :do { :set nIp [:tostr [/ip/neighbor/get $n address]] } on-error={}
+    :do { :set nName [:tostr [/ip/neighbor/get $n identity]] } on-error={}
+    :do { :set nPlatform [:tostr [/ip/neighbor/get $n platform]] } on-error={}
+    :do { :set nBoard [:tostr [/ip/neighbor/get $n board]] } on-error={}
+    :do { :set nCaps [:tostr [/ip/neighbor/get $n system-caps-enabled]] } on-error={}
+    :if ($nCaps = "") do={ :do { :set nCaps [:tostr [/ip/neighbor/get $n system-caps]] } on-error={} }
+    :do { :set nIface [:tostr [/ip/neighbor/get $n interface]] } on-error={}
+    :do { :set nRemote [:tostr [/ip/neighbor/get $n interface-name]] } on-error={}
+    :local hasName ($nName != "")
+    :if (!$hasName) do={ :set nName $nMac }
+    :local all ("$nPlatform $nBoard")
+    :local nType "endpoint"
+    :if ([:typeof [:find $nCaps "bridge"]] = "num" || [:typeof [:find $nCaps "switch"]] = "num") do={ :set nType "switch_managed" }
+    :if ([:typeof [:find $nCaps "router"]] = "num") do={ :set nType "router" }
+    :if ([:typeof [:find $nCaps "wlan"]] = "num" || [:typeof [:find $nCaps "wap"]] = "num") do={ :set nType "ap" }
+    :if ([:typeof [:find $nCaps "telephone"]] = "num") do={ :set nType "phone" }
+    :if ([:typeof [:find $all "MikroTik"]] = "num") do={ :set nType "router" }
+    :if ([:typeof [:find $all "CRS"]] = "num" || [:typeof [:find $all "CSS"]] = "num") do={ :set nType "switch_managed" }
+    :if ([:typeof [:find $all "cAP"]] = "num" || [:typeof [:find $all "wAP"]] = "num" || [:typeof [:find $all "UAP"]] = "num" || [:typeof [:find $all "U6"]] = "num" || [:typeof [:find $all "U7"]] = "num") do={ :set nType "ap" }
+    :if ([:typeof [:find $all "USW"]] = "num" || [:typeof [:find $all "US-"]] = "num") do={ :set nType "switch_managed" }
+    :if (!$hasName && $nCaps = "" && $nPlatform = "") do={ :set nType "endpoint" }
+    :set ($topoDevices->[:len $topoDevices]) {"name"=$nName; "device_type"=$nType; "ip_address"=$nIp; "mac_address"=$nMac; "model"=[:pick $all 0 80]; "status"="online"}
+    # Los vecinos que el router ve por un túnel no son enlaces físicos
+    :if ([:len [/interface/wireguard/find where name=$nIface]] = 0) do={
+      :set ($topoEdges->[:len $topoEdges]) {"source_mac"=$routerMac; "target_mac"=$nMac; "source_port"=$nIface; "target_port"=$nRemote; "link_type"="utp"}
+    }
+  }
+}
+
 # ── Payload y envío ──────────────────────────────────────────
 :local status "ok"
 :local message ("Red OK: " . [:len $lans] . " LAN, " . [:len $wgList] . " WireGuard, " . [:len $ipsecPolicies] . " policies IPsec")
@@ -188,7 +245,7 @@
   :set message ([:len $issues] . " problema(s): " . [:pick ($issues->0) 0 150])
 }
 
-:local payload {"script_version"=$scriptVersion; "identity"=[/system/identity/get name]; "board"=[/system/resource/get board-name]; "routeros_version"=[/system/resource/get version]; "uptime"=[:tostr [/system/resource/get uptime]]; "public_ip"=$publicIp; "ddns_name"=$ddnsName; "lans"=$lans; "wans"=$wans; "wireguard"=$wgList; "ipsec_peers"=$ipsecPeers; "ipsec_policies"=$ipsecPolicies; "issues"=$issues}
+:local payload {"script_version"=$scriptVersion; "identity"=[/system/identity/get name]; "board"=[/system/resource/get board-name]; "routeros_version"=[/system/resource/get version]; "uptime"=[:tostr [/system/resource/get uptime]]; "public_ip"=$publicIp; "ddns_name"=$ddnsName; "lans"=$lans; "wans"=$wans; "wireguard"=$wgList; "ipsec_peers"=$ipsecPeers; "ipsec_policies"=$ipsecPolicies; "router_mac"=$routerMac; "topology"={"devices"=$topoDevices; "edges"=$topoEdges}; "issues"=$issues}
 :local body {"service_id"=$serviceId; "source"="mk-network"; "status"=$status; "message"=$message; "payload"=$payload}
 
 :local json ""

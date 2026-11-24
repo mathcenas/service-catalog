@@ -299,6 +299,8 @@ export type ClientLicense = {
   notes?: string;
   created_at: string;
   updated_at: string;
+  /** Última renovación registrada con el botón Renovar (aviso "Licencia renovada") */
+  last_renewed_at?: string | null;
 };
 
 export type ServiceHeartbeat = {

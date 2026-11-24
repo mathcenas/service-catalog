@@ -134,10 +134,14 @@ Deno.serve(async (req: Request) => {
     // Daily email covers 24h; weekly email covers 7d — fetch the broader window needed
     const backupSince = since7d;
 
+    const in30d = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+    const today = new Date().toISOString().slice(0, 10);
     const [
       { data: backups },
       { data: heartbeats },
       { data: changes },
+      { data: renewals },
+      { data: expiringLics },
     ] = await Promise.all([
       serviceIds.length
         ? supabase.from("service_backups").select("service_id, status, backed_up_at, job_name").gte("backed_up_at", backupSince).in("service_id", serviceIds).order("backed_up_at", { ascending: false })
@@ -148,6 +152,11 @@ Deno.serve(async (req: Request) => {
       serviceIds.length
         ? supabase.from("service_changes").select("service_id, summary, change_date").gte("change_date", since7d).in("service_id", serviceIds).order("change_date", { ascending: false })
         : { data: [] },
+      // Licencias renovadas esta semana (botón Renovar) y las que vencen en 30 días
+      supabase.from("license_renewals").select("renewed_at, new_expiration, client_licenses(software_name)")
+        .eq("client_id", client.id).gte("renewed_at", since7d).order("renewed_at", { ascending: false }),
+      supabase.from("client_licenses").select("software_name, expiration_date")
+        .eq("client_id", client.id).gte("expiration_date", today).lte("expiration_date", in30d).order("expiration_date"),
     ]);
 
     // ── Helpers ──────────────────────────────────────────────
@@ -275,6 +284,21 @@ Deno.serve(async (req: Request) => {
         </tr>`;
       }).join('');
 
+    // ── Licencias ──────────────────────────────────────────────
+    const fmtD = (d: string) => new Date(`${d.slice(0, 10)}T12:00:00`).toLocaleDateString('es-UY', { day: 'numeric', month: 'short', year: 'numeric' });
+    const renewedRows = (renewals || []).map((r: any) => `<tr>
+          <td style="padding:5px 8px;font-size:12px;color:${B.primary};">${r.client_licenses?.software_name ?? 'Licencia'}</td>
+          <td style="padding:5px 8px;font-size:12px;color:#059669;font-weight:600;">Renovada el ${fmtD(r.renewed_at)}</td>
+          <td style="padding:5px 8px;font-size:12px;color:${B.textMid};">${r.new_expiration ? `hasta el ${fmtD(r.new_expiration)}` : ''}</td>
+        </tr>`).join('');
+    const expiringRows = (expiringLics || []).map((l: any) => {
+      const days = Math.ceil((new Date(`${l.expiration_date}T12:00:00`).getTime() - Date.now()) / 86_400_000);
+      return `<tr>
+          <td style="padding:5px 8px;font-size:12px;color:${B.primary};">${l.software_name}</td>
+          <td style="padding:5px 8px;font-size:12px;color:${days <= 7 ? '#dc2626' : '#f59e0b'};font-weight:600;">${fmtD(l.expiration_date)} (${days}d)</td>
+        </tr>`;
+    }).join('');
+
     // ── Changes ────────────────────────────────────────────────
     const changeItems = (changes || []).slice(0, 5).map((c: any) =>
       `<li style="font-size:12px;color:${B.textMain};margin-bottom:5px;">
@@ -314,6 +338,8 @@ Deno.serve(async (req: Request) => {
         ${!isDaily && diskRows   ? section('Estado de Discos (SMART)', '💾', tableWrap(diskRows,   ['Servidor', 'Disco', 'Estado', 'Detalles'])) : ''}
         ${!isDaily && healthRows ? section('Salud del Sistema',        '🖥️', tableWrap(healthRows, ['Servicio', 'Estado', 'Detalles'])) : ''}
         ${!isDaily && renewalRows ? section('Próximas Renovaciones', '📅', tableWrap(renewalRows, ['Servicio', 'Fecha'])) : ''}
+        ${!isDaily && renewedRows ? section('Licencias renovadas', '✅', tableWrap(renewedRows, ['Licencia', 'Renovación', 'Vigencia'])) : ''}
+        ${!isDaily && expiringRows ? section('Licencias por vencer', '🔑', tableWrap(expiringRows, ['Licencia', 'Vence'])) : ''}
         ${!isDaily && changeItems ? section('Cambios realizados esta semana', '🔧', `<ul style="margin:4px 0;padding-left:16px;">${changeItems}</ul>`) : ''}
         ${emailPortalPanel({ companyName: client.company_name, portalUrl })}
         ${portalUrl ? `<p style="text-align:center;margin:10px 0 0;font-size:11px;"><a href="${portalUrl}#referencias" style="color:${B.textMid};text-decoration:underline;">¿Qué significa cada estado?</a></p>` : ""}
