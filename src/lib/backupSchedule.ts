@@ -39,8 +39,14 @@ export function jobMaxAgeHours(
   serviceMaxAge: number | null,
   jobName: string | null | undefined,
   runsNewestFirst: string[],
+  /** Frecuencia que informa la herramienta (política de Kopia): manda sobre las adivinanzas */
+  expectedIntervalHours?: number | null,
 ): number | null {
   if (serviceMaxAge === null) return null;
+  if (expectedIntervalHours && expectedIntervalHours > 0) {
+    // 10 % + 2 h de margen: un diario vence a las 28 h, un semanal a los ~7,8 días
+    return Math.max(serviceMaxAge, Math.round(expectedIntervalHours * 1.1 + 2));
+  }
   let max = serviceMaxAge;
   const byName = maxAgeFromJobName(jobName);
   if (byName) max = Math.max(max, byName);

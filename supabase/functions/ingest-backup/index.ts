@@ -25,6 +25,9 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json();
     const { service_id, job_name, status, size_bytes, duration_seconds, details, backed_up_at, suppress_email } = body;
+    // Cada cuánto corre el job según la herramienta (ej. la política de Kopia): opcional
+    const expectedRaw = Number(body.expected_interval_hours);
+    const expectedInterval = Number.isFinite(expectedRaw) && expectedRaw > 0 && expectedRaw <= 2000 ? expectedRaw : null;
 
     if (!service_id) {
       return new Response(
@@ -57,7 +60,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: service, error: svcErr } = await supabaseAdmin
       .from("services")
-      .select("user_id, ingest_secret, name, business_name, notification_email, provider_email")
+      .select("user_id, ingest_secret, name, business_name, notification_email, provider_email, last_backup_at")
       .eq("id", service_id)
       .maybeSingle();
 
@@ -88,6 +91,10 @@ Deno.serve(async (req: Request) => {
       dup = job_name ? dup.eq("job_name", job_name) : dup.is("job_name", null);
       const { data: existing } = await dup;
       if (existing && existing.length > 0) {
+        // El mismo snapshot se vuelve a mandar cada día: solo se actualiza la frecuencia si cambió
+        if (expectedInterval !== null) {
+          await supabaseAdmin.from("service_backups").update({ expected_interval_hours: expectedInterval }).eq("id", existing[0].id);
+        }
         return new Response(
           JSON.stringify({ ok: true, duplicate: true }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -107,6 +114,7 @@ Deno.serve(async (req: Request) => {
         duration_seconds: duration_seconds ?? null,
         details: details || null,
         backed_up_at: backedUpAt,
+        expected_interval_hours: expectedInterval,
       });
 
     if (insertErr) {
@@ -117,7 +125,8 @@ Deno.serve(async (req: Request) => {
     }
 
     // Update last_backup_at and last_backup_size_bytes on the service if successful or warning
-    if (normalizedStatus !== "failed") {
+    // (un job semanal que se reporta tarde no puede hacer retroceder el último backup del servicio)
+    if (normalizedStatus !== "failed" && (!service.last_backup_at || new Date(backedUpAt) >= new Date(service.last_backup_at))) {
       const updatePayload: Record<string, unknown> = { last_backup_at: backedUpAt };
       if (size_bytes != null) updatePayload.last_backup_size_bytes = size_bytes;
       await supabaseAdmin.from("services").update(updatePayload).eq("id", service_id);

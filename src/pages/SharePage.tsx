@@ -23,6 +23,8 @@ interface ServiceBackup {
   size_bytes: number | null;
   duration_seconds: number | null;
   backed_up_at: string;
+  /** Cada cuánto corre el job según la herramienta (kopia-report lo lee de la política de Kopia) */
+  expected_interval_hours?: number | null;
 }
 
 interface UptimeEvent {
@@ -186,7 +188,7 @@ export function SharePage({ token }: Props) {
         const [{ data: hbData }, { data: sysHbData }, { data: backupsData }, { data: uptimeData }] = await Promise.all([
           supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).eq('source', 'speedtest').gte('received_at', since48h).order('received_at', { ascending: true }),
           supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check', 'tailscale']).gte('received_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
-          supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(100),
+          supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at,expected_interval_hours').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(100),
           supabase.from('uptime_events').select('id,service_id,monitor_name,event_type,message,duration_seconds,occurred_at').in('service_id', serviceIds).gte('occurred_at', since30d).order('occurred_at', { ascending: false }),
         ]);
         setHeartbeats(hbData || []);
@@ -233,7 +235,7 @@ export function SharePage({ token }: Props) {
       if (serviceIds.length === 0) return;
       const [{ data: sysHbData }, { data: backupsData }] = await Promise.all([
         supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check', 'tailscale']).gte('received_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
-        supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(100),
+        supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at,expected_interval_hours').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(100),
       ]);
       if (sysHbData) {
         setSystemHeartbeats(sysHbData.filter(h => h.source !== 'tailscale'));
@@ -946,7 +948,7 @@ function BackupStatus({ services, backups, kopiaDest = {} }: { services: Service
           // Se ven los 2 más recientes y cualquiera con problema; el resto queda en un desplegable
           const jobHasProblem = ([jobName, entries]: [string, ServiceBackup[]]) => {
             const hoursOld = (Date.now() - new Date(entries[0].backed_up_at).getTime()) / 3600000;
-            const maxAge = jobMaxAgeHours(backupMaxAgeHours(s), jobName, entries.map(e => e.backed_up_at));
+            const maxAge = jobMaxAgeHours(backupMaxAgeHours(s), jobName, entries.map(e => e.backed_up_at), entries[0].expected_interval_hours);
             return entries[0].status === 'failed' || ageLevel(hoursOld, maxAge) === 'late';
           };
           const shownJobs = jobs.filter((j, i) => i < 2 || jobHasProblem(j));
@@ -971,7 +973,7 @@ function BackupStatus({ services, backups, kopiaDest = {} }: { services: Service
                 const hoursOld = (Date.now() - new Date(last.backed_up_at).getTime()) / 3600000;
                 const history = entries.slice(0, 7);
                 // Cada job con su propia frecuencia (un servicio diario puede tener jobs semanales)
-                const maxAge = jobMaxAgeHours(backupMaxAgeHours(s), jobName, entries.map(e => e.backed_up_at));
+                const maxAge = jobMaxAgeHours(backupMaxAgeHours(s), jobName, entries.map(e => e.backed_up_at), entries[0].expected_interval_hours);
 
                 return (
                   <div key={jobName} className={multiJob ? 'ml-3' : ''}>
