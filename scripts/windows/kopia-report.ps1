@@ -3,8 +3,10 @@
 # al Service Catalog via ingest-backup
 #
 # Correr via Task Scheduler después de que terminen los snapshots.
-# Lee los últimos snapshots de todas las fuentes configuradas en Kopia
-# y reporta los completados en las últimas 25 horas.
+# Lee el último snapshot de cada fuente configurada en Kopia (de los últimos 40 días)
+# y lo reporta junto con cada cuánto corre esa fuente según su política de Kopia,
+# para que un job semanal no aparezca vencido en un servicio diario. Volver a mandar
+# el mismo snapshot no duplica nada (el portal lo reconoce por fecha).
 #
 # Ejemplo Task Scheduler (diario a las 7am):
 #   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Scripts\kopia-report.ps1"
@@ -13,7 +15,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.3.1"
+$SCRIPT_VERSION = "1.4.0"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -174,8 +176,48 @@ if ($CHECK_KOPIA_MAINTENANCE) {
     }
 }
 
-# ---------- Leer snapshots de las últimas 25 horas ----------
-$since = (Get-Date).AddHours(-25).ToUniversalTime()
+# ---------- Frecuencia de cada fuente según su política de Kopia ----------
+# Devuelve las horas entre snapshots (24 = diario, 168 = semanal) o $null si es manual o no se sabe.
+function Get-KopiaIntervalHours([string]$path) {
+    try {
+        $pj = & $kopiaExe policy show --json $path @kopiaCfgArgs 2>$null
+        if ($LASTEXITCODE -ne 0 -or -not $pj) { return $null }
+        $pol = ($pj | Out-String) | ConvertFrom-Json
+        $sch = $pol.scheduling
+        if (-not $sch -and $pol.effective) { $sch = $pol.effective.scheduling }
+        if (-not $sch) { return $null }
+        if ($sch.manual) { return $null }
+        if ($sch.intervalSeconds -and [double]$sch.intervalSeconds -gt 0) { return [math]::Round([double]$sch.intervalSeconds / 3600, 1) }
+        $best = $null
+        foreach ($expr in @($sch.cron)) {
+            if (-not $expr) { continue }
+            $f = ([string]$expr).Trim() -split '\s+'
+            if ($f.Count -lt 5) { continue }
+            $h = 24
+            if ($f[2] -ne '*' -and $f[2] -ne '?') { $h = 720 }                       # día del mes: mensual
+            elseif ($f[4] -ne '*' -and $f[4] -ne '?') {                               # día de la semana
+                $days = 0
+                foreach ($part in ($f[4] -split ',')) {
+                    if ($part -match '^(\d)-(\d)$') { $days += [int]$matches[2] - [int]$matches[1] + 1 }
+                    elseif ($part -match '-') { $days += 5 }   # MON-FRI y parecidos
+                    else { $days++ }
+                }
+                $h = [math]::Round(168 / [math]::Max(1, $days), 1)
+            } elseif ($f[1] -ne '*' -and $f[1] -ne '?') { $h = [math]::Round(24 / [math]::Max(1, ($f[1] -split ',').Count), 1) }
+            else { $h = 1 }
+            if ($best -eq $null -or $h -lt $best) { $best = $h }
+        }
+        if ($best -ne $null) { return $best }
+        $tod = @($sch.timeOfDay | Where-Object { $_ })
+        if ($tod.Count -gt 0) { return [math]::Round(24 / $tod.Count, 1) }
+    } catch {}
+    return $null
+}
+
+# ---------- Leer snapshots ----------
+# El último de cada fuente aunque tenga más de un día: así un job semanal sigue informando su
+# frecuencia todos los días (los reenvíos no duplican). Más de 40 días = fuente abandonada.
+$since = (Get-Date).AddDays(-40).ToUniversalTime()
 
 try {
     $kErr = Join-Path $env:TEMP "kopia-report-err.txt"
@@ -199,7 +241,7 @@ $recent = $snapshots | Where-Object {
 }
 
 if (-not $recent) {
-    Write-Log "No hay snapshots en las últimas 25 horas"
+    Write-Log "No hay snapshots en los últimos 40 días"
     exit 0
 }
 
@@ -236,6 +278,7 @@ foreach ($snap in $byPath) {
     $status     = if ($errorCount -gt 0) { "failed" } else { "success" }
     $backedUpAt = $endDt.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     $details    = "id=$($snap.id) files=$($snap.stats.fileCount + $snap.stats.cachedFiles) errors=$errorCount"
+    $everyHours = Get-KopiaIntervalHours $path
 
     Write-Log "Kopia $status - $jobName - ${duration}s - $sizeBytes bytes"
 
@@ -247,8 +290,10 @@ foreach ($snap in $byPath) {
         duration_seconds = $duration
         backed_up_at     = $backedUpAt
         details          = $details
+        expected_interval_hours = $everyHours
         script_version   = $SCRIPT_VERSION
     } | ConvertTo-Json -Compress
+    if ($everyHours) { Write-Log "  Frecuencia según la política de Kopia: cada $everyHours h" }
 
     try {
         Invoke-RestMethod -Uri $INGEST_URL -Method POST -Headers $headers -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ErrorAction Stop | Out-Null
