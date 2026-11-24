@@ -49,7 +49,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: service, error: svcErr } = await supabaseAdmin
       .from("services")
-      .select("user_id, ingest_secret, ip_public, ip_internal, specifications, name")
+      .select("user_id, ingest_secret, ip_public, ip_internal, specifications, name, mac_address, infrastructure_type")
       .eq("id", service_id)
       .maybeSingle();
 
@@ -115,9 +115,29 @@ Deno.serve(async (req: Request) => {
       if (diskFreeGB != null)   specsUpdate.disk_free_gb  = diskFreeGB;
       if (diskTotalGB != null)  specsUpdate.disk_total_gb = diskTotalGB;
 
+      // IP de Tailscale: Windows la manda suelta (tailscale_ip), Linux dentro de tailscale.self
+      const tsIp = typeof payload.tailscale_ip === "string" ? payload.tailscale_ip.trim()
+        : typeof payload.tailscale?.self?.ip === "string" ? String(payload.tailscale.self.ip).trim() : null;
+      if (tsIp && /^100\.\d+\.\d+\.\d+$/.test(tsIp)) specsUpdate.tailscale_ip = tsIp;
+
       if (Object.keys(specsUpdate).length > 0) {
         const existingSpecs = (service.specifications && typeof service.specifications === "object") ? service.specifications as Record<string, unknown> : {};
         svcUpdate.specifications = { ...existingSpecs, ...specsUpdate };
+      }
+
+      // Uso de disco y RAM: el portal del cliente los muestra como barras en la ficha del servicio
+      const ramPct = typeof payload.ram_pct === "number" ? payload.ram_pct : null;
+      if (diskPct != null) svcUpdate.storage_used_pct = Math.round(diskPct);
+      if (ramPct != null) svcUpdate.ram_used_pct = Math.round(ramPct);
+      if (diskPct != null || ramPct != null) svcUpdate.resource_updated_at = new Date().toISOString();
+
+      // Solo si están vacíos (lo cargado a mano no se pisa): MAC de la placa principal (para unir el
+      // equipo con lo que descubre el router en el mapa) y tipo de infraestructura (un VPS tiene la
+      // IP pública en su propia placa)
+      const mac = typeof payload.mac_address === "string" ? payload.mac_address.trim().toUpperCase() : "";
+      if (!service.mac_address && /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(mac)) svcUpdate.mac_address = mac;
+      if (!service.infrastructure_type && reportedPublic && reportedInternal && reportedPublic === reportedInternal) {
+        svcUpdate.infrastructure_type = "Cloud";
       }
 
       if (Object.keys(svcUpdate).length > 0) {

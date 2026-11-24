@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.14.3"
+$SCRIPT_VERSION = "1.15.0"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -46,11 +46,31 @@ try {
 }
 
 $localIp = $null
+$tailscaleIp = $null
+$macAddress = $null
 try {
-    # Prefer the IP on the default route (avoids loopback / VPN adapters)
-    $localIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
-        Where-Object { $_.PrefixOrigin -ne 'WellKnown' -and $_.IPAddress -notmatch '^127\.' } |
-        Sort-Object { $_.InterfaceMetric } |
+    # IP de la placa que tiene la ruta por defecto (la LAN real): evita los adaptadores virtuales
+    # de Hyper-V/WSL/Docker (172.x, 192.168.x internos), Tailscale y APIPA
+    $route = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop |
+        Sort-Object { $_.RouteMetric + $_.InterfaceMetric } | Select-Object -First 1
+    if ($route) {
+        $localIp = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $route.ifIndex -ErrorAction Stop |
+            Where-Object { $_.IPAddress -notmatch '^(127\.|169\.254\.)' } | Select-Object -First 1).IPAddress
+        try { $macAddress = ((Get-NetAdapter -InterfaceIndex $route.ifIndex -ErrorAction Stop).MacAddress -replace '-', ':') } catch {}
+    }
+} catch {}
+if (-not $localIp) {
+    try {
+        $localIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+            Where-Object { $_.PrefixOrigin -ne 'WellKnown' -and $_.IPAddress -notmatch '^(127\.|169\.254\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)' } |
+            Sort-Object { $_.InterfaceMetric } |
+            Select-Object -First 1).IPAddress
+    } catch {}
+}
+try {
+    # IP de Tailscale (100.64.0.0/10), si está instalado
+    $tailscaleIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+        Where-Object { $_.IPAddress -match '^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.' -or $_.InterfaceAlias -match 'Tailscale' } |
         Select-Object -First 1).IPAddress
 } catch {}
 
@@ -623,6 +643,8 @@ $hwData = @{
         hyperv_checkpoints = $hvCheckpoints
         public_ip      = $publicIp
         local_ip       = $localIp
+        tailscale_ip   = $tailscaleIp
+        mac_address    = $macAddress
         is_server      = $false
         os_caption     = (Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue).Caption
         script_version = $SCRIPT_VERSION

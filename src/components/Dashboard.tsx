@@ -22,6 +22,7 @@ const DataExportImport = lazy(() => import('./DataExportImport').then(m => ({ de
 const SettingsPanel = lazy(() => import('./SettingsPanel').then(m => ({ default: m.SettingsPanel })));
 const SupportHoursManager = lazy(() => import('./SupportHoursManager').then(m => ({ default: m.SupportHoursManager })));
 const InfrastructureView = lazy(() => import('./InfrastructureView').then(m => ({ default: m.InfrastructureView })));
+import { AnyDeskButton, anydeskIdOf } from './AnyDeskButton';
 const SoftwareInventoryView = lazy(() => import('./SoftwareInventoryView').then(m => ({ default: m.SoftwareInventoryView })));
 const EmailAuditAdminView = lazy(() => import('./EmailAuditAdminView').then(m => ({ default: m.EmailAuditAdminView })));
 const MonthlySummaryView = lazy(() => import('./MonthlySummaryView').then(m => ({ default: m.MonthlySummaryView })));
@@ -81,8 +82,9 @@ export function Dashboard() {
       .then(({ data }) => { if (data?.logo_url) setLogoUrl(data.logo_url); });
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
+  // silent: refresco en segundo plano (cada 5 min y al volver a la pestaña), sin la ruedita de carga
+  const fetchData = async (silent = false) => {
+    if (!silent) setLoading(true);
     const { data: clientsData } = await supabase
       .from('clients')
       .select('*')
@@ -142,6 +144,12 @@ export function Dashboard() {
 
   useEffect(() => {
     fetchData();
+    // Los scripts actualizan IPs, AnyDesk, hostname, uso de disco… en los servicios: que el panel
+    // no quede con lo que había al abrir la página
+    const refresh = () => { if (document.visibilityState === 'visible') fetchData(true); };
+    const timer = setInterval(refresh, 5 * 60 * 1000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
   }, []);
 
   const handleClientAdded = () => {
@@ -397,14 +405,15 @@ export function Dashboard() {
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-100">
                   <h3 className="text-lg font-semibold text-gray-900">Infrastructure Overview</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">Quick reference for IPs, providers, and domains across active services.</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Quick reference for AnyDesk, IPs, providers, and domains across active services.</p>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-[600px]">
+                  <table className="w-full text-sm min-w-[760px]">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
                         <th className="text-left px-4 py-2.5 font-medium text-gray-600 whitespace-nowrap">Service</th>
                         <th className="text-left px-4 py-2.5 font-medium text-gray-600 whitespace-nowrap">Client</th>
+                        <th className="text-left px-4 py-2.5 font-medium text-gray-600 whitespace-nowrap">AnyDesk</th>
                         <th className="text-left px-4 py-2.5 font-medium text-gray-600 whitespace-nowrap">IP</th>
                         <th className="text-left px-4 py-2.5 font-medium text-gray-600 whitespace-nowrap">Provider</th>
                         <th className="text-left px-4 py-2.5 font-medium text-gray-600 whitespace-nowrap">Domain / Proxy</th>
@@ -420,6 +429,9 @@ export function Dashboard() {
                               <div className="font-medium text-gray-900">{svc.business_name || svc.name}</div>
                             </td>
                             <td className="px-4 py-2.5 text-gray-600">{client?.company_name || '--'}</td>
+                            <td className="px-4 py-2.5">
+                              {anydeskIdOf(svc) ? <AnyDeskButton id={anydeskIdOf(svc)!} compact /> : <span className="text-gray-400">--</span>}
+                            </td>
                             <td className="px-4 py-2.5">
                               {(svc.server_ip || svc.ip_public || svc.ip_internal) ? (
                                 <div className="flex flex-col gap-0.5">
