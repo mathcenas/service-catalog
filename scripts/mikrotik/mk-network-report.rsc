@@ -1,5 +1,5 @@
 # ==============================================================
-# mk-network-report.rsc  v1.0.0
+# mk-network-report.rsc  v1.0.1
 # Manda al portal Cenas IT cómo está armada la red del router:
 #   - redes LAN, WAN e IP pública (PPPoE / DHCP / IP Cloud)
 #   - nombre DDNS de IP Cloud
@@ -39,7 +39,7 @@
 :local wgDownMinutes 5
 # ─────────────────────────────────────────────────────────────
 
-:local scriptVersion "1.0.0"
+:local scriptVersion "1.0.1"
 :local issues [:toarray ""]
 
 # ── Redes (LAN / WAN) ─────────────────────────────────────────
@@ -128,32 +128,11 @@
   :set ($wgList->[:len $wgList]) {"name"=$wName; "address"=$wAddr; "listen_port"=[/interface/wireguard/get $w listen-port]; "mtu"=[/interface/wireguard/get $w mtu]; "public_key"=[/interface/wireguard/get $w public-key]; "disabled"=[/interface/wireguard/get $w disabled]; "running"=[/interface/wireguard/get $w running]; "peers"=$peers}
 }
 
-# ── IPsec ─────────────────────────────────────────────────────
-:local ipsecPeers [:toarray ""]
-:foreach p in=[/ip/ipsec/peer/find] do={
-  :local pName [/ip/ipsec/peer/get $p name]
-  :local pAddr ""
-  :do { :set pAddr [:tostr [/ip/ipsec/peer/get $p address]] } on-error={}
-  :local pDis [/ip/ipsec/peer/get $p disabled]
-  :local active false
-  :local activeRemote ""
-  :local activeUptime ""
-  :foreach ap in=[/ip/ipsec/active-peers/find where state="established"] do={
-    :local apId ""
-    :do { :set apId [:tostr [/ip/ipsec/active-peers/get $ap id]] } on-error={}
-    :local apRemote [:tostr [/ip/ipsec/active-peers/get $ap remote-address]]
-    :local apPeer ""
-    :do { :set apPeer [:tostr [/ip/ipsec/active-peers/get $ap peer]] } on-error={}
-    :if ($apPeer = $pName || ($pAddr != "" && [:typeof [:find $pAddr $apRemote]] = "num")) do={
-      :set active true
-      :set activeRemote $apRemote
-      :do { :set activeUptime [:tostr [/ip/ipsec/active-peers/get $ap uptime]] } on-error={}
-    }
-  }
-  :set ($ipsecPeers->[:len $ipsecPeers]) {"name"=$pName; "address"=$pAddr; "disabled"=$pDis; "established"=$active; "remote_address"=$activeRemote; "uptime"=$activeUptime}
-}
-
+# ── IPsec ──────────────────────────────────────────────────
 :local ipsecPolicies [:toarray ""]
+# Peers con alguna policy establecida (active-peers no siempre trae el nombre del peer)
+:local upPeers ","
+
 :foreach p in=[/ip/ipsec/policy/find where dynamic=no] do={
   :local isTemplate false
   :do { :set isTemplate [/ip/ipsec/policy/get $p template] } on-error={}
@@ -170,8 +149,35 @@
     :if (!$dis && $state != "established") do={
       :set ($issues->[:len $issues]) ("VPN IPsec " . $src . " -> " . $dst . " (" . $peer . ") sin establecer: " . $state)
     }
+    :if ($state = "established") do={ :set upPeers ($upPeers . $peer . ",") }
     :set ($ipsecPolicies->[:len $ipsecPolicies]) {"src_address"=$src; "dst_address"=$dst; "peer"=$peer; "disabled"=$dis; "ph2_state"=$state; "comment"=$comment}
   }
+}
+
+# ── IPsec: peers ─────────────────────────────────────────────────────
+:local ipsecPeers [:toarray ""]
+:foreach p in=[/ip/ipsec/peer/find] do={
+  :local pName [/ip/ipsec/peer/get $p name]
+  :local pAddr ""
+  :do { :set pAddr [:tostr [/ip/ipsec/peer/get $p address]] } on-error={}
+  :local pDis [/ip/ipsec/peer/get $p disabled]
+  :local active false
+  :local activeRemote ""
+  :local activeUptime ""
+  :foreach ap in=[/ip/ipsec/active-peers/find where state="established"] do={
+    :local apId ""
+    :do { :set apId [:tostr [/ip/ipsec/active-peers/get $ap id]] } on-error={}
+    :local apRemote [:tostr [/ip/ipsec/active-peers/get $ap remote-address]]
+    :local apPeer ""
+    :do { :set apPeer [:tostr [/ip/ipsec/active-peers/get $ap peer]] } on-error={}
+    :if (($apPeer != "" && $apPeer = $pName) || ($pAddr != "" && $apRemote != "" && [:typeof [:find $pAddr $apRemote]] = "num")) do={
+      :set active true
+      :set activeRemote $apRemote
+      :do { :set activeUptime [:tostr [/ip/ipsec/active-peers/get $ap uptime]] } on-error={}
+    }
+  }
+  :if ([:typeof [:find $upPeers ("," . $pName . ",")]] = "num") do={ :set active true }
+  :set ($ipsecPeers->[:len $ipsecPeers]) {"name"=$pName; "address"=$pAddr; "disabled"=$pDis; "established"=$active; "remote_address"=$activeRemote; "uptime"=$activeUptime}
 }
 
 # ── Payload y envío ──────────────────────────────────────────
