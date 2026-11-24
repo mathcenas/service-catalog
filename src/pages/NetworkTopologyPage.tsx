@@ -276,7 +276,9 @@ export default function NetworkTopologyPage() {
     const discovered = ((devRows ?? []) as unknown as DiscoveredDevice[]).map(d => ({ ...d, map_visibility: d.map_visibility ?? 'auto' }));
     setDiscovered(discovered);
 
-    const services = (svcs ?? []) as unknown as ServiceRow[];
+    // Los servicios de tipo VPN (specifications.vpn) se ven como enlaces entre routers, no como equipos
+    const services = ((svcs ?? []) as unknown as ServiceRow[])
+      .filter(s => !(s.specifications as Record<string, unknown> | null)?.vpn);
     setSvcOptions(services.map(s => ({ id: s.id, name: s.business_name || s.name })));
 
     // Último heartbeat por servicio (cualquier script), últimas 48 h
@@ -395,6 +397,7 @@ export default function NetworkTopologyPage() {
       for (const h of (netHbs ?? []) as { service_id: string; payload: NetReport | null }[])
         if (!netReports.has(h.service_id)) netReports.set(h.service_id, h.payload ?? {});
     }
+    const vpnNodes: Node[] = [];
     const routerInfo = services.map(s => {
       const r = netReports.get(s.id) ?? {};
       const sp = (s.specifications ?? {}) as { ddns_name?: string; lan_networks?: string[] };
@@ -405,6 +408,32 @@ export default function NetworkTopologyPage() {
         nets: [...(r.lans ?? []).map(l => l.network ?? ''), ...(sp.lan_networks ?? [])].filter(Boolean),
       };
     });
+    // Routers del cliente en otros sitios (fuera de esta vista): para nombrar el otro extremo de un túnel
+    const { data: clientRouters } = await supabase.from('services')
+      .select('id, name, business_name, ip_public, specifications, sites(name)')
+      .eq('client_id', clientId).neq('status', 'Cancelled').not('specifications->lan_networks', 'is', null);
+    const remoteRouters = ((clientRouters ?? []) as unknown as { id: string; name: string; business_name?: string; ip_public?: string; specifications?: { lan_networks?: string[]; ddns_name?: string }; sites?: { name?: string } | null }[])
+      .map(r => ({
+        name: r.business_name || r.name, site: r.sites?.name ?? '',
+        nets: r.specifications?.lan_networks ?? [], ddns: String(r.specifications?.ddns_name ?? '').toLowerCase(), pub: r.ip_public ?? '',
+      }));
+    const remoteName = (net: string, ep = '') => {
+      const r = remoteRouters.find(x => (net && x.nets.includes(net)) || (ep && (ep.toLowerCase() === x.ddns || ep === x.pub)));
+      return r ? (r.site ? `${r.name} (${r.site})` : r.name) : null;
+    };
+    // Mismo nodo para el mismo sitio remoto aunque se llegue por WireGuard e IPsec a la vez
+    const remoteNode = (net: string, fallbackKey: string, label: string, ip: string, note: string, up: boolean, statusText: string) => {
+      const id = stableUuid(`remote:${net || fallbackKey}`);
+      if (!nodeIds.has(id)) {
+        nodeIds.add(id);
+        const o = overrides[id];
+        vpnNodes.push({
+          id, type: 'device', position: o ? { x: o.x, y: o.y } : { x: 0, y: 0 },
+          data: { label, ip, note, kind: (o?.kind as DeviceKind) || 'router', status: up ? 'up' : 'down', statusText } satisfies DeviceNodeData,
+        });
+      }
+      return id;
+    };
     const tunnelTarget = (srcId: string, p: WgPeer) => {
       const ep = String(p.endpoint || '').toLowerCase();
       const cur = String(p.current_endpoint || '').split(':')[0];
@@ -414,7 +443,6 @@ export default function NetworkTopologyPage() {
     };
     type Tunnel = { a: string; b: string; up: boolean; hs: number; label: string };
     const tunnels = new Map<string, Tunnel>();
-    const vpnNodes: Node[] = [];
     for (const [svcId, rep] of netReports) {
       if (!nodeIds.has(svcId)) continue;
       for (const wg of rep.wireguard ?? []) {
@@ -425,23 +453,11 @@ export default function NetworkTopologyPage() {
           const up = hs >= 0 && hs <= 300;
           let other = tunnelTarget(svcId, p);
           if (!other || !nodeIds.has(other)) {
-            other = stableUuid(`vpn:${svcId}:${p.public_key || p.name || p.endpoint}`);
-            if (!nodeIds.has(other)) {
-              nodeIds.add(other);
-              const o = overrides[other];
-              const name = String(p.name || p.comment || '').replace(/\[monitor\]/i, '').trim();
-              vpnNodes.push({
-                id: other, type: 'device', position: o ? { x: o.x, y: o.y } : { x: 0, y: 0 },
-                data: {
-                  label: name || p.endpoint || 'Sitio remoto',
-                  ip: p.endpoint || String(p.allowed_address || '').split(',').find(a => !a.endsWith('/32')) || '',
-                  note: 'Otro extremo de la VPN',
-                  kind: (o?.kind as DeviceKind) || 'router',
-                  status: up ? 'up' : 'down',
-                  statusText: up ? `VPN OK · hace ${tunnelAgo(hs)}` : 'VPN caída',
-                } satisfies DeviceNodeData,
-              });
-            }
+            const net = String(p.allowed_address || '').split(/[,;\s]+/).find(a => a.includes('/') && !a.endsWith('/32')) ?? '';
+            const name = String(p.name || p.comment || '').replace(/\[monitor\]/i, '').trim();
+            other = remoteNode(net, `wg:${p.public_key || p.name || p.endpoint}`,
+              remoteName(net, p.endpoint) || name || p.endpoint || 'Sitio remoto',
+              net || p.endpoint || '', 'Otro sitio, por VPN', up, up ? `VPN OK · hace ${tunnelAgo(hs)}` : 'VPN caída');
           }
           const key = [svcId, other].sort().join('|');
           const prev = tunnels.get(key);
@@ -462,19 +478,11 @@ export default function NetworkTopologyPage() {
         const up = pol.ph2_state === 'established';
         let other = routerInfo.find(r => r.id !== svcId && nodeIds.has(r.id) && r.nets.includes(dst))?.id ?? null;
         if (!other) {
-          other = stableUuid(`ipsec-net:${dst}`);
-          if (!nodeIds.has(other)) {
-            nodeIds.add(other);
-            const o = overrides[other];
-            vpnNodes.push({
-              id: other, type: 'device', position: o ? { x: o.x, y: o.y } : { x: 0, y: 0 },
-              data: {
-                label: pol.peer ? `Sitio ${pol.peer.replace(/^peer[-_]?/i, '')}` : 'Sitio remoto',
-                ip: dst, note: 'Red remota por IPsec', kind: (o?.kind as DeviceKind) || 'router',
-                status: up ? 'up' : 'down', statusText: up ? 'IPsec OK' : 'IPsec caído',
-              } satisfies DeviceNodeData,
-            });
-          }
+          // Nombre: el router del cliente que tiene esa red; si no, el del peer (salvo genéricos como "ipsec")
+          const peerName = String(pol.peer || '').replace(/^peer[-_]?/i, '');
+          const generic = !peerName || /^(ipsec|peer\d*|vpn)$/i.test(peerName);
+          other = remoteNode(dst, `ipsec:${dst}`, remoteName(dst) || (generic ? `Red ${dst}` : `Sitio ${peerName}`),
+            dst, 'Otro sitio, por IPsec', up, up ? 'IPsec OK' : 'IPsec caído');
         }
         const key = [svcId, other].sort().join('|');
         const prev = tunnels.get(key);
@@ -483,6 +491,37 @@ export default function NetworkTopologyPage() {
           prev.up = prev.up || up;
         } else {
           tunnels.set(key, { a: svcId, b: other, up, hs: -1, label: 'IPsec' });
+        }
+      }
+    }
+
+    // Tailscale entre equipos del mapa: el system-health de cada uno manda su IP de Tailscale y la
+    // lista de pares conectados. Un par en línea que es otro equipo del mapa = enlace "Tailscale".
+    if (services.length) {
+      const { data: tsRows } = await supabase.from('service_heartbeats')
+        .select('service_id, received_at, ts:payload->tailscale')
+        .in('service_id', services.map(s => s.id)).eq('source', 'system-health')
+        .gte('received_at', new Date(Date.now() - 6 * 3_600_000).toISOString())
+        .order('received_at', { ascending: false }).limit(500);
+      type TsInfo = { self?: { ip?: string }; peers?: { ip?: string; online?: boolean }[] } | null;
+      const tsBySvc = new Map<string, TsInfo>();
+      for (const r of (tsRows ?? []) as { service_id: string; ts: TsInfo }[])
+        if (!tsBySvc.has(r.service_id) && r.ts) tsBySvc.set(r.service_id, r.ts);
+      const svcByTsIp = new Map<string, string>();
+      for (const [sid, t] of tsBySvc) if (t?.self?.ip) svcByTsIp.set(t.self.ip, sid);
+      for (const svc of services) {
+        const tsIp = String((svc.specifications as Record<string, unknown> | null)?.tailscale_ip ?? '');
+        if (tsIp && !svcByTsIp.has(tsIp)) svcByTsIp.set(tsIp, svc.id);
+      }
+      for (const [sid, t] of tsBySvc) {
+        if (!nodeIds.has(sid)) continue;
+        for (const peer of t?.peers ?? []) {
+          const other = peer.ip ? svcByTsIp.get(peer.ip) : undefined;
+          if (!other || other === sid || !nodeIds.has(other) || !peer.online) continue;
+          const key = [sid, other].sort().join('|');
+          const prev = tunnels.get(key);
+          if (prev) { if (!prev.label.includes('Tailscale')) prev.label = `${prev.label} + Tailscale`; prev.up = true; }
+          else tunnels.set(key, { a: sid, b: other, up: true, hs: -1, label: 'Tailscale' });
         }
       }
     }
@@ -517,7 +556,8 @@ export default function NetworkTopologyPage() {
     const linked = new Set<string>([
       ...vmLinks.map(l => l.b),
       ...builtEdges.flatMap(e => [e.source, e.target]),
-      ...[...tunnels.values()].flatMap(t => [t.a, t.b]),
+      // Un enlace Tailscale no reemplaza la conexión física a la LAN
+      ...[...tunnels.values()].filter(t => t.label !== 'Tailscale').flatMap(t => [t.a, t.b]),
       ...((linkRows ?? []) as unknown as NetLink[]).flatMap(l => [discNodeId.get(l.source_device_id) ?? '', discNodeId.get(l.target_device_id) ?? '']),
     ]);
     const lanLinks: { a: string; b: string }[] = [];
