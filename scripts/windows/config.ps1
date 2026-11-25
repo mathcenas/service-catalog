@@ -2,7 +2,7 @@
 # config.ps1 - Configuracion por cliente/servidor
 # Copiar este archivo por cada cliente y ajustar los valores
 # =============================================================
-$SCRIPT_VERSION = "1.6.4"
+$SCRIPT_VERSION = "1.6.5"
 
 $INGEST_URL    = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-backup"
 $HEARTBEAT_URL = "https://aguxbtvwljaonagannuz.supabase.co/functions/v1/ingest-heartbeat"
@@ -43,6 +43,11 @@ $TAILSCALE_IP  = ""
 # Equipos de Tailscale a los que no se les controla el vencimiento de clave (separados por coma).
 # Ej: notebooks que se dejan con vencimiento a propósito. Los servidores van con "Disable key expiry".
 $TAILSCALE_IGNORE = ""
+
+# Prueba de VPN (system-health): un puerto TCP del otro lado del túnel. Si no responde, ticket.
+# Ej. Carral → Facturación de Regional por WireGuard:
+#   $VPN_CHECKS = @( @{ name = "WireGuard a Regional (RDP Facturación)"; host = "10.10.10.1"; port = 3389 } )
+$VPN_CHECKS = @()
 
 # Uptime Kuma - Push Monitors (opcional)
 # Pegar la URL base de cada monitor tipo Push. Si esta vacio, no se pinga.

@@ -82,7 +82,7 @@ Instalación:
 1. El router tiene que estar cargado como servicio (tipo Router / Firewall) con **telemetría activada**. Copiá su `id` y su ingest secret.
 2. Editá las variables del principio: `serviceId`, `ingestSecret`, `supabaseUrl`, `supabaseAnon`.
 3. **System → Scripts → Add**: nombre `mk-network-report`, pegar el contenido.
-4. **System → Scheduler → Add**: intervalo `1h`, On Event: `/system/script/run mk-network-report`.
+4. **System → Scheduler → Add**: intervalo de `1h` a `8h`, On Event: `/system/script/run mk-network-report`. El script manda su intervalo (1.1.1+) y el portal ajusta a eso cuándo da el dato por viejo (1,5×) y cuándo abre "Dejó de reportar". Para controlar la VPN más seguido, sumá la prueba desde un servidor (`$VPN_CHECKS` en `config.ps1`).
 5. Probá: `/system/script/run mk-network-report` y `/log print where message~"mk-network"`.
 
 ## Reporte de dispositivos Wi-Fi

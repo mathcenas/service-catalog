@@ -1,5 +1,5 @@
 # ==============================================================
-# mk-network-report.rsc  v1.1.0
+# mk-network-report.rsc  v1.1.1
 # Manda al portal Cenas IT cómo está armada la red del router:
 #   - redes LAN, WAN e IP pública (PPPoE / DHCP / IP Cloud)
 #   - nombre DDNS de IP Cloud
@@ -41,7 +41,7 @@
 :local wgDownMinutes 5
 # ─────────────────────────────────────────────────────────────
 
-:local scriptVersion "1.1.0"
+:local scriptVersion "1.1.1"
 :local issues [:toarray ""]
 
 # ── Redes (LAN / WAN) ─────────────────────────────────────────
@@ -237,6 +237,13 @@
   }
 }
 
+# Cada cuánto corre (scheduler): el portal ajusta a eso cuándo da el dato por viejo o el router por caído
+:local reportEvery 0
+:do {
+  :local sch [/system/scheduler/find where on-event~"mk-network-report"]
+  :if ([:len $sch] > 0) do={ :set reportEvery [:tonum [/system/scheduler/get ($sch->0) interval]] }
+} on-error={}
+
 # ── Payload y envío ──────────────────────────────────────────
 :local status "ok"
 :local message ("Red OK: " . [:len $lans] . " LAN, " . [:len $wgList] . " WireGuard, " . [:len $ipsecPolicies] . " policies IPsec")
@@ -245,7 +252,7 @@
   :set message ([:len $issues] . " problema(s): " . [:pick ($issues->0) 0 150])
 }
 
-:local payload {"script_version"=$scriptVersion; "identity"=[/system/identity/get name]; "board"=[/system/resource/get board-name]; "routeros_version"=[/system/resource/get version]; "uptime"=[:tostr [/system/resource/get uptime]]; "public_ip"=$publicIp; "ddns_name"=$ddnsName; "lans"=$lans; "wans"=$wans; "wireguard"=$wgList; "ipsec_peers"=$ipsecPeers; "ipsec_policies"=$ipsecPolicies; "router_mac"=$routerMac; "topology"={"devices"=$topoDevices; "edges"=$topoEdges}; "issues"=$issues}
+:local payload {"script_version"=$scriptVersion; "identity"=[/system/identity/get name]; "board"=[/system/resource/get board-name]; "routeros_version"=[/system/resource/get version]; "uptime"=[:tostr [/system/resource/get uptime]]; "public_ip"=$publicIp; "ddns_name"=$ddnsName; "lans"=$lans; "wans"=$wans; "wireguard"=$wgList; "ipsec_peers"=$ipsecPeers; "ipsec_policies"=$ipsecPolicies; "router_mac"=$routerMac; "report_interval_s"=$reportEvery; "topology"={"devices"=$topoDevices; "edges"=$topoEdges}; "issues"=$issues}
 :local body {"service_id"=$serviceId; "source"="mk-network"; "status"=$status; "message"=$message; "payload"=$payload}
 
 :local json ""

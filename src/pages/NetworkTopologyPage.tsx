@@ -403,8 +403,12 @@ export default function NetworkTopologyPage() {
           reportAgeH.set(h.service_id, (Date.now() - new Date(h.received_at).getTime()) / 3_600_000);
         }
     }
-    const STALE_H = 3;
-    const staleH = (id: string) => { const a = reportAgeH.get(id); return a != null && a > STALE_H ? Math.round(a) : 0; };
+    // Viejo = más de 1,5 veces el intervalo del scheduler del router (report_interval_s; 8 h si no lo manda)
+    const staleH = (id: string) => {
+      const a = reportAgeH.get(id);
+      const everyH = (Number((netReports.get(id) as { report_interval_s?: number } | undefined)?.report_interval_s) || 8 * 3600) / 3600;
+      return a != null && a > Math.max(3, everyH * 1.5) ? Math.round(a) : 0;
+    };
     const vpnNodes: Node[] = [];
     const routerInfo = services.map(s => {
       const r = netReports.get(s.id) ?? {};

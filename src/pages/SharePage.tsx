@@ -1296,6 +1296,17 @@ function ServiceCatalog({ services, projects, getTypeName, getProjectName, expan
   })).filter(g => g.items.length > 0);
   const ungrouped = services.filter(s => !knownTypes.has(getTypeName(s.service_type_id)));
 
+  // Pruebas de VPN de los servidores (último system-health de cada uno)
+  const vpnChecks: VpnCheck[] = [];
+  const seenHealth = new Set<string>();
+  for (const h of systemHeartbeats) {
+    if (h.source !== 'system-health' || seenHealth.has(h.service_id)) continue;
+    seenHealth.add(h.service_id);
+    const from = services.find(x => x.id === h.service_id);
+    for (const c of ((h.payload as Record<string, unknown> | null)?.vpn_checks ?? []) as Omit<VpnCheck, 'from' | 'at'>[])
+      vpnChecks.push({ ...c, from: from?.business_name || from?.name || 'un servidor', at: h.received_at });
+  }
+
   const renderCards = (items: Service[]) => items.map(s => (
     <ServiceCard key={s.id} service={s} typeName={getTypeName(s.service_type_id)} projectName={getProjectName(s.project_id)}
       expanded={expandedService === s.id} onToggle={() => setExpandedService(expandedService === s.id ? null : s.id)}
@@ -1304,6 +1315,7 @@ function ServiceCatalog({ services, projects, getTypeName, getProjectName, expan
       latestHealth={systemHeartbeats.find(h => h.service_id === s.id && h.source !== 'db-check' && h.source !== 'backup-folder') ?? null}
       latestDbCheck={latestDbCheck[s.id] ?? null}
       netHeartbeats={netHeartbeats}
+      vpnChecks={vpnChecks}
       showCosts={showCosts} />
   ));
 
@@ -1651,26 +1663,40 @@ function HealthDot({ hb }: { hb: ServiceHeartbeat | null }) {
 // VPN anotada como servicio (specifications.vpn): el estado sale del reporte de red del router
 // que tiene ese peer de WireGuard (mk-network-report.rsc).
 type VpnSpec = { protocol?: string; peer?: string; access?: string; sites?: string };
+/** Prueba de VPN que hace un servidor (system-health, $VPN_CHECKS) */
+type VpnCheck = { name?: string; host?: string; port?: number; ok?: boolean; ms?: number | null; from: string; at: string };
 type WgPeerReport = { name?: string; comment?: string; disabled?: boolean; last_handshake_s?: number };
 
-function VpnTunnelStatus({ vpn, net }: { vpn: VpnSpec; net: ServiceHeartbeat[] }) {
+function VpnTunnelStatus({ vpn, net, checks }: { vpn: VpnSpec; net: ServiceHeartbeat[]; checks: VpnCheck[] }) {
+  // Prueba desde un servidor del cliente hacia la IP de acceso de esta VPN ("Escritorio remoto a 10.10.10.1")
+  const accessIp = (vpn.access ?? '').match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/)?.[0];
+  const check = accessIp ? checks.find(c => c.host === accessIp) : undefined;
+  const checkLine = check && (
+    <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+      <span className={`w-2 h-2 rounded-full shrink-0 ${check.ok ? 'bg-emerald-500' : 'bg-red-500'}`} />
+      <span>Prueba desde {check.from}: {check.ok ? `responde${check.ms != null ? ` en ${check.ms} ms` : ''}` : 'sin respuesta'}</span>
+      <span className="text-gray-400">(revisado {formatTimeAgo(check.at)})</span>
+    </div>
+  );
   // El reporte más nuevo que trae ese peer
-  let found: { peer: WgPeerReport; at: string } | null = null;
+  let found: { peer: WgPeerReport; at: string; everyH: number } | null = null;
   for (const hb of net) {
-    const wgs = ((hb.payload as Record<string, unknown> | null)?.wireguard ?? []) as { peers?: WgPeerReport[] }[];
+    const pl = hb.payload as Record<string, unknown> | null;
+    const wgs = (pl?.wireguard ?? []) as { peers?: WgPeerReport[] }[];
     const peer = wgs.flatMap(w => w.peers ?? []).find(p => !p.disabled && vpn.peer && (p.name === vpn.peer || (p.comment ?? '').toLowerCase().startsWith(vpn.peer.toLowerCase())));
-    if (peer) { found = { peer, at: hb.received_at }; break; }
+    if (peer) { found = { peer, at: hb.received_at, everyH: (Number(pl?.report_interval_s) || 8 * 3600) / 3600 }; break; }
   }
   const hs = found?.peer.last_handshake_s ?? -1;
-  // Reporte de más de 3 h: no se sabe el estado actual
+  // Reporte más viejo que 1,5 veces el intervalo del router: no se sabe el estado actual del router
   const staleH = found ? Math.round((Date.now() - new Date(found.at).getTime()) / 3_600_000) : 0;
-  if (found && staleH > 3) {
+  if (found && staleH > Math.max(3, found.everyH * 1.5)) {
     return (
       <div className="mt-3 space-y-1">
         <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
           <span className="w-2 h-2 rounded-full shrink-0 bg-gray-300 dark:bg-gray-600" />
           <span>Estado del túnel sin actualizar (último dato hace {staleH} h)</span>
         </div>
+        {checkLine}
         {vpn.access && <div className="text-xs text-gray-500 dark:text-gray-400">Acceso: <span className="font-mono text-gray-700 dark:text-gray-300">{vpn.access}</span></div>}
       </div>
     );
@@ -1688,6 +1714,7 @@ function VpnTunnelStatus({ vpn, net }: { vpn: VpnSpec; net: ServiceHeartbeat[] }
         <span>{text}</span>
         {found && <span className="text-gray-400">(revisado {formatTimeAgo(found.at)})</span>}
       </div>
+      {checkLine}
       {(vpn.protocol || vpn.sites) && (
         <div className="text-xs text-gray-500 dark:text-gray-400">{[vpn.protocol, vpn.sites].filter(Boolean).join(' · ')}</div>
       )}
@@ -1696,8 +1723,8 @@ function VpnTunnelStatus({ vpn, net }: { vpn: VpnSpec; net: ServiceHeartbeat[] }
   );
 }
 
-function ServiceCard({ service, typeName, projectName, expanded, onToggle, heartbeats, backups, latestHealth, latestDbCheck, netHeartbeats, showCosts }: {
-  service: Service; typeName: string; projectName: string | null; expanded: boolean; onToggle: () => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; latestHealth: ServiceHeartbeat | null; latestDbCheck: ServiceHeartbeat | null; netHeartbeats: ServiceHeartbeat[]; showCosts: boolean;
+function ServiceCard({ service, typeName, projectName, expanded, onToggle, heartbeats, backups, latestHealth, latestDbCheck, netHeartbeats, vpnChecks, showCosts }: {
+  service: Service; typeName: string; projectName: string | null; expanded: boolean; onToggle: () => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; latestHealth: ServiceHeartbeat | null; latestDbCheck: ServiceHeartbeat | null; netHeartbeats: ServiceHeartbeat[]; vpnChecks: VpnCheck[]; showCosts: boolean;
 }) {
   const title = service.business_name || service.name;
   const desc = service.business_description || service.description;
@@ -1785,7 +1812,7 @@ function ServiceCard({ service, typeName, projectName, expanded, onToggle, heart
           </div>
         ) : null}
 
-        {service.specifications?.vpn && <VpnTunnelStatus vpn={service.specifications.vpn as VpnSpec} net={netHeartbeats} />}
+        {service.specifications?.vpn && <VpnTunnelStatus vpn={service.specifications.vpn as VpnSpec} net={netHeartbeats} checks={vpnChecks} />}
 
         {service.last_backup_at && (
           <div className="flex items-center gap-2 mt-3">

@@ -15,6 +15,10 @@ const DEFAULT_BACKUP_MAX_AGE_HOURS = 26;
 const SIGNAL_HOURS = 6;          // sin heartbeat: más tolerante que el tablero (2 h) para no abrir tickets por un corte corto
 const CLEAR_CHECKS_TO_RESOLVE = 2;
 const HEALTH_HOURS = 3;          // reporte de system-health más viejo que esto no cuenta (lo cubre "dejó de reportar")
+// Los MikroTik (mk-network-report) reportan cada 1 a 8 h según su scheduler (lo mandan en
+// report_interval_s): los plazos de "dejó de reportar" y de vigencia del reporte se estiran a 1,5 veces
+const ROUTER_DEFAULT_INTERVAL_S = 8 * 3600;
+const routerEveryH = (p: any) => (Number(p?.report_interval_s) || ROUTER_DEFAULT_INTERVAL_S) / 3600;
 const NOTE_EVERY_HOURS = 24;     // aunque nada cambie, una nota por día con el estado actual
 // Problemas pasajeros que solos no justifican un ticket (un pico de CPU o RAM)
 const TRANSIENT_ISSUE = /^(CPU alta|RAM alta|Load alto)/i;
@@ -93,16 +97,18 @@ async function currentAlerts(): Promise<Alert[]> {
   // más reportes que eso, los servicios que quedaban afuera parecían "sin reportar" (tickets falsos).
   const monitored = active.filter(s => s.telemetry_enabled);
   const lastBeat: Record<string, string | null> = {};
+  const lastBeatEveryH: Record<string, number> = {};   // cada cuánto se espera reporte (0 = el estándar)
   const lastHealth: Record<string, any> = {};
   for (let i = 0; i < monitored.length; i += 10) {
     await Promise.all(monitored.slice(i, i + 10).map(async (s) => {
       const [{ data: any1 }, { data: sh }] = await Promise.all([
-        supabase.from("service_heartbeats").select("received_at")
+        supabase.from("service_heartbeats").select("received_at, source, every:payload->report_interval_s")
           .eq("service_id", s.id).order("received_at", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("service_heartbeats").select("service_id, source, status, payload, received_at")
           .eq("service_id", s.id).in("source", ["system-health", "mk-network"]).order("received_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
       lastBeat[s.id] = any1?.received_at ?? null;
+      lastBeatEveryH[s.id] = any1?.source === "mk-network" ? routerEveryH({ report_interval_s: any1?.every }) : 0;
       if (sh) lastHealth[s.id] = sh;
     }));
   }
@@ -110,7 +116,7 @@ async function currentAlerts(): Promise<Alert[]> {
     for (const s of monitored) {
       const lastAt = lastBeat[s.id];
       if (!lastAt) continue; // nunca reportó: es configuración pendiente, no un incidente
-      if (hoursSince(lastAt) < SIGNAL_HOURS) continue;
+      if (hoursSince(lastAt) < Math.max(SIGNAL_HOURS, (lastBeatEveryH[s.id] ?? 0) * 1.5)) continue;
       const last = { received_at: lastAt };
       const h = Math.round(hoursSince(last.received_at));
       alerts.push({ ...base(s), key: `signal:${s.id}`, kind: "signal", priority: h > 24 ? "high" : "medium",
@@ -124,7 +130,9 @@ async function currentAlerts(): Promise<Alert[]> {
   // En los routers, el reporte de red (mk-network) cumple el mismo papel: túnel VPN caído.
   if (monitored.length) {
     for (const s of monitored) {
-      const h = lastHealth[s.id] && hoursSince(lastHealth[s.id].received_at) < HEALTH_HOURS ? lastHealth[s.id] : null;
+      const lh = lastHealth[s.id];
+      const validH = lh?.source === "mk-network" ? Math.max(HEALTH_HOURS, routerEveryH(lh.payload) * 1.5) : HEALTH_HOURS;
+      const h = lh && hoursSince(lh.received_at) < validH ? lh : null;
       if (!h) { healthUnknown.add(s.id); continue; }
       if (!["failed", "error"].includes(h.status)) continue;
       const issues = splitIssues(h.payload?.issues);
