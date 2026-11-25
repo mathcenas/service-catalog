@@ -220,7 +220,7 @@ export function SharePage({ token }: Props) {
         setCpuWatch((cpuData || []) as ServiceHeartbeat[]);
         const { data: netData } = await supabase.from('service_heartbeats').select('id,service_id,status,payload,received_at')
           .in('service_id', serviceIds).eq('source', 'mk-network')
-          .gte('received_at', new Date(Date.now() - 6 * 3_600_000).toISOString()).order('received_at', { ascending: false }).limit(50);
+          .gte('received_at', new Date(Date.now() - 7 * 86_400_000).toISOString()).order('received_at', { ascending: false }).limit(200);
         setNetHeartbeats((netData || []) as ServiceHeartbeat[]);
       }
 
@@ -262,7 +262,7 @@ export function SharePage({ token }: Props) {
       if (backupsData) setBackups(backupsData);
       const { data: netData } = await supabase.from('service_heartbeats').select('id,service_id,status,payload,received_at')
         .in('service_id', serviceIds).eq('source', 'mk-network')
-        .gte('received_at', new Date(Date.now() - 6 * 3_600_000).toISOString()).order('received_at', { ascending: false }).limit(50);
+        .gte('received_at', new Date(Date.now() - 7 * 86_400_000).toISOString()).order('received_at', { ascending: false }).limit(200);
       if (netData) setNetHeartbeats(netData as ServiceHeartbeat[]);
     };
     const interval = setInterval(refreshLive, 5 * 60 * 1000);
@@ -1662,6 +1662,19 @@ function VpnTunnelStatus({ vpn, net }: { vpn: VpnSpec; net: ServiceHeartbeat[] }
     if (peer) { found = { peer, at: hb.received_at }; break; }
   }
   const hs = found?.peer.last_handshake_s ?? -1;
+  // Reporte de más de 3 h: no se sabe el estado actual
+  const staleH = found ? Math.round((Date.now() - new Date(found.at).getTime()) / 3_600_000) : 0;
+  if (found && staleH > 3) {
+    return (
+      <div className="mt-3 space-y-1">
+        <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+          <span className="w-2 h-2 rounded-full shrink-0 bg-gray-300 dark:bg-gray-600" />
+          <span>Estado del túnel sin actualizar (último dato hace {staleH} h)</span>
+        </div>
+        {vpn.access && <div className="text-xs text-gray-500 dark:text-gray-400">Acceso: <span className="font-mono text-gray-700 dark:text-gray-300">{vpn.access}</span></div>}
+      </div>
+    );
+  }
   const up = found && hs >= 0 && hs <= 300;
   const ago = (sec: number) => sec < 120 ? `${sec} s` : sec < 7200 ? `${Math.round(sec / 60)} min` : `${Math.round(sec / 3600)} h`;
   const color = !found ? 'bg-gray-300 dark:bg-gray-600' : up ? 'bg-emerald-500' : 'bg-red-500';

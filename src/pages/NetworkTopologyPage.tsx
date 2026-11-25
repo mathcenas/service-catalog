@@ -387,16 +387,24 @@ export default function NetworkTopologyPage() {
 
     // Túneles VPN que reporta cada router (mk-network-report.rsc): si el otro extremo es un router
     // de este mapa se unen los dos; si no (otro sitio u otro cliente), aparece como un nodo aparte.
+    // Último reporte de cada router de los últimos 7 días. Si es viejo (el router dejó de reportar,
+    // o falta el scheduler) se dibuja igual lo último conocido, en gris y con la antigüedad.
     const netReports = new Map<string, NetReport>();
+    const reportAgeH = new Map<string, number>();
     if (services.length) {
       const { data: netHbs } = await supabase.from('service_heartbeats')
         .select('service_id, payload, received_at')
         .in('service_id', services.map(s => s.id)).eq('source', 'mk-network')
-        .gte('received_at', new Date(Date.now() - 6 * 3_600_000).toISOString())
-        .order('received_at', { ascending: false }).limit(200);
-      for (const h of (netHbs ?? []) as { service_id: string; payload: NetReport | null }[])
-        if (!netReports.has(h.service_id)) netReports.set(h.service_id, h.payload ?? {});
+        .gte('received_at', new Date(Date.now() - 7 * 86_400_000).toISOString())
+        .order('received_at', { ascending: false }).limit(500);
+      for (const h of (netHbs ?? []) as { service_id: string; payload: NetReport | null; received_at: string }[])
+        if (!netReports.has(h.service_id)) {
+          netReports.set(h.service_id, h.payload ?? {});
+          reportAgeH.set(h.service_id, (Date.now() - new Date(h.received_at).getTime()) / 3_600_000);
+        }
     }
+    const STALE_H = 3;
+    const staleH = (id: string) => { const a = reportAgeH.get(id); return a != null && a > STALE_H ? Math.round(a) : 0; };
     const vpnNodes: Node[] = [];
     const routerInfo = services.map(s => {
       const r = netReports.get(s.id) ?? {};
@@ -441,7 +449,8 @@ export default function NetworkTopologyPage() {
       return routerInfo.find(r => r.id !== srcId &&
         ((ep && r.ddns && ep === r.ddns) || (ep && r.pub && ep === r.pub) || (cur && r.pub && cur === r.pub) || r.nets.some(n => allowed.includes(n))))?.id ?? null;
     };
-    type Tunnel = { a: string; b: string; up: boolean; hs: number; label: string };
+    // staleH: horas desde el reporte más nuevo que trae el túnel (0 = al día)
+    type Tunnel = { a: string; b: string; up: boolean; hs: number; label: string; staleH?: number };
     const tunnels = new Map<string, Tunnel>();
     for (const [svcId, rep] of netReports) {
       if (!nodeIds.has(svcId)) continue;
@@ -462,8 +471,10 @@ export default function NetworkTopologyPage() {
           const key = [svcId, other].sort().join('|');
           const prev = tunnels.get(key);
           // Si los dos routers reportan el mismo túnel, vale el contacto más reciente
+          const st = staleH(svcId);
           if (!prev || (up && !prev.up) || (hs >= 0 && (prev.hs < 0 || hs < prev.hs)))
-            tunnels.set(key, { a: svcId, b: other, up, hs, label: wg.name ? `WireGuard (${wg.name})` : 'WireGuard' });
+            tunnels.set(key, { a: svcId, b: other, up, hs, label: wg.name ? `WireGuard (${wg.name})` : 'WireGuard', staleH: prev ? Math.min(prev.staleH ?? 0, st) : st });
+          else if (prev) prev.staleH = Math.min(prev.staleH ?? 0, st);
         }
       }
     }
@@ -489,8 +500,9 @@ export default function NetworkTopologyPage() {
         if (prev) {
           if (!prev.label.includes('IPsec')) prev.label = `${prev.label} + IPsec`;
           prev.up = prev.up || up;
+          prev.staleH = Math.min(prev.staleH ?? 0, staleH(svcId));
         } else {
-          tunnels.set(key, { a: svcId, b: other, up, hs: -1, label: 'IPsec' });
+          tunnels.set(key, { a: svcId, b: other, up, hs: -1, label: 'IPsec', staleH: staleH(svcId) });
         }
       }
     }
@@ -606,8 +618,11 @@ export default function NetworkTopologyPage() {
       autoEdges.push({
         id: `vpn-${t.a}-${t.b}`, source: t.a, target: t.b, type: 'port',
         sourceHandle: sh, targetHandle: th,
-        style: t.up ? edgeStyleFor('vpn') : { ...edgeStyleFor('vpn'), stroke: '#ef4444' },
-        data: { type: 'vpn', midLabel: t.up ? t.label : `${t.label} · caída`, auto: true } as StoredEdgeStyle,
+        style: t.staleH ? { ...edgeStyleFor('vpn'), stroke: '#94a3b8' } : t.up ? edgeStyleFor('vpn') : { ...edgeStyleFor('vpn'), stroke: '#ef4444' },
+        data: {
+          type: 'vpn', auto: true,
+          midLabel: t.staleH ? `${t.label} · sin datos hace ${t.staleH} h` : t.up ? t.label : `${t.label} · caída`,
+        } as StoredEdgeStyle,
       });
     }
 
