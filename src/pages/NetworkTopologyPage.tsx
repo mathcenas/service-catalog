@@ -94,7 +94,13 @@ export const isOnMap = (d: DiscoveredDevice) =>
   d.map_visibility === 'show' || (d.map_visibility === 'auto' && INFRA_TYPES.has(d.device_type));
 
 /** Puerto legible: "ether2,bridge" → "ether2" */
-const cleanPort = (p?: string | null) => (p || '').split(',').map(x => x.trim()).find(x => x && !/^bridge/i.test(x)) || undefined;
+// "ether3;bridge" / "bridge/ether10" → el puerto físico (RouterOS separa con ; o anuncia bridge/puerto)
+const cleanPort = (p?: string | null) => (p || '').split(/[,;]/).map(x => x.trim().replace(/^bridge\//i, '')).find(x => x && !/^bridge$/i.test(x)) || undefined;
+
+/** Un equipo que se anuncia como router pero se llama "SW…"/"switch" es un switch (Huawei, MikroTik usado de switch) */
+const kindOfDiscovered = (d: { name: string; device_type: string }): DeviceKind =>
+  /(^|[^a-z])(sw|switch)/i.test(d.name) && ['router', 'mikrotik', 'switch_managed', 'switch_unmanaged'].includes(d.device_type)
+    ? 'switch' : (KIND_BY_TYPE[d.device_type] || 'switch');
 
 function discoveredStatus(d: DiscoveredDevice): { status: DeviceStatus; text?: string } {
   if (!d.last_seen) return { status: 'unknown' };
@@ -353,7 +359,7 @@ export default function NetworkTopologyPage() {
         const data: DeviceNodeData = {
           label: unnamed ? (d.model || DEVICE_TYPE_LABEL[d.device_type] || 'Equipo') : d.name,
           ip: d.ip_address ?? '',
-          kind: (o?.kind as DeviceKind) || KIND_BY_TYPE[d.device_type] || 'switch',
+          kind: (o?.kind as DeviceKind) || kindOfDiscovered(d),
           note: unnamed ? '' : (d.model ?? ''),
           status: st.status,
           statusText: st.text,
