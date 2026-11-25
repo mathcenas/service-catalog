@@ -1,5 +1,5 @@
 # ==============================================================
-# mk-network-report.rsc  v1.1.1
+# mk-network-report.rsc  v1.2.0
 # Manda al portal Cenas IT cómo está armada la red del router:
 #   - redes LAN, WAN e IP pública (PPPoE / DHCP / IP Cloud)
 #   - nombre DDNS de IP Cloud
@@ -7,6 +7,8 @@
 #   - IPsec: peers y policies, con su estado (ph2-state)
 #   - vecinos por LLDP/CDP/MNDP (switches, APs, otros MikroTik) con el puerto de cada enlace:
 #     el portal arma con eso el mapa del sitio (reemplaza a net-topology-report.rsc)
+#   - equipos de la LAN (ARP + tabla del bridge): IP, MAC y puerto del router por el que se los ve.
+#     El mapa muestra en qué puerto está cada servidor, o detrás de qué switch
 # Si un túnel que este router debería mantener está caído, el reporte sale
 # en "failed" con el problema en "issues" y el portal abre un ticket.
 #
@@ -41,7 +43,7 @@
 :local wgDownMinutes 5
 # ─────────────────────────────────────────────────────────────
 
-:local scriptVersion "1.1.1"
+:local scriptVersion "1.2.0"
 :local issues [:toarray ""]
 
 # ── Redes (LAN / WAN) ─────────────────────────────────────────
@@ -237,6 +239,36 @@
   }
 }
 
+# ── Equipos de la LAN: IP, MAC y puerto donde el router los ve ──
+# El puerto sale de la tabla del bridge (MAC → ether); si no hay bridge, es la interfaz del ARP.
+:local hosts [:toarray ""]
+:foreach a in=[/ip/arp/find] do={
+  :if ([:len $hosts] < 300) do={
+    :local hIp ""
+    :local hMac ""
+    :local hIface ""
+    :do { :set hIp [:tostr [/ip/arp/get $a address]] } on-error={}
+    :do { :set hMac [:tostr [/ip/arp/get $a mac-address]] } on-error={}
+    :do { :set hIface [:tostr [/ip/arp/get $a interface]] } on-error={}
+    :local hIpT [:toip $hIp]
+    :local hPriv (($hIpT in 10.0.0.0/8) || ($hIpT in 172.16.0.0/12) || ($hIpT in 192.168.0.0/16))
+    :if ($hMac != "" && $hPriv && [:len [/interface/wireguard/find where name=$hIface]] = 0) do={
+      :local hPort ""
+      :do {
+        :foreach b in=[/interface/bridge/host/find where mac-address=$hMac] do={
+          :if ($hPort = "") do={
+            :local isLocal false
+            :do { :set isLocal [/interface/bridge/host/get $b local] } on-error={}
+            :if (!$isLocal) do={ :set hPort [:tostr [/interface/bridge/host/get $b on-interface]] }
+          }
+        }
+      } on-error={}
+      :if ($hPort = "") do={ :set hPort $hIface }
+      :set ($hosts->[:len $hosts]) {"ip"=$hIp; "mac"=$hMac; "port"=$hPort}
+    }
+  }
+}
+
 # Cada cuánto corre (scheduler): el portal ajusta a eso cuándo da el dato por viejo o el router por caído
 :local reportEvery 0
 :do {
@@ -252,7 +284,7 @@
   :set message ([:len $issues] . " problema(s): " . [:pick ($issues->0) 0 150])
 }
 
-:local payload {"script_version"=$scriptVersion; "identity"=[/system/identity/get name]; "board"=[/system/resource/get board-name]; "routeros_version"=[/system/resource/get version]; "uptime"=[:tostr [/system/resource/get uptime]]; "public_ip"=$publicIp; "ddns_name"=$ddnsName; "lans"=$lans; "wans"=$wans; "wireguard"=$wgList; "ipsec_peers"=$ipsecPeers; "ipsec_policies"=$ipsecPolicies; "router_mac"=$routerMac; "report_interval_s"=$reportEvery; "topology"={"devices"=$topoDevices; "edges"=$topoEdges}; "issues"=$issues}
+:local payload {"script_version"=$scriptVersion; "identity"=[/system/identity/get name]; "board"=[/system/resource/get board-name]; "routeros_version"=[/system/resource/get version]; "uptime"=[:tostr [/system/resource/get uptime]]; "public_ip"=$publicIp; "ddns_name"=$ddnsName; "lans"=$lans; "wans"=$wans; "wireguard"=$wgList; "ipsec_peers"=$ipsecPeers; "ipsec_policies"=$ipsecPolicies; "router_mac"=$routerMac; "report_interval_s"=$reportEvery; "hosts"=$hosts; "topology"={"devices"=$topoDevices; "edges"=$topoEdges}; "issues"=$issues}
 :local body {"service_id"=$serviceId; "source"="mk-network"; "status"=$status; "message"=$message; "payload"=$payload}
 
 :local json ""

@@ -30,6 +30,8 @@ type WgPeer = {
   allowed_address?: string; public_key?: string; last_handshake_s?: number; watched?: boolean;
 };
 type NetReport = {
+  /** Equipos de la LAN (script 1.2.0+): IP, MAC y puerto del router donde se los ve */
+  hosts?: { ip?: string; mac?: string; port?: string }[];
   ddns_name?: string; public_ip?: string; lans?: { network?: string }[];
   wans?: { interface?: string; address?: string }[];
   wireguard?: { name?: string; peers?: WgPeer[] }[];
@@ -582,12 +584,32 @@ export default function NetworkTopologyPage() {
       ...[...tunnels.values()].filter(t => t.label !== 'Tailscale').flatMap(t => [t.a, t.b]),
       ...((linkRows ?? []) as unknown as NetLink[]).flatMap(l => [discNodeId.get(l.source_device_id) ?? '', discNodeId.get(l.target_device_id) ?? '']),
     ]);
-    const lanLinks: { a: string; b: string }[] = [];
+    // Puerto del router donde se ve a cada equipo (ARP + bridge del script 1.2.0). Si ese puerto es
+    // el que va a un switch descubierto por LLDP, el equipo está detrás de ese switch.
+    const neighborAtPort = new Map<string, string>();   // "routerNodeId|ether2" → nodo del vecino
+    for (const l of (linkRows ?? []) as unknown as NetLink[]) {
+      const a = discNodeId.get(l.source_device_id), b = discNodeId.get(l.target_device_id);
+      const port = cleanPort(l.source_port);
+      if (a && b && port && nodeIds.has(b)) neighborAtPort.set(`${a}|${port}`, b);
+    }
+    const lanLinks: { a: string; b: string; port?: string; via?: string }[] = [];
     for (const svc of services) {
       if (netReports.has(svc.id) || linked.has(svc.id) || !nodeIds.has(svc.id)) continue;
       const ip = svc.ip_internal || svc.server_ip || '';
-      const router = routerInfo.find(r => netReports.has(r.id) && nodeIds.has(r.id) && r.nets.some(n => ipInNet(ip, n)));
-      if (router) lanLinks.push({ a: router.id, b: svc.id });
+      const mac = (svc.mac_address || '').toUpperCase();
+      // Router que lo ve: primero por la tabla de equipos (MAC o IP), si no, por la red de su LAN
+      let router: string | null = null;
+      let port: string | undefined;
+      for (const [rid, rep] of netReports) {
+        if (!nodeIds.has(rid)) continue;
+        const h = (rep.hosts ?? []).find(x => (mac && (x.mac ?? '').toUpperCase() === mac) || (ip && x.ip === ip));
+        if (h) { router = rid; port = cleanPort(h.port); break; }
+      }
+      if (!router) router = routerInfo.find(r => netReports.has(r.id) && nodeIds.has(r.id) && r.nets.some(n => ipInNet(ip, n)))?.id ?? null;
+      if (!router) continue;
+      const via = port ? neighborAtPort.get(`${router}|${port}`) : undefined;
+      if (via) lanLinks.push({ a: via, b: svc.id, port, via });
+      else lanLinks.push({ a: router, b: svc.id, port });
     }
 
     // Enlaces que detecta el router (LLDP), con el puerto en cada punta. Un enlace dibujado
@@ -662,8 +684,14 @@ export default function NetworkTopologyPage() {
       const [sh, th] = handlesFor(l.a, l.b);
       autoEdges.push({
         id: `lan-${l.a}-${l.b}`, source: l.a, target: l.b, type: 'port', sourceHandle: sh, targetHandle: th,
-        style: { ...edgeStyleFor('utp'), strokeDasharray: '2 4', opacity: 0.6 },
-        data: { type: 'utp', midLabel: 'LAN', auto: true } as StoredEdgeStyle,
+        // Con puerto conocido: línea llena con el puerto en la punta del router; detrás de un switch
+        // no se sabe su puerto (sin acceso al switch), se indica por qué puerto del router llega
+        style: l.port && !l.via ? edgeStyleFor('utp') : { ...edgeStyleFor('utp'), strokeDasharray: '2 4', opacity: 0.6 },
+        data: {
+          type: 'utp', auto: true,
+          sourcePort: l.via ? undefined : l.port,
+          midLabel: l.via ? `LAN (por ${l.port} del router)` : l.port ? undefined : 'LAN',
+        } as StoredEdgeStyle,
       });
     }
 
