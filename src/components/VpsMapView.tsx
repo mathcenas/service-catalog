@@ -9,7 +9,7 @@ import { appKind } from '../lib/appKinds';
 // system-health (contenedores + Tailscale). Lo que se corrige o confirma queda en
 // service_map_nodes / service_map_edges.
 
-type Svc = { id: string; name: string; business_name: string | null; client_id: string };
+type Svc = { id: string; name: string; business_name: string | null; client_id: string; specifications?: Record<string, unknown> | null };
 type Host = { key: string; hostServiceId: string; serviceIds: string[]; clientId: string; label: string; containers: Container[]; tailscale: TsInfo; at: string };
 
 const S = 22;
@@ -62,7 +62,7 @@ export function VpsMapView() {
     (async () => {
       const since = new Date(Date.now() - 3 * 86_400_000).toISOString();
       const [{ data: svcs }, { data: cls }, { data: hbs }] = await Promise.all([
-        supabase.from('services').select('id, name, business_name, client_id').eq('status', 'Active'),
+        supabase.from('services').select('id, name, business_name, client_id, specifications').eq('status', 'Active'),
         supabase.from('clients').select('id, company_name'),
         supabase.from('service_heartbeats').select('service_id, payload, received_at').eq('source', 'system-health')
           .gte('received_at', since).order('received_at', { ascending: false }).limit(3000),
@@ -87,6 +87,28 @@ export function VpsMapView() {
         const h = byHost.get(key);
         if (h) { h.serviceIds.push(sid); continue; }
         byHost.set(key, { key, hostServiceId: sid, serviceIds: [sid], clientId: svc.client_id, label: '', containers, tailscale: ts, at });
+      }
+      // Hosts de máquinas virtuales (ficha del servicio: "Corre en el host"): cada VM es un nodo del
+      // mapa del host, prendida si reportó en las últimas 3 h
+      const vmsByHost = new Map<string, Svc[]>();
+      for (const s of svcList) {
+        const hostId = String(s.specifications?.vm_host_id ?? '');
+        if (hostId && svcById.has(hostId)) vmsByHost.set(hostId, [...(vmsByHost.get(hostId) ?? []), s]);
+      }
+      for (const [hostId, vms] of vmsByHost) {
+        const hostSvc = svcById.get(hostId)!;
+        const vmContainers: Container[] = vms.map(vm => {
+          const at = latest.get(vm.id)?.at;
+          const fresh = at && Date.now() - new Date(at).getTime() < 3 * 3_600_000;
+          return { name: vm.business_name || vm.name, state: fresh ? 'running' : at ? 'exited' : 'unknown', status: 'VM' };
+        });
+        const existing = [...byHost.values()].find(h => h.serviceIds.includes(hostId));
+        if (existing) { existing.containers = [...existing.containers, ...vmContainers]; continue; }
+        const hp = latest.get(hostId);
+        byHost.set(`vmhost:${hostId}`, {
+          key: `vmhost:${hostId}`, hostServiceId: hostId, serviceIds: [hostId], clientId: hostSvc.client_id, label: '',
+          containers: vmContainers, tailscale: (hp?.payload.tailscale ?? null) as TsInfo, at: hp?.at ?? '',
+        });
       }
       const names = Object.fromEntries(((cls ?? []) as { id: string; company_name: string }[]).map(c => [c.id, c.company_name]));
       const list = [...byHost.values()].map(h => ({
