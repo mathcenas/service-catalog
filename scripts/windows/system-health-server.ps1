@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.13.0"
+$SCRIPT_VERSION = "1.13.1"
 
 # ---------- IPs (pública WAN + local) ----------
 $publicIp = $null
@@ -582,6 +582,7 @@ $hwData = @{
         uptime_seconds = $uptimeSecs
         issues         = $issues
         vpn_checks     = $vpnChecks
+        script_name    = 'system-health-server.ps1'
         os_updates     = $osUpdates
         tailscale      = $tailscale
         server_roles   = $serverRoles
