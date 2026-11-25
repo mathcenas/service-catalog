@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.12.0"
+$SCRIPT_VERSION = "1.13.0"
 
 # ---------- IPs (pública WAN + local) ----------
 $publicIp = $null
@@ -503,6 +503,36 @@ if ($tsExe) {
     } catch { Write-Log "Tailscale: no se pudo leer el estado ($($_.Exception.Message))" }
 }
 
+# ---------- VPN: llegar a un equipo del otro lado del túnel ----------
+# $VPN_CHECKS (config.ps1): prueba un puerto TCP por la VPN, como lo usa la gente (ej. el RDP de
+# Facturación por WireGuard). Dos intentos de 3 s; si los dos fallan, ticket "Problema en el equipo".
+$vpnChecks = @()
+foreach ($vc in @($VPN_CHECKS)) {
+    if (-not $vc -or -not $vc.host) { continue }
+    $vcPort = if ($vc.port) { [int]$vc.port } else { 3389 }
+    $vcName = if ($vc.name) { "$($vc.name)" } else { "$($vc.host):$vcPort" }
+    $vcOk = $false; $vcMs = $null
+    foreach ($try in 1..2) {
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        try {
+            $cli = New-Object Net.Sockets.TcpClient
+            $iar = $cli.BeginConnect("$($vc.host)", $vcPort, $null, $null)
+            if ($iar.AsyncWaitHandle.WaitOne(3000) -and $cli.Connected) { $cli.EndConnect($iar); $vcOk = $true }
+            $cli.Close()
+        } catch {}
+        $vcMs = [int]$sw.ElapsedMilliseconds
+        if ($vcOk) { break }
+        Start-Sleep -Seconds 2
+    }
+    $vpnChecks += [ordered]@{ name = $vcName; host = "$($vc.host)"; port = $vcPort; ok = $vcOk; ms = $(if ($vcOk) { $vcMs } else { $null }) }
+    if ($vcOk) { Write-Log "VPN ${vcName}: OK ($vcMs ms)" }
+    else {
+        Write-Log "VPN ${vcName}: sin respuesta de $($vc.host):$vcPort"
+        $issueList += "VPN ${vcName}: sin respuesta de $($vc.host):$vcPort"
+        $hwStatus = 'failed'
+    }
+}
+
 $issueList += $osuIssues
 $issues = if ($issueList.Count -gt 0) { $issueList -join ' · ' } else { 'Normal' }
 
@@ -551,6 +581,7 @@ $hwData = @{
         uptime_str     = $uptimeStr
         uptime_seconds = $uptimeSecs
         issues         = $issues
+        vpn_checks     = $vpnChecks
         os_updates     = $osUpdates
         tailscale      = $tailscale
         server_roles   = $serverRoles
