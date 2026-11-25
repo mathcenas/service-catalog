@@ -20,6 +20,14 @@ function Find-VeeamManifest {
     return $null
 }
 
+# Sin permisos de administrador el módulo de Veeam no carga ("SSslOptions threw an exception"):
+# avisar claro en lugar de ese error. Las tareas programadas corren con privilegios elevados.
+$_isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $_isAdmin) {
+    throw "veeam-report necesita permisos de administrador (sin ellos el módulo de Veeam falla con 'SSslOptions threw an exception'). Abrí PowerShell con 'Ejecutar como administrador'."
+}
+
 if (-not $env:SC_VEEAM_RELAUNCHED) {
     $veeamRequired = $null
     $veeamManifest = Find-VeeamManifest
@@ -50,7 +58,7 @@ if (-not $env:SC_VEEAM_RELAUNCHED) {
 
 $_scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 . "$_scriptDir\config.ps1"
-$SCRIPT_VERSION = "1.1.2"
+$SCRIPT_VERSION = "1.1.3"
 # Agregar TLS 1.2 sin quitar los protocolos ya habilitados: dejar solo TLS 1.2 puede romper la
 # inicialización SSL del módulo de Veeam 13 ("SSslOptions threw an exception").
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
