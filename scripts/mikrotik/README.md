@@ -6,10 +6,30 @@ Scripts que se ejecutan **en el router** (Terminal de Winbox o SSH) y lo que cor
 |---------|-------------|---------|
 | `setup.rsc` | Router (una vez) | Usuario `monitor` de solo lectura (REST) + syslog de seguridad hacia el VPS |
 | `net-topology-report.rsc` | Router (scheduler, cada 1 h) | Manda el router y sus vecinos (LLDP/CDP/MNDP) a la topología del portal |
-| `mk-network-report.rsc` | Router (scheduler, cada 1 h) | Redes LAN/WAN, IP pública, DDNS, túneles WireGuard e IPsec y vecinos LLDP (arma el mapa); ticket si un túnel se cae |
+| `mk-network-report.rsc` | Router (scheduler, cada 1–8 h) | Redes LAN/WAN, IP pública, DDNS, túneles WireGuard e IPsec, vecinos LLDP (arma el mapa) y seguridad (1.3.0); ticket si un túnel se cae o el firewall no bloquea Internet |
+| `mk-baseline.rsc` | Router (a mano, las veces que haga falta) | Aplica el **estándar Cenas** sin cortar servicio (ver abajo) |
+| `mk-uy-list.rsc` | Router (script `uy-list`, scheduler semanal) | Lista `pais-uy` con los rangos de IP de Uruguay para limitar la VPN PPTP |
 | `scripts/linux/mk-monitor.sh` | VPS (cron, cada 5 min) | Recursos, ping a un equipo interno, sesiones REST; alerta por cambios |
 | `scripts/linux/mk-syslog.sh` | VPS (servicio systemd) | Recibe el syslog del router: logins fallidos y desde IPs desconocidas |
 | `scripts/linux/mk-wifi-report.sh` | VPS (cron, cada 1 h) | Dispositivos Wi-Fi al reporte del portal (ver abajo) |
+
+## Estándar Cenas (`mk-baseline.rsc`)
+
+Todo MikroTik de cliente tiene que quedar con:
+
+| Área | Estándar |
+|---|---|
+| Monitoreo | `mk-network-report` con scheduler · netwatch del gateway, Internet y servidores clave · log a disco (critical, interface, netwatch) |
+| Servicios del router | telnet, ftp, www, api y api-ssl apagados · Winbox limitado (pendiente: IP fija + WireGuard) · usuario `admin` deshabilitado |
+| VPN de usuarios | PPTP solo desde Uruguay (`pais-uy`) + excepción del monitoreo (`kuma`) + bloqueo de fuerza bruta · SSTP / L2TP apagados si no se usan |
+| VPN entre sitios | WireGuard, con `[monitor]` en el comentario del peer del lado del centro |
+| Firewall | regla de fábrica "drop all not coming from LAN" activa y `ether1` en la lista WAN · reglas de VPN sin uso deshabilitadas |
+| LAN | IP del router en el bridge (no en un puerto) · loop-protect en los puertos que van a switches |
+
+Instalación: `mk-network-report` y `uy-list` (si hay PPTP) como scripts del router; después `mk-baseline` como script,
+completar `$kumaIps` y `$netwatchHosts` y correr `/system/script/run mk-baseline`. Lista cada cambio (`+`) y cada aviso (`!`).
+Lo que puede cortar servicio (IP al bridge, loop-protect, Winbox) solo lo avisa. El portal muestra el cumplimiento en
+**Telemetría → Routers** y un resumen para el cliente en su portal (firewall, VPN protegida, intentos bloqueados, netwatch).
 
 Orden para un cliente nuevo: **1.** `setup.rsc` en el router → **2.** sitio del VPS en `mk-monitor.conf` → **3.** `net-topology-report.rsc` → **4.** `mk-wifi-report.sh`.
 
