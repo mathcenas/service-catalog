@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.16.1"
+$SCRIPT_VERSION = "1.16.2"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -73,6 +73,13 @@ try {
         Where-Object { $_.IPAddress -match '^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.' -or $_.InterfaceAlias -match 'Tailscale' } |
         Select-Object -First 1).IPAddress
 } catch {}
+try {
+    # Todas las IPv4 del equipo (sin loopback, APIPA ni Tailscale): el portal corrige la "Server IP"
+    # cargada a mano si el equipo ya no la tiene
+    $localIps = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+        Where-Object { $_.IPAddress -notmatch '^(127\.|169\.254\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)' } |
+        ForEach-Object { $_.IPAddress } | Sort-Object -Unique)
+} catch { $localIps = @() }
 
 # ---------- 1. HARDWARE (CPU / RAM / Disco C:) ----------
 try {
@@ -675,6 +682,7 @@ $hwData = @{
         hyperv_checkpoints = $hvCheckpoints
         public_ip      = $publicIp
         local_ip       = $localIp
+        local_ips      = $localIps
         tailscale_ip   = $tailscaleIp
         mac_address    = $macAddress
         is_server      = $false

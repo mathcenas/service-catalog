@@ -12,7 +12,7 @@
 # Version: 1.6.0
 # =============================================================
 
-SCRIPT_VERSION="1.13.1"
+SCRIPT_VERSION="1.13.2"
 
 # ---------- Verificación de dependencias ----------
 if ! command -v jq >/dev/null 2>&1; then
@@ -201,6 +201,12 @@ LOCAL_IP=""
 LOCAL_IP=$(ip route get 1.1.1.1 2>/dev/null | awk '/src/{for(i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}' || \
            hostname -I 2>/dev/null | awk '{print $1}' || true)
 LOCAL_IP=$(echo "$LOCAL_IP" | tr -d '[:space:]')
+# Todas las IPv4 del equipo (sin loopback, Docker ni Tailscale): el portal corrige la "Server IP" vieja
+LOCAL_IPS_JSON=$(ip -4 -o addr show 2>/dev/null | awk '{split($4,a,"/"); print $2" "a[1]}' \
+  | grep -vE '^(lo|docker[0-9]*|br-[0-9a-f]+|veth[^ ]*|tailscale[0-9]*) ' | awk '{print $2}' \
+  | grep -vE '^(127\.|169\.254\.|100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.)' \
+  | jq -R . | jq -sc 'unique' 2>/dev/null)
+[ -z "$LOCAL_IPS_JSON" ] && LOCAL_IPS_JSON="[]"
 
 # ---------- Samba sessions ----------
 SMB_SESSIONS_JSON="[]"
@@ -618,6 +624,7 @@ PAYLOAD=$(jq -n \
   --argjson tailscale "$TAILSCALE_JSON" \
   --arg public_ip "$PUBLIC_IP" \
   --arg local_ip "$LOCAL_IP" \
+  --argjson local_ips "$LOCAL_IPS_JSON" \
   --arg hostname "$(hostname 2>/dev/null || cat /etc/hostname 2>/dev/null)" \
   --arg cpu_model "$CPU_MODEL" \
   --argjson cpu_cores "$CPU_CORES" \
@@ -648,6 +655,7 @@ PAYLOAD=$(jq -n \
       tailscale: $tailscale,
       public_ip: (if $public_ip == "" then null else $public_ip end),
       local_ip: (if $local_ip == "" then null else $local_ip end),
+      local_ips: $local_ips,
       hostname: (if $hostname == "" then null else $hostname end),
       script_name: "system-health.sh",
       cpu_model: (if $cpu_model == "" then null else $cpu_model end),
