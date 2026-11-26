@@ -59,7 +59,12 @@ export function LicenseManager({ clients, services }: Props) {
     return licenses.filter(l => l.client_id === filterClient);
   }, [licenses, filterClient]);
 
+  const [notifyOnEdit, setNotifyOnEdit] = useState(true);
+  const expirationMovedForward = !!editing && !!form.expiration_date
+    && form.expiration_date > (editing.expiration_date || '');
+
   const resetForm = () => {
+    setNotifyOnEdit(true);
     setForm({ client_id: '', service_id: '', software_name: '', license_key: '', quantity: '1', quantity_label: 'Licenses', expiration_date: '', billing_cycle: 'Annually', cost: '', currency: 'USD', paid_by: '', payment_card_last4: '', notes: '' });
     setEditing(null);
     setShowForm(false);
@@ -106,10 +111,30 @@ export function LicenseManager({ clients, services }: Props) {
       notes: form.notes.trim() || null,
     };
 
-    if (editing) {
-      await supabase.from('client_licenses').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editing.id);
-    } else {
-      await supabase.from('client_licenses').insert(payload);
+    const now = new Date().toISOString();
+    // Vencimiento corrido hacia adelante desde Editar = renovación (historial + aviso opcional)
+    const renewed = !!editing && expirationMovedForward;
+    const { error } = editing
+      ? await supabase.from('client_licenses')
+          .update({ ...payload, updated_at: now, ...(renewed ? { last_renewed_at: now } : {}) })
+          .eq('id', editing.id)
+      : await supabase.from('client_licenses').insert(payload);
+    if (error) { alert(`No se pudo guardar la licencia: ${error.message}`); return; }
+
+    if (renewed && editing) {
+      const { data: ren, error: renErr } = await supabase.from('license_renewals').insert({
+        user_id: user!.id, license_id: editing.id, client_id: form.client_id,
+        previous_expiration: editing.expiration_date || null, new_expiration: form.expiration_date,
+        cost: payload.cost, currency: payload.currency, notes: null, renewed_at: now,
+      }).select('id').single();
+      if (renErr || !ren) {
+        alert(`Licencia guardada, pero no se registró la renovación: ${renErr?.message ?? 'error desconocido'}`);
+      } else if (notifyOnEdit) {
+        const { data, error: fnErr } = await supabase.functions.invoke('notify-license-renewed', { body: { renewal_id: ren.id } });
+        alert(fnErr || data?.error
+          ? `Licencia guardada, pero no se pudo avisar al cliente: ${data?.error ?? fnErr?.message}`
+          : `Licencia guardada y aviso de renovación enviado a ${(data?.sent_to ?? []).join(', ')}.`);
+      }
     }
     resetForm();
     load();
@@ -327,6 +352,12 @@ export function LicenseManager({ clients, services }: Props) {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Expiration Date</label>
                   <input type="date" value={form.expiration_date} onChange={e => setForm({ ...form, expiration_date: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  {expirationMovedForward && (
+                    <label className="flex items-start gap-2 mt-2 text-xs text-emerald-800">
+                      <input type="checkbox" checked={notifyOnEdit} onChange={e => setNotifyOnEdit(e.target.checked)} className="mt-0.5 rounded border-gray-300" />
+                      <span>Es una renovación: avisar al cliente ("Licencia renovada")</span>
+                    </label>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Billing Cycle</label>

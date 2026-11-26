@@ -104,6 +104,39 @@ function buildTracking(opens: EmailOpenRow[], clicks: EmailClickRow[]): Record<s
   return out;
 }
 
+const ARCHIVE_AFTER_DAYS = 60;
+
+const SECTION_TONES = {
+  blue: 'text-blue-700 bg-blue-50',
+  gray: 'text-gray-600 bg-gray-50',
+  green: 'text-emerald-700 bg-emerald-50',
+} as const;
+
+function RoadmapSection({ title, tone, count, hint, empty, collapsed, onToggle, children }: {
+  title: string; tone: keyof typeof SECTION_TONES; count: number; hint?: string; empty?: string;
+  collapsed?: boolean; onToggle?: () => void; children: React.ReactNode;
+}) {
+  if (count === 0 && !empty) return null;
+  const header = (
+    <>
+      <span className={`text-xs font-semibold uppercase tracking-wide px-2 py-0.5 rounded ${SECTION_TONES[tone]}`}>{title}</span>
+      <span className="text-xs text-gray-500 tabular-nums">{count}</span>
+      {hint && <span className="text-[11px] text-gray-400">· {hint}</span>}
+      {onToggle && <span className="ml-auto text-xs text-blue-600">{collapsed ? 'Mostrar' : 'Ocultar'}</span>}
+    </>
+  );
+  return (
+    <section className="border-b border-gray-100 last:border-b-0">
+      {onToggle
+        ? <button type="button" onClick={onToggle} className="w-full flex items-center gap-2 px-6 py-2.5 bg-gray-50/60 hover:bg-gray-100 text-left">{header}</button>
+        : <div className="flex items-center gap-2 px-6 py-2.5 bg-gray-50/60">{header}</div>}
+      {!collapsed && (count === 0
+        ? <p className="px-6 py-3 text-xs text-gray-400">{empty}</p>
+        : <div className="divide-y divide-gray-100">{children}</div>)}
+    </section>
+  );
+}
+
 export function RoadmapManager({ clients, services }: Props) {
   const { user } = useAuth();
   const [items, setItems] = useState<RoadmapItem[]>([]);
@@ -118,6 +151,9 @@ export function RoadmapManager({ clients, services }: Props) {
   const [ttProjects, setTtProjects] = useState<{ tt_project_id: string; project_name: string; is_default: boolean }[]>([]);
   const [filterCategory, setFilterCategory] = useState<RoadmapCategory | 'all'>('all');
   const [filterClientId, setFilterClientId] = useState<string>('all');
+  const [search, setSearch] = useState('');
+  const [showDone, setShowDone] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [notifying, setNotifying] = useState<string | null>(null);
   const [contacts, setContacts] = useState<ContactRow[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | undefined>();
@@ -170,8 +206,30 @@ export function RoadmapManager({ clients, services }: Props) {
     if (filterCategory !== 'all') {
       list = list.filter(i => i.category === filterCategory);
     }
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(i => [i.title, i.description, i.requested_by, clients.find(c => c.id === i.client_id)?.company_name]
+        .some(v => (v || '').toLowerCase().includes(q)));
+    }
     return list;
-  }, [items, filterCategory, filterClientId]);
+  }, [items, filterCategory, filterClientId, search, clients]);
+
+  // En curso arriba (lo último tocado primero), planificado por fecha, hecho al final y lo viejo archivado
+  const sections = useMemo(() => {
+    const lastTouch = (i: RoadmapItem) => i.updated_at || i.created_at;
+    const byRecent = (a: RoadmapItem, b: RoadmapItem) => lastTouch(b).localeCompare(lastTouch(a));
+    const plannedKey = (i: RoadmapItem) => i.scheduled_date || i.eta || '9999';
+    const archiveBefore = new Date(Date.now() - ARCHIVE_AFTER_DAYS * 86400_000).toISOString();
+    const active = filtered.filter(i => i.status === 'In Progress' || i.status === 'Next Release').sort(byRecent);
+    const planned = filtered.filter(i => i.status === 'Planned')
+      .sort((a, b) => plannedKey(a).localeCompare(plannedKey(b)) || byRecent(a, b));
+    const released = filtered.filter(i => i.status === 'Released').sort(byRecent);
+    return {
+      active, planned,
+      done: released.filter(i => lastTouch(i) >= archiveBefore),
+      archived: released.filter(i => lastTouch(i) < archiveBefore),
+    };
+  }, [filtered]);
 
   useEffect(() => {
     if (!draft.client_id) { setTtProjects([]); setDraftTtProjectId(''); return; }
@@ -409,7 +467,7 @@ export function RoadmapManager({ clients, services }: Props) {
     const result = { itemId: item.id, closed: 'ok' as 'ok'|'err', webhook: 'skip' as 'ok'|'err'|'skip', email: 'skip' as 'ok'|'err'|'skip' };
 
     // 1. Mark as Released
-    const { error: closeErr } = await supabase.from('roadmap_items').update({ status: 'Released' }).eq('id', item.id);
+    const { error: closeErr } = await supabase.from('roadmap_items').update({ status: 'Released', updated_at: new Date().toISOString() }).eq('id', item.id);
     if (closeErr) { result.closed = 'err'; setClosePublishResult({ ...result }); return; }
     await load();
 
@@ -471,6 +529,28 @@ export function RoadmapManager({ clients, services }: Props) {
 
   const clientServices = (clientId?: string) =>
     clientId ? services.filter(s => s.client_id === clientId) : services;
+
+  const renderRow = (item: RoadmapItem) => (<RoadmapRow
+      key={item.id}
+              item={item}
+              clients={clients}
+              services={services}
+              notifying={notifying === item.id}
+              tracking={tracking[item.id] ?? []}
+              onRefreshTracking={loadTracking}
+              recipientOptions={recipientOptionsFor(clients.find(c => c.id === item.client_id), contacts)}
+              recipients={recipientsFor(item, clients.find(c => c.id === item.client_id))}
+              getClientName={getClientName}
+              getServiceName={getServiceName}
+              clientServices={clientServices}
+              onUpdate={updateItem}
+              onDelete={deleteItem}
+              onNotify={notifyClient}
+              onSendUpdate={sendUpdateEmail}
+              onMarkReleased={markReleased}
+              onClosePublish={closeAndPublish}
+              closePublishResult={closePublishResult?.itemId === item.id ? closePublishResult : null}
+            />);
 
   return (
     <div className="space-y-6">
@@ -654,6 +734,8 @@ export function RoadmapManager({ clients, services }: Props) {
               <option key={c.id} value={c.id}>{c.company_name}</option>
             ))}
           </select>
+          <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar…"
+            className="px-2.5 py-1 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-gray-50 w-40" />
           <div className="ml-auto inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 text-xs font-medium">
             <button onClick={() => setFilterCategory('all')}
               className={`px-2.5 py-1 rounded-md transition-colors ${filterCategory === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}>
@@ -679,28 +761,23 @@ export function RoadmapManager({ clients, services }: Props) {
             <p className="text-sm text-gray-500">No items yet. Add the first one above.</p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-100">
-            {filtered.map(item => <RoadmapRow
-              key={item.id}
-              item={item}
-              clients={clients}
-              services={services}
-              notifying={notifying === item.id}
-              tracking={tracking[item.id] ?? []}
-              onRefreshTracking={loadTracking}
-              recipientOptions={recipientOptionsFor(clients.find(c => c.id === item.client_id), contacts)}
-              recipients={recipientsFor(item, clients.find(c => c.id === item.client_id))}
-              getClientName={getClientName}
-              getServiceName={getServiceName}
-              clientServices={clientServices}
-              onUpdate={updateItem}
-              onDelete={deleteItem}
-              onNotify={notifyClient}
-              onSendUpdate={sendUpdateEmail}
-              onMarkReleased={markReleased}
-              onClosePublish={closeAndPublish}
-              closePublishResult={closePublishResult?.itemId === item.id ? closePublishResult : null}
-            />)}
+          <div>
+            <RoadmapSection title="En curso" tone="blue" count={sections.active.length} empty="Nada en curso.">
+              {sections.active.map(renderRow)}
+            </RoadmapSection>
+            <RoadmapSection title="Planificado" tone="gray" count={sections.planned.length} empty="Nada planificado.">
+              {sections.planned.map(renderRow)}
+            </RoadmapSection>
+            <RoadmapSection title="Hecho" tone="green" count={sections.done.length}
+              hint={`últimos ${ARCHIVE_AFTER_DAYS} días`} collapsed={!showDone && !search.trim()} onToggle={() => setShowDone(v => !v)}>
+              {sections.done.map(renderRow)}
+            </RoadmapSection>
+            {sections.archived.length > 0 && (
+              <RoadmapSection title="Archivado" tone="gray" count={sections.archived.length}
+                hint={`terminado hace más de ${ARCHIVE_AFTER_DAYS} días`} collapsed={!showArchived && !search.trim()} onToggle={() => setShowArchived(v => !v)}>
+                {sections.archived.map(renderRow)}
+              </RoadmapSection>
+            )}
           </div>
         )}
       </div>

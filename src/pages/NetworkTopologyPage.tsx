@@ -97,6 +97,11 @@ export const isOnMap = (d: DiscoveredDevice) =>
 
 /** Puerto legible: "ether2,bridge" → "ether2" */
 // "ether3;bridge" / "bridge/ether10" → el puerto físico (RouterOS separa con ; o anuncia bridge/puerto)
+/** Tipos que reenvían tráfico: un equipo "detrás" de ellos en un puerto del router */
+const FORWARDING_KINDS = new Set(['switch', 'ap', 'router', 'firewall']);
+/** MAC de máquina virtual (VMware, Proxmox, Hyper-V, KVM, VirtualBox, Xen) o vacía: no es un equipo físico */
+const VIRTUAL_OUIS = ['00:0C:29', '00:50:56', '00:05:69', 'BC:24:11', '00:15:5D', '52:54:00', '08:00:27', '00:16:3E'];
+const isVirtualMac = (mac: string) => mac === '00:00:00:00:00:00' || VIRTUAL_OUIS.some(o => mac.startsWith(o));
 const cleanPort = (p?: string | null) => (p || '').split(/[,;]/).map(x => x.trim().replace(/^bridge\//i, '')).find(x => x && !/^bridge$/i.test(x)) || undefined;
 
 /** Un equipo que se anuncia como router pero se llama "SW…"/"switch" es un switch (Huawei, MikroTik usado de switch) */
@@ -586,11 +591,56 @@ export default function NetworkTopologyPage() {
     ]);
     // Puerto del router donde se ve a cada equipo (ARP + bridge del script 1.2.0). Si ese puerto es
     // el que va a un switch descubierto por LLDP, el equipo está detrás de ese switch.
+    // Solo cuenta como "detrás de" un vecino que reenvía tráfico (switch, AP, router), no una PC con LLDP
+    const kindOfNode = new Map([...serviceNodes, ...customNodes, ...discoveredNodes].map(n => [n.id, (n.data as DeviceNodeData).kind]));
     const neighborAtPort = new Map<string, string>();   // "routerNodeId|ether2" → nodo del vecino
+    const lldpMacsAtPort = new Map<string, Set<string>>();
+    const macOfDevice = new Map(discovered.map(d => [d.id, (d.mac_address || '').toUpperCase()]));
     for (const l of (linkRows ?? []) as unknown as NetLink[]) {
       const a = discNodeId.get(l.source_device_id), b = discNodeId.get(l.target_device_id);
       const port = cleanPort(l.source_port);
-      if (a && b && port && nodeIds.has(b)) neighborAtPort.set(`${a}|${port}`, b);
+      if (!a || !port) continue;
+      const key = `${a}|${port}`;
+      const m = macOfDevice.get(l.target_device_id);
+      if (m) { if (!lldpMacsAtPort.has(key)) lldpMacsAtPort.set(key, new Set()); lldpMacsAtPort.get(key)!.add(m); }
+      if (b && nodeIds.has(b) && FORWARDING_KINDS.has(kindOfNode.get(b) ?? '')) neighborAtPort.set(key, b);
+    }
+
+    // Switches no administrables: no se anuncian (sin LLDP ni IP), pero si por un puerto del router se
+    // ven 3 o más equipos físicos (sin contar máquinas virtuales), en ese puerto hay un switch.
+    const inferredSwitch = new Map<string, string>();   // "routerNodeId|ether2" → nodo del switch deducido
+    const inferredLinks: { a: string; b: string; port: string }[] = [];
+    for (const [rid, rep] of netReports) {
+      if (!nodeIds.has(rid)) continue;
+      const macsAtPort = new Map<string, Set<string>>();
+      for (const h of rep.hosts ?? []) {
+        const port = cleanPort(h.port);
+        const mac = (h.mac ?? '').toUpperCase();
+        if (!port || !mac || isVirtualMac(mac)) continue;
+        if (!macsAtPort.has(port)) macsAtPort.set(port, new Set());
+        macsAtPort.get(port)!.add(mac);
+      }
+      for (const [key, macs] of lldpMacsAtPort) {
+        if (!key.startsWith(`${rid}|`)) continue;
+        const port = key.slice(rid.length + 1);
+        if (!macsAtPort.has(port)) macsAtPort.set(port, new Set());
+        for (const m of macs) if (!isVirtualMac(m)) macsAtPort.get(port)!.add(m);
+      }
+      for (const [port, macs] of macsAtPort) {
+        if (macs.size < 3 || neighborAtPort.has(`${rid}|${port}`)) continue;
+        const id = stableUuid(`switch:${rid}:${port}`);
+        const o = overrides[id];
+        nodeIds.add(id);
+        vpnNodes.push({
+          id, type: 'device', position: o ? { x: o.x, y: o.y } : { x: 0, y: 0 },
+          data: {
+            label: `Switch (${port})`, ip: '', note: `No administrable · deducido, ${macs.size} equipos detrás`,
+            kind: (o?.kind as DeviceKind) || 'switch', status: 'unknown',
+          } satisfies DeviceNodeData,
+        });
+        inferredSwitch.set(`${rid}|${port}`, id);
+        inferredLinks.push({ a: rid, b: id, port });
+      }
     }
     const lanLinks: { a: string; b: string; port?: string; via?: string }[] = [];
     for (const svc of services) {
@@ -607,7 +657,7 @@ export default function NetworkTopologyPage() {
       }
       if (!router) router = routerInfo.find(r => netReports.has(r.id) && nodeIds.has(r.id) && r.nets.some(n => ipInNet(ip, n)))?.id ?? null;
       if (!router) continue;
-      const via = port ? neighborAtPort.get(`${router}|${port}`) : undefined;
+      const via = port ? (neighborAtPort.get(`${router}|${port}`) ?? inferredSwitch.get(`${router}|${port}`)) : undefined;
       if (via) lanLinks.push({ a: via, b: svc.id, port, via });
       else lanLinks.push({ a: router, b: svc.id, port });
     }
@@ -620,14 +670,18 @@ export default function NetworkTopologyPage() {
        ...[...tunnels.values()].map(t => [t.a, t.b] as [string, string]),
        ...wanLinks.map(l => [l.a, l.b] as [string, string]),
        ...lanLinks.map(l => [l.a, l.b] as [string, string]),
+       ...inferredLinks.map(l => [l.a, l.b] as [string, string]),
        ...vmLinks.map(l => [l.a, l.b] as [string, string]),
        ...((linkRows ?? []) as unknown as NetLink[]).map(l => [discNodeId.get(l.source_device_id) ?? '', discNodeId.get(l.target_device_id) ?? ''] as [string, string])]);
     const pos = new Map(allNodes.map(n => [n.id, n.position]));
     const manualPairs = new Set(builtEdges.flatMap(e => [`${e.source}|${e.target}`, `${e.target}|${e.source}`]));
     const autoEdges: Edge[] = [];
     for (const l of (linkRows ?? []) as unknown as NetLink[]) {
-      const a = discNodeId.get(l.source_device_id);
       const b = discNodeId.get(l.target_device_id);
+      // Un vecino LLDP en un puerto con switch deducido cuelga del switch, no del router
+      const rawA = discNodeId.get(l.source_device_id);
+      const swA = rawA ? inferredSwitch.get(`${rawA}|${cleanPort(l.source_port)}`) : undefined;
+      const a = swA ?? rawA;
       if (!a || !b || a === b || !nodeIds.has(a) || !nodeIds.has(b) || manualPairs.has(`${a}|${b}`)) continue;
       manualPairs.add(`${a}|${b}`); manualPairs.add(`${b}|${a}`);
       const pa = pos.get(a)!, pb = pos.get(b)!;
@@ -637,7 +691,7 @@ export default function NetworkTopologyPage() {
       autoEdges.push({
         id: `auto-${l.source_device_id}-${l.target_device_id}`, source: a, target: b, type: 'port',
         sourceHandle: sh, targetHandle: th, style: edgeStyleFor(type),
-        data: { type, sourcePort: cleanPort(l.source_port), targetPort: cleanPort(l.target_port), auto: true } as StoredEdgeStyle,
+        data: { type, sourcePort: swA ? undefined : cleanPort(l.source_port), targetPort: cleanPort(l.target_port), auto: true } as StoredEdgeStyle,
       });
     }
 
@@ -679,6 +733,15 @@ export default function NetworkTopologyPage() {
         style: edgeStyleFor('vm'), data: { type: 'vm', midLabel: 'VM', auto: true } as StoredEdgeStyle,
       });
     }
+    const inferredIds = new Set(inferredSwitch.values());
+    for (const l of inferredLinks) {
+      if (!pos.get(l.a) || !pos.get(l.b)) continue;
+      const [sh, th] = handlesFor(l.a, l.b);
+      autoEdges.push({
+        id: `sw-${l.b}`, source: l.a, target: l.b, type: 'port', sourceHandle: sh, targetHandle: th,
+        style: edgeStyleFor('utp'), data: { type: 'utp', sourcePort: l.port, auto: true } as StoredEdgeStyle,
+      });
+    }
     for (const l of lanLinks) {
       if (!pos.get(l.a) || !pos.get(l.b) || manualPairs.has(`${l.a}|${l.b}`)) continue;
       const [sh, th] = handlesFor(l.a, l.b);
@@ -690,7 +753,8 @@ export default function NetworkTopologyPage() {
         data: {
           type: 'utp', auto: true,
           sourcePort: l.via ? undefined : l.port,
-          midLabel: l.via ? `LAN (por ${l.port} del router)` : l.port ? undefined : 'LAN',
+          // Detrás de un switch deducido ya se ve el puerto en el enlace router → switch
+          midLabel: l.via && !inferredIds.has(l.via) ? `LAN (por ${l.port} del router)` : l.port || l.via ? undefined : 'LAN',
         } as StoredEdgeStyle,
       });
     }
