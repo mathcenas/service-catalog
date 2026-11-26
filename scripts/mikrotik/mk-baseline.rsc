@@ -40,6 +40,8 @@
 :local netwatchHosts [:toarray ""]
 # Apagar telnet, ftp, www, api y api-ssl
 :local disableInsecure true
+# PPTP: limitar a Uruguay + bloqueo de fuerza bruta (false = no tocar la VPN de este router)
+:local pptpProtect true
 # Cada cuánto corre mk-network-report si hay que crearle el scheduler
 :local reportEvery 8h
 # ─────────────────────────────────────────────────────────────
@@ -100,7 +102,11 @@
 # ── 4. VPN PPTP: solo Uruguay + monitoreo, con bloqueo de fuerza bruta ──
 :local pptpOn false
 :do { :set pptpOn [/interface/pptp-server/server/get enabled] } on-error={}
-:if ($pptpOn) do={
+:if ($pptpOn && !$pptpProtect) do={
+  :put "! PPTP prendido y sin tocar (pptpProtect=false)"
+  :set warns ($warns + 1)
+}
+:if ($pptpOn && $pptpProtect) do={
   :if ([:len [/system/script/find where name="uy-list"]] = 0) do={
     :put "! PPTP prendido pero falta el script uy-list (mk-uy-list.rsc): no se limita a Uruguay"
     :set warns ($warns + 1)
