@@ -29,6 +29,8 @@ type Machine = {
   platform: Platform | null;
   updater: { at: string; status: string; payload: UpdaterPayload } | null;
   healthVersion: string | null;
+  /** Archivo que mandó el system-health (script_name; los viejos no lo mandan) */
+  healthScript?: string | null;
   healthAt: string | null;
   hostKey: string;               // IP pública + local: identifica servicios que son el mismo servidor
   sharedWith?: string;           // nombre del servicio del que toma el reporte del actualizador
@@ -111,6 +113,7 @@ export function ScriptUpdatesView({ services, clients }: { services: Service[]; 
       if (h.source === 'system-health' && !m.healthAt) {
         m.healthAt = h.received_at;
         m.healthVersion = typeof p.script_version === 'string' ? p.script_version : null;
+        m.healthScript = typeof p.script_name === 'string' ? p.script_name : null;
         if (p.public_ip || p.local_ip) m.hostKey = `${p.public_ip ?? ''}|${p.local_ip ?? ''}`;
         // Windows manda os_caption ("Microsoft Windows …"); Linux manda load_avg
         if (!m.platform) {
@@ -155,7 +158,16 @@ export function ScriptUpdatesView({ services, clients }: { services: Service[]; 
     let verdict: Verdict;
     const u = m.updater;
     const daysSince = u ? (Date.now() - new Date(u.at).getTime()) / 86_400_000 : Infinity;
-    const healthLatest = latest[`${plat}:system-health.${plat === 'linux' ? 'sh' : 'ps1'}`]?.version;
+    // En Windows puede correr system-health.ps1 o system-health-server.ps1: si el script no dice cuál,
+    // se compara con la versión de los dos que sigue a la actual (nunca se marca vieja una más nueva)
+    const healthLatest = (() => {
+      if (m.healthScript) return latest[`${plat}:${m.healthScript}`]?.version;
+      if (plat === 'linux') return latest['linux:system-health.sh']?.version;
+      const cands = ['system-health.ps1', 'system-health-server.ps1']
+        .map(n => latest[`windows:${n}`]?.version).filter((v): v is string => !!v);
+      if (!m.healthVersion) return cands.sort(cmpVersion)[cands.length - 1];
+      return cands.filter(c => cmpVersion(c, m.healthVersion!) >= 0).sort(cmpVersion)[0];
+    })();
     const healthOld = m.healthVersion && healthLatest && cmpVersion(m.healthVersion, healthLatest) < 0;
 
     if (!u) {

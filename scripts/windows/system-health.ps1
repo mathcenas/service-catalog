@@ -11,7 +11,7 @@
 . "$PSScriptRoot\config.ps1"
 [System.Net.WebRequest]::DefaultWebProxy = New-Object System.Net.WebProxy
 
-$SCRIPT_VERSION = "1.16.0"
+$SCRIPT_VERSION = "1.16.1"
 
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -665,6 +665,7 @@ $hwData = @{
         uptime_seconds = $uptimeSecs
         issues         = $issues
         vpn_checks     = $vpnChecks
+        script_name    = 'system-health.ps1'
         os_updates     = $osUpdates
         tailscale      = $tailscale
         server_roles   = $serverRoles

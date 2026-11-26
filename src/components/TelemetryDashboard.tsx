@@ -118,12 +118,38 @@ function detectOS(payload: Record<string, unknown>): 'linux' | 'windows' {
   if ('disk_mounts' in payload || 'docker_containers' in payload) return 'linux';
   return 'windows';
 }
-function isWindowsServer(p: Record<string, unknown>): boolean {
-  if (typeof p.is_server === 'boolean') return p.is_server;
-  const osName = String(p.os_name || p.os_caption || p.os || '').toLowerCase();
-  if (osName.includes('server')) return true;
-  // Fallback: system-health-server.ps1 sends rdp_sessions/rdp_disconnects in rdp payload
-  return 'rdp_sessions' in p || 'rdp_disconnects' in p || ('disk_raid' in p && !('disk_mounts' in p));
+
+type LatestVersions = Record<string, { windows?: string; windowsServer?: string; linux?: string }>;
+
+const cmpVer = (a: string, b: string) => {
+  const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) - (pb[i] ?? 0);
+  return 0;
+};
+
+/**
+ * Última versión con la que comparar el script que mandó este heartbeat.
+ * - Si el script dice su nombre (script_name, system-health 1.16.1 / server 1.13.1 / linux 1.13.1),
+ *   se compara con ese archivo del repo.
+ * - Si no: en Windows puede ser system-health.ps1 o system-health-server.ps1 (los dos corren en
+ *   servidores); se toma la versión de los dos que sigue a la actual, y nunca se marca vieja una
+ *   versión más nueva que ambas.
+ */
+function latestFor(source: string, p: Record<string, unknown>, latest: LatestVersions): string | undefined {
+  const name = typeof p.script_name === 'string' ? p.script_name : null;
+  if (name) {
+    const f = latest[`file:${name}`] as Record<string, string> | undefined;
+    const v = f?.windows ?? f?.linux ?? f?.['windows-manual'] ?? f?.['linux-manual'];
+    if (v) return v;
+  }
+  const versions = latest[source];
+  if (!versions) return undefined;
+  if (detectOS(p) === 'linux') return versions.linux ?? versions.windows;
+  const cands = [versions.windows, versions.windowsServer].filter((v): v is string => !!v);
+  if (!cands.length) return undefined;
+  const cur = p.script_version != null ? String(p.script_version) : null;
+  if (!cur) return cands.sort(cmpVer)[cands.length - 1];
+  return cands.filter(c => cmpVer(c, cur) >= 0).sort(cmpVer)[0] ?? cur;
 }
 
 async function fetchLatestVersions(): Promise<Record<string, { windows?: string; windowsServer?: string; linux?: string }>> {
@@ -213,17 +239,8 @@ function MetricChips({ hb, latestVersions }: { hb: ServiceHeartbeat; latestVersi
 
   // Script version chip — pick latest based on detected OS and server/workstation variant
   const scriptVer  = p.script_version != null ? String(p.script_version) : null;
-  const osType     = detectOS(p);
-  const isServer   = osType === 'windows' && isWindowsServer(p);
-  const versions   = latestVersions[hb.source];
-  const latestVer  = versions
-    ? osType === 'linux'
-      ? (versions.linux ?? versions.windows)
-      : isServer
-        ? (versions.windowsServer ?? versions.windows)
-        : versions.windows
-    : undefined;
-  const versionOutdated = !!latestVer && (scriptVer === null || scriptVer !== latestVer);
+  const latestVer  = latestFor(hb.source, p, latestVersions);
+  const versionOutdated = !!latestVer && (scriptVer === null || cmpVer(scriptVer, latestVer) < 0);
   const versionUnknown  = false; // null script_version = script too old to report → treated as outdated
   if (scriptVer) {
     chips.push({ label: 'v', value: scriptVer, warn: versionOutdated });
@@ -530,16 +547,10 @@ export function TelemetryDashboard({ services, clients, focus }: Props) {
       const versions = latestVersions[hb.source];
       if (!versions) continue;
       const payload  = (hb.payload ?? {}) as Record<string, unknown>;
-      const os       = detectOS(payload);
-      const server   = os === 'windows' && isWindowsServer(payload);
-      const latest   = os === 'linux'
-        ? (versions.linux ?? versions.windows)
-        : server
-          ? (versions.windowsServer ?? versions.windows)
-          : versions.windows;
+      const latest   = latestFor(hb.source, payload, latestVersions);
       if (!latest) continue;
       const current = payload.script_version != null ? String(payload.script_version) : null;
-      if (current === null || current !== latest) {
+      if (current === null || cmpVer(current, latest) < 0) {
         const svc = services.find(s => s.id === hb.service_id);
         const steps = current ? semverSteps(current, latest) : 99;
         const client = svc ? clients.find(c => c.id === svc.client_id) : null;
@@ -874,7 +885,7 @@ export function TelemetryDashboard({ services, clients, focus }: Props) {
                     <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-orange-600">
                       <span><span className="text-orange-400">Última señal:</span> {new Date(latest.received_at).toLocaleString('es-UY', { dateStyle: 'short', timeStyle: 'short' })}</span>
                       <span><span className="text-orange-400">Source:</span> {latest.source}</span>
-                      {(latest.payload as Record<string, unknown>)?.script_version && (
+                      {(latest.payload as Record<string, unknown>)?.script_version != null && (
                         <span><span className="text-orange-400">v</span> {String((latest.payload as Record<string, unknown>).script_version)}</span>
                       )}
                     </div>

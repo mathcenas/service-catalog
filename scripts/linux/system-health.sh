@@ -12,7 +12,7 @@
 # Version: 1.6.0
 # =============================================================
 
-SCRIPT_VERSION="1.13.0"
+SCRIPT_VERSION="1.13.1"
 
 # ---------- Verificación de dependencias ----------
 if ! command -v jq >/dev/null 2>&1; then
@@ -649,6 +649,7 @@ PAYLOAD=$(jq -n \
       public_ip: (if $public_ip == "" then null else $public_ip end),
       local_ip: (if $local_ip == "" then null else $local_ip end),
       hostname: (if $hostname == "" then null else $hostname end),
+      script_name: "system-health.sh",
       cpu_model: (if $cpu_model == "" then null else $cpu_model end),
       cpu_cores: $cpu_cores,
       ram_total_gb: $ram_total_gb,
