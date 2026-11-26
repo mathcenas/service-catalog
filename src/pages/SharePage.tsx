@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, createContext, useContext } from 'react';
+import { netwatchDown, type RouterSecurity } from '../lib/routerBaseline';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   Server, Globe, Calendar, Clock, Shield, CheckCircle2,
@@ -1723,6 +1724,38 @@ function VpnTunnelStatus({ vpn, net, checks }: { vpn: VpnSpec; net: ServiceHeart
   );
 }
 
+// Seguridad del router (mk-network-report 1.3.0+): un resumen para el cliente, sin detalles técnicos
+function RouterSecuritySummary({ serviceId, net }: { serviceId: string; net: ServiceHeartbeat[] }) {
+  const hb = net.find(h => h.service_id === serviceId && (h.payload as Record<string, unknown> | null)?.security);
+  if (!hb) return null;
+  const sec = (hb.payload as { security: RouterSecurity }).security;
+  const vpn = sec.vpn_servers ?? {};
+  const pptpPorts = (sec.fw_ports ?? []).filter(p => p.port.split(',').includes('1723'));
+  const vpnProtected = !vpn.pptp || (pptpPorts.length > 0 && pptpPorts.every(p => !!p.only_from) && !!sec.pptp_bruteforce);
+  const watched = (sec.netwatch ?? []).filter(n => !n.disabled);
+  const down = netwatchDown(sec);
+  const internet = watched.find(n => /internet|gateway/i.test(n.comment ?? ''));
+  const line = (ok: boolean, text: string) => (
+    <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+      <span className={`w-2 h-2 rounded-full shrink-0 ${ok ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+      <span>{text}</span>
+    </div>
+  );
+  return (
+    <div className="mt-3 space-y-1">
+      {line(!!sec.drop_wan, sec.drop_wan ? 'Firewall protegiendo la red' : 'Firewall en revisión por Cenas IT')}
+      {vpn.pptp && line(vpnProtected, vpnProtected
+        ? 'VPN de acceso remoto protegida (solo desde Uruguay, con bloqueo de intentos)'
+        : 'VPN de acceso remoto: protección en curso')}
+      {(sec.blocked_ips ?? 0) > 0 && line(true, `${sec.blocked_ips} ${sec.blocked_ips === 1 ? 'dirección bloqueada' : 'direcciones bloqueadas'} ahora por intentos de acceso`)}
+      {watched.length > 0 && line(down.length === 0, down.length === 0
+        ? `Conexión vigilada cada 10 s: ${internet ? 'Internet y ' : ''}${watched.length - (internet ? 1 : 0)} equipos responden`
+        : `Sin respuesta ahora: ${down.map(n => n.comment || n.host).join(', ')}`)}
+      <div className="text-[11px] text-gray-400">Revisado {formatTimeAgo(hb.received_at)}</div>
+    </div>
+  );
+}
+
 function ServiceCard({ service, typeName, projectName, expanded, onToggle, heartbeats, backups, latestHealth, latestDbCheck, netHeartbeats, vpnChecks, showCosts }: {
   service: Service; typeName: string; projectName: string | null; expanded: boolean; onToggle: () => void; heartbeats: ServiceHeartbeat[]; backups: ServiceBackup[]; latestHealth: ServiceHeartbeat | null; latestDbCheck: ServiceHeartbeat | null; netHeartbeats: ServiceHeartbeat[]; vpnChecks: VpnCheck[]; showCosts: boolean;
 }) {
@@ -1813,6 +1846,7 @@ function ServiceCard({ service, typeName, projectName, expanded, onToggle, heart
         ) : null}
 
         {service.specifications?.vpn && <VpnTunnelStatus vpn={service.specifications.vpn as VpnSpec} net={netHeartbeats} checks={vpnChecks} />}
+        <RouterSecuritySummary serviceId={service.id} net={netHeartbeats} />
 
         {service.last_backup_at && (
           <div className="flex items-center gap-2 mt-3">

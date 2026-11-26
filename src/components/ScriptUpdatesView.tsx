@@ -172,8 +172,7 @@ export function ScriptUpdatesView({ services, clients }: { services: Service[]; 
 
     if (!u) {
       verdict = 'manual';
-      reasons.push('El actualizador nunca reportó: es una versión anterior a la 1.3.0 o no está programado.');
-      if (healthOld) reasons.push(`system-health ${m.healthVersion} → ${healthLatest}.`);
+      reasons.push('El actualizador nunca reportó (versión anterior a la 1.3.0 o sin programar).');
     } else if (daysSince > UPDATER_STALE_DAYS) {
       verdict = 'manual';
       reasons.push(`El actualizador no corre desde ${fmtDate(u.at)}: revisá la tarea programada o el cron.`);
@@ -194,12 +193,13 @@ export function ScriptUpdatesView({ services, clients }: { services: Service[]; 
       const next = u?.payload.task?.next_run;
       reasons.push(next ? `Próxima corrida: ${fmtDate(next)}.` : 'Se actualiza en la próxima corrida del cron.');
     }
-    return { m, plat, outdated, verdict, reasons };
+    return { m, plat, outdated, verdict, reasons, healthLatest, healthOld };
   }).sort((a, b) => {
     const order: Record<Verdict, number> = { manual: 0, auto: 1, ok: 2 };
     return order[a.verdict] - order[b.verdict] || a.m.clientName.localeCompare(b.m.clientName) || a.m.name.localeCompare(b.m.name);
   }), [machines, latest]);
 
+  const syncStale = !syncedAt || Date.now() - new Date(syncedAt).getTime() > 36 * 3_600_000;
   const counts = { ok: rows.filter(r => r.verdict === 'ok').length, auto: rows.filter(r => r.verdict === 'auto').length, manual: rows.filter(r => r.verdict === 'manual').length };
   const manualFiles = Object.entries(latest).filter(([, v]) => v.manual).map(([k, v]) => ({ name: k.split(':')[1], ...v }));
 
@@ -218,13 +218,19 @@ export function ScriptUpdatesView({ services, clients }: { services: Service[]; 
           </button>
         </div>
         <div className="flex items-center gap-2 text-xs text-gray-500">
-          <span>GitHub revisado {ago(syncedAt)}</span>
+          <span className={syncStale ? 'text-amber-700' : ''} title="Se revisa solo todos los días a las 03:00 (06:00 UTC)">
+            {syncStale && <AlertTriangle className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />}
+            GitHub revisado: <span className="font-medium text-gray-700">{fmtDate(syncedAt)}</span> ({ago(syncedAt)})
+          </span>
           <button onClick={syncNow} disabled={syncing}
             className="inline-flex items-center gap-1.5 border border-gray-200 hover:border-gray-300 bg-white rounded-lg px-2.5 py-1.5 text-gray-700 disabled:opacity-50">
             <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} /> Revisar GitHub ahora
           </button>
         </div>
       </div>
+      {syncStale && !syncError && (
+        <p className="text-xs text-amber-700">La revisión automática de GitHub (todos los días 03:00) no corrió en más de un día: tocá "Revisar GitHub ahora" y si falla avisá.</p>
+      )}
       {syncError && <p className="text-xs text-red-600">No se pudo revisar GitHub: {syncError}</p>}
 
       {showHelp && (
@@ -255,15 +261,16 @@ export function ScriptUpdatesView({ services, clients }: { services: Service[]; 
               <tr className="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold text-gray-500">
                 <th className="px-4 py-2.5">Equipo</th>
                 <th className="px-4 py-2.5">Estado</th>
+                <th className="px-4 py-2.5">Último reporte</th>
                 <th className="px-4 py-2.5">Actualizador</th>
                 <th className="px-4 py-2.5">Pendientes</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {rows.length === 0 && (
-                <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">Ningún equipo reportó en la última semana.</td></tr>
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Ningún equipo reportó en la última semana.</td></tr>
               )}
-              {rows.map(({ m, plat, outdated, verdict, reasons }) => {
+              {rows.map(({ m, plat, outdated, verdict, reasons, healthLatest, healthOld }) => {
                 const { label, cls, Icon } = VERDICT[verdict];
                 const u = m.updater;
                 const expanded = open === m.serviceId;
@@ -281,13 +288,22 @@ export function ScriptUpdatesView({ services, clients }: { services: Service[]; 
                       {reasons.map(r => <p key={r} className="text-xs text-gray-500 mt-1 max-w-xs">{r}</p>)}
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
+                      {m.healthAt ? (
+                        <>
+                          <div className="text-gray-800">{fmtDate(m.healthAt)}</div>
+                          <div className="text-gray-400">system-health · {ago(m.healthAt)}</div>
+                        </>
+                      ) : <span className="text-gray-400">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
                       {u ? (
                         <>
-                          <div>Última corrida {ago(u.at)}</div>
-                          <div className="text-gray-400">v{u.payload.script_version ?? '?'}{u.payload.task?.name ? ` · ${u.payload.task.name === 'cron' ? 'cron' : 'tarea programada'}` : ''}</div>
+                          <div className="text-gray-800">Corrió: {fmtDate(u.at)}</div>
+                          <div className="text-gray-400">{ago(u.at)} · v{u.payload.script_version ?? '?'}{u.payload.task?.name ? ` · ${u.payload.task.name === 'cron' ? 'cron' : 'tarea programada'}` : ''}</div>
+                          {u.payload.task?.next_run && <div className="text-gray-400">Próxima: {fmtDate(u.payload.task.next_run)}</div>}
                         </>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-amber-700"><AlertTriangle className="w-3.5 h-3.5" /> Sin reportes</span>
+                        <span className="inline-flex items-center gap-1 text-amber-700"><AlertTriangle className="w-3.5 h-3.5" /> Nunca reportó</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-xs">
@@ -308,8 +324,10 @@ export function ScriptUpdatesView({ services, clients }: { services: Service[]; 
                           )}
                         </>
                       ) : m.healthVersion ? (
-                        <span className="text-gray-500">system-health {m.healthVersion}</span>
-                      ) : <span className="text-gray-400">—</span>}
+                        healthOld
+                          ? <div className="font-mono text-gray-700 whitespace-nowrap">system-health <span className="text-gray-400">{m.healthVersion} →</span> <span className="text-blue-700">{healthLatest}</span></div>
+                          : <span className="text-gray-500">system-health {m.healthVersion} (al día)</span>
+                      ) : <span className="text-gray-400">No manda versión (muy viejo)</span>}
                     </td>
                   </tr>
                 );

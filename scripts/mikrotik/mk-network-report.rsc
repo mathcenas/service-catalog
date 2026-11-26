@@ -1,5 +1,5 @@
 # ==============================================================
-# mk-network-report.rsc  v1.2.0
+# mk-network-report.rsc  v1.3.0
 # Manda al portal Cenas IT cómo está armada la red del router:
 #   - redes LAN, WAN e IP pública (PPPoE / DHCP / IP Cloud)
 #   - nombre DDNS de IP Cloud
@@ -9,6 +9,9 @@
 #     el portal arma con eso el mapa del sitio (reemplaza a net-topology-report.rsc)
 #   - equipos de la LAN (ARP + tabla del bridge): IP, MAC y puerto del router por el que se los ve.
 #     El mapa muestra en qué puerto está cada servidor, o detrás de qué switch
+#   - seguridad (1.3.0): servicios del router, VPN encendidas, puertos abiertos a Internet,
+#     bloqueo de fuerza bruta, netwatch y logs a disco. El portal lo compara con el estándar
+#     Cenas (ver mk-baseline.rsc) y abre un ticket si el firewall no bloquea lo que entra de Internet
 # Si un túnel que este router debería mantener está caído, el reporte sale
 # en "failed" con el problema en "issues" y el portal abre un ticket.
 #
@@ -43,7 +46,7 @@
 :local wgDownMinutes 5
 # ─────────────────────────────────────────────────────────────
 
-:local scriptVersion "1.2.0"
+:local scriptVersion "1.3.0"
 :local issues [:toarray ""]
 
 # ── Redes (LAN / WAN) ─────────────────────────────────────────
@@ -276,6 +279,94 @@
   :if ([:len $sch] > 0) do={ :set reportEvery [:tonum [/system/scheduler/get ($sch->0) interval]] }
 } on-error={}
 
+# ── Seguridad: se compara en el portal con el estándar Cenas (mk-baseline.rsc) ──
+:local svcList [:toarray ""]
+:foreach s in=[/ip/service/find] do={
+  :local sAddr ""
+  :do { :set sAddr [:tostr [/ip/service/get $s address]] } on-error={}
+  :set ($svcList->[:len $svcList]) {"name"=[/ip/service/get $s name]; "port"=[/ip/service/get $s port]; "disabled"=[/ip/service/get $s disabled]; "address"=$sAddr}
+}
+:local vpnPptp false
+:local vpnSstp false
+:local vpnL2tp false
+:local vpnOvpn false
+:do { :set vpnPptp [/interface/pptp-server/server/get enabled] } on-error={}
+:do { :set vpnSstp [/interface/sstp-server/server/get enabled] } on-error={}
+:do { :set vpnL2tp [/interface/l2tp-server/server/get enabled] } on-error={}
+:do { :set vpnOvpn [/interface/ovpn-server/server/get enabled] } on-error={
+  :do { :set vpnOvpn ([:len [/interface/ovpn-server/server/find where disabled=no]] > 0) } on-error={}
+}
+:local pppActive 0
+:local pppSecrets 0
+:do { :set pppActive [:len [/ppp/active/find]] } on-error={}
+:do { :set pppSecrets [:len [/ppp/secret/find where disabled=no]] } on-error={}
+
+# Regla final de fábrica: descarta lo que entra desde Internet
+:local dropWan (([:len [/ip/firewall/filter/find where chain=input action=drop disabled=no in-interface-list="!LAN"]] + [:len [/ip/firewall/filter/find where chain=input action=drop disabled=no in-interface-list="WAN"]]) > 0)
+:local wanList ([:len [/interface/list/member/find where list="WAN"]] > 0)
+:local pptpBrute ([:len [/ip/firewall/filter/find where chain=input action=drop disabled=no src-address-list="pptp-block"]] > 0)
+:local blockedIps [:len [/ip/firewall/address-list/find where list="pptp-block"]]
+:local uyRanges [:len [/ip/firewall/address-list/find where list="pais-uy"]]
+
+# Puertos que el firewall acepta en el router (input): a quién (lista/IP) o a todos
+:local fwPorts [:toarray ""]
+:foreach r in=[/ip/firewall/filter/find where chain=input action=accept disabled=no] do={
+  :local dp ""
+  :local proto ""
+  :local sal ""
+  :local sa ""
+  :local iil ""
+  :local ii ""
+  :local cs ""
+  :local cmt ""
+  :do { :set dp [:tostr [/ip/firewall/filter/get $r dst-port]] } on-error={}
+  :do { :set proto [:tostr [/ip/firewall/filter/get $r protocol]] } on-error={}
+  :do { :set sal [:tostr [/ip/firewall/filter/get $r src-address-list]] } on-error={}
+  :do { :set sa [:tostr [/ip/firewall/filter/get $r src-address]] } on-error={}
+  :do { :set iil [:tostr [/ip/firewall/filter/get $r in-interface-list]] } on-error={}
+  :do { :set ii [:tostr [/ip/firewall/filter/get $r in-interface]] } on-error={}
+  :do { :set cs [:tostr [/ip/firewall/filter/get $r connection-state]] } on-error={}
+  :do { :set cmt [:tostr [/ip/firewall/filter/get $r comment]] } on-error={}
+  :if ($dp != "" && $cs = "" && $iil != "LAN") do={
+    :local only $sal
+    :if ($only = "") do={ :set only $sa }
+    :set ($fwPorts->[:len $fwPorts]) {"port"=$dp; "protocol"=$proto; "only_from"=$only; "in_interface"=$ii; "comment"=[:pick $cmt 0 60]}
+  }
+}
+
+:local dnsRemote false
+:do { :set dnsRemote [/ip/dns/get allow-remote-requests] } on-error={}
+# IP de la LAN puesta en un puerto del bridge (en vez del bridge)
+:local lanOnSlave [:toarray ""]
+:foreach l in=$lans do={
+  :local li ($l->"interface")
+  :if ([:len [/interface/bridge/port/find where interface=$li]] > 0) do={ :set ($lanOnSlave->[:len $lanOnSlave]) $li }
+}
+:local loopProtect 0
+:do { :set loopProtect [:len [/interface/ethernet/find where loop-protect="on"]] } on-error={}
+:local nwList [:toarray ""]
+:do {
+  :foreach n in=[/tool/netwatch/find] do={
+    :local nCmt ""
+    :local nSince ""
+    :local nStatus ""
+    :do { :set nCmt [:tostr [/tool/netwatch/get $n comment]] } on-error={}
+    :do { :set nSince [:tostr [/tool/netwatch/get $n since]] } on-error={}
+    :do { :set nStatus [:tostr [/tool/netwatch/get $n status]] } on-error={}
+    :set ($nwList->[:len $nwList]) {"host"=[:tostr [/tool/netwatch/get $n host]]; "comment"=$nCmt; "status"=$nStatus; "since"=$nSince; "disabled"=[/tool/netwatch/get $n disabled]}
+  }
+} on-error={}
+:local diskTopics ""
+:foreach lg in=[/system/logging/find where action="disk" disabled=no] do={
+  :set diskTopics ($diskTopics . [:tostr [/system/logging/get $lg topics]] . ";")
+}
+:local adminUser ([:len [/user/find where name="admin" disabled=no]] > 0)
+
+:if (!$dropWan) do={
+  :set ($issues->[:len $issues]) "Firewall: el router no descarta lo que entra desde Internet (falta o está deshabilitada la regla 'drop all not coming from LAN')"
+}
+:local security {"services"=$svcList; "vpn_servers"={"pptp"=$vpnPptp; "sstp"=$vpnSstp; "l2tp"=$vpnL2tp; "ovpn"=$vpnOvpn}; "ppp_active"=$pppActive; "ppp_secrets"=$pppSecrets; "drop_wan"=$dropWan; "wan_list"=$wanList; "pptp_bruteforce"=$pptpBrute; "blocked_ips"=$blockedIps; "uy_ranges"=$uyRanges; "fw_ports"=$fwPorts; "dns_remote"=$dnsRemote; "lan_on_slave"=$lanOnSlave; "loop_protect_ports"=$loopProtect; "netwatch"=$nwList; "disk_logging"=$diskTopics; "admin_user"=$adminUser}
+
 # ── Payload y envío ──────────────────────────────────────────
 :local status "ok"
 :local message ("Red OK: " . [:len $lans] . " LAN, " . [:len $wgList] . " WireGuard, " . [:len $ipsecPolicies] . " policies IPsec")
@@ -284,7 +375,7 @@
   :set message ([:len $issues] . " problema(s): " . [:pick ($issues->0) 0 150])
 }
 
-:local payload {"script_version"=$scriptVersion; "identity"=[/system/identity/get name]; "board"=[/system/resource/get board-name]; "routeros_version"=[/system/resource/get version]; "uptime"=[:tostr [/system/resource/get uptime]]; "public_ip"=$publicIp; "ddns_name"=$ddnsName; "lans"=$lans; "wans"=$wans; "wireguard"=$wgList; "ipsec_peers"=$ipsecPeers; "ipsec_policies"=$ipsecPolicies; "router_mac"=$routerMac; "report_interval_s"=$reportEvery; "hosts"=$hosts; "topology"={"devices"=$topoDevices; "edges"=$topoEdges}; "issues"=$issues}
+:local payload {"script_version"=$scriptVersion; "identity"=[/system/identity/get name]; "board"=[/system/resource/get board-name]; "routeros_version"=[/system/resource/get version]; "uptime"=[:tostr [/system/resource/get uptime]]; "public_ip"=$publicIp; "ddns_name"=$ddnsName; "lans"=$lans; "wans"=$wans; "wireguard"=$wgList; "ipsec_peers"=$ipsecPeers; "ipsec_policies"=$ipsecPolicies; "router_mac"=$routerMac; "report_interval_s"=$reportEvery; "hosts"=$hosts; "topology"={"devices"=$topoDevices; "edges"=$topoEdges}; "security"=$security; "issues"=$issues}
 :local body {"service_id"=$serviceId; "source"="mk-network"; "status"=$status; "message"=$message; "payload"=$payload}
 
 :local json ""

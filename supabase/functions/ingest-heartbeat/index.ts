@@ -49,7 +49,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: service, error: svcErr } = await supabaseAdmin
       .from("services")
-      .select("user_id, ingest_secret, ip_public, ip_internal, specifications, name, mac_address, infrastructure_type, site_id")
+      .select("user_id, ingest_secret, ip_public, ip_internal, server_ip, specifications, name, mac_address, infrastructure_type, site_id")
       .eq("id", service_id)
       .maybeSingle();
 
@@ -90,6 +90,16 @@ Deno.serve(async (req: Request) => {
       const reportedInternal = typeof payload.local_ip  === "string" ? payload.local_ip.trim()  : null;
       if (reportedPublic   && reportedPublic   !== service.ip_public)   svcUpdate.ip_public   = reportedPublic;
       if (reportedInternal && reportedInternal !== service.ip_internal) svcUpdate.ip_internal = reportedInternal;
+      // "Server IP" (cargada a mano): se corrige sola si es una IP privada que el equipo ya no tiene.
+      // Si el equipo la sigue teniendo (ej. una segunda IP para un servicio) se respeta.
+      const localIps = Array.isArray(payload.local_ips) ? (payload.local_ips as unknown[]).map(String)
+        : typeof payload.local_ips === "string" ? [payload.local_ips] : null;
+      const isPrivate = (ip: string) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip);
+      const curServerIp = String(service.server_ip ?? "").trim();
+      if (reportedInternal && isPrivate(reportedInternal) && localIps?.length && localIps.includes(reportedInternal)
+          && (!curServerIp || (isPrivate(curServerIp) && !localIps.includes(curServerIp)))) {
+        svcUpdate.server_ip = reportedInternal;
+      }
 
       // Hardware specs — merge into existing specs JSONB, only overwrite when value is present
       const specsUpdate: Record<string, unknown> = {};
