@@ -22,7 +22,7 @@ jobs:
       # mantener esta lista igual a lo que está en producción.
       - name: Deploy Edge Functions
         run: |
-          NO_JWT=" ingest-events track-open get-acl-review resend-webhook ingest-heartbeat submit-acl-review r sync-script-versions submit-support-request ingest-kopia-webhook ingest-vm-event "
+          NO_JWT=" ingest-events track-open get-acl-review resend-webhook ingest-heartbeat submit-acl-review r sync-script-versions submit-support-request ingest-kopia-webhook ingest-vm-event portal-error "
           failed=""
           for dir in supabase/functions/*/; do
             name=$(basename "$dir")

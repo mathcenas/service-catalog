@@ -24,5 +24,16 @@ export default tseslint.config(
         { allowConstantExport: true },
       ],
     },
+  },
+  // Portal del cliente: anon solo lee columnas autorizadas (supabase/functions/_shared/shareColumns.ts).
+  // Un select('*') falla entero con "permission denied" y el portal se queda sin datos.
+  {
+    files: ['src/pages/SharePage.tsx', 'src/components/BackupMetricsModal.tsx'],
+    rules: {
+      'no-restricted-syntax': ['error', {
+        selector: "CallExpression[callee.property.name='select'][arguments.0.value='*']",
+        message: "En el portal no se puede usar select('*'): usá shareSelect('<tabla>') o las columnas de shareColumns.ts.",
+      }],
+    },
   }
 );
