@@ -205,8 +205,8 @@ export function SharePage({ token }: Props) {
         const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
         const [{ data: hbData }, { data: sysHbData }, { data: backupsData }, { data: uptimeData }] = await Promise.all([
-          supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).eq('source', 'speedtest').gte('received_at', since48h).order('received_at', { ascending: true }),
-          supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check', 'tailscale']).gte('received_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
+          supabase.from('service_heartbeats').select(shareSelect('service_heartbeats')).in('service_id', serviceIds).eq('source', 'speedtest').gte('received_at', since48h).order('received_at', { ascending: true }),
+          supabase.from('service_heartbeats').select(shareSelect('service_heartbeats')).in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check', 'tailscale']).gte('received_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
           supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at,expected_interval_hours').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(100),
           supabase.from('uptime_events').select('id,service_id,monitor_name,event_type,message,duration_seconds,occurred_at').in('service_id', serviceIds).gte('occurred_at', since30d).order('occurred_at', { ascending: false }),
         ]);
@@ -253,7 +253,7 @@ export function SharePage({ token }: Props) {
       const serviceIds = (svcs || []).map((s: { id: string }) => s.id);
       if (serviceIds.length === 0) return;
       const [{ data: sysHbData }, { data: backupsData }] = await Promise.all([
-        supabase.from('service_heartbeats').select('*').in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check', 'tailscale']).gte('received_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
+        supabase.from('service_heartbeats').select(shareSelect('service_heartbeats')).in('service_id', serviceIds).in('source', ['system-health', 'backup-folder', 'db-check', 'smb-check', 'tailscale']).gte('received_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()).order('received_at', { ascending: false }),
         supabase.from('service_backups').select('id,service_id,job_name,status,size_bytes,duration_seconds,backed_up_at,expected_interval_hours').in('service_id', serviceIds).order('backed_up_at', { ascending: false }).limit(100),
       ]);
       if (sysHbData) {
