@@ -26,12 +26,16 @@ Todo MikroTik de cliente tiene que quedar con:
 | Firewall | regla de fábrica "drop all not coming from LAN" activa y `ether1` en la lista WAN · reglas de VPN sin uso deshabilitadas |
 | LAN | IP del router en el bridge (no en un puerto) · loop-protect en los puertos que van a switches |
 
-Instalación: `mk-network-report` y `uy-list` (si hay PPTP) como scripts del router; después `mk-baseline` como script,
-completar `$kumaIps` y `$netwatchHosts` y correr `/system/script/run mk-baseline`. Lista cada cambio (`+`) y cada aviso (`!`).
-Lo que puede cortar servicio (IP al bridge, loop-protect, Winbox) solo lo avisa. El portal muestra el cumplimiento en
-**Telemetría → Routers** y un resumen para el cliente en su portal (firewall, VPN protegida, intentos bloqueados, netwatch).
+Se aplica con `mk-baseline` (sección 4) y se controla en el portal: **Telemetría → Routers** muestra cada router con su
+puntaje (ej. 8/10) y lo que le falta; el cliente ve en su portal un resumen sin detalles técnicos.
 
-Orden para un cliente nuevo: **1.** `setup.rsc` en el router → **2.** sitio del VPS en `mk-monitor.conf` → **3.** `net-topology-report.rsc` → **4.** `mk-wifi-report.sh`.
+**Orden para un router nuevo:**
+1. Cargar el router en el portal como servicio (tipo Router / Firewall), con **sitio** y telemetría activada.
+2. `mk-network-report` (sección 3) con su scheduler: el router ya aparece en el portal y arma el mapa.
+3. Si tiene VPN PPTP: `uy-list` (sección 5).
+4. `mk-baseline` (sección 4) y resolver fuera de hora lo que avise.
+5. Opcional, si el VPS llega al router: `setup.rsc` + `mk-monitor.conf` (sección 1) y `mk-wifi-report.sh`.
+   `net-topology-report.rsc` ya no hace falta: `mk-network-report` 1.1.0+ manda los vecinos.
 
 ## 1. `setup.rsc` — usuario de monitoreo y syslog
 
@@ -90,6 +94,19 @@ El portal actualiza solo la IP pública, la IP LAN, el modelo, la versión de Ro
 - del lado del centro, solo los peers con **`[monitor]` en el comentario** (los peers de notebooks o celulares no deberían alertar);
 - policies IPsec habilitadas que no están en `established`.
 
+**Versiones:**
+
+| Versión | Agrega |
+|---|---|
+| 1.1.0 | Vecinos LLDP/CDP/MNDP para el mapa (reemplaza a `net-topology-report.rsc`) |
+| 1.1.1 | Intervalo del scheduler (`report_interval_s`): el portal ajusta a eso cuándo da el dato por viejo |
+| 1.2.0 | **Equipos de la LAN** (ARP + tabla del bridge: IP, MAC y puerto del router). El mapa muestra en qué puerto está cada servidor y **deduce los switches no administrables**: 3 o más equipos físicos por un mismo puerto (las máquinas virtuales no cuentan) |
+| 1.3.0 | **Seguridad**: servicios del router, VPN encendidas y usuarios conectados, puertos que acepta el firewall (y si están limitados a una lista), IPs bloqueadas, netwatch, log a disco, IP de la LAN en un puerto del bridge, usuario `admin`. **Ticket automático** si falta la regla final del firewall |
+
+**Actualizar el script** sin perder la configuración: abrí el script en el router, copiá tus cuatro valores
+(`serviceId`, `ingestSecret`, `supabaseUrl`, `supabaseAnon`), pegá la versión nueva entera y volvé a poner esos valores.
+El scheduler no se toca.
+
 **Desde la 1.1.0 también manda los vecinos LLDP/CDP/MNDP** (switches, APs, otros MikroTik, con el puerto de cada enlace) al mapa del **sitio del servicio del router**: no hace falta instalar además `net-topology-report.rsc`. El router tiene que tener un sitio asignado.
 
 **El mapa se arma solo** con lo que manda el router: la nube de **Internet** en su WAN (salvo que hayas dibujado una a mano), los **túneles WireGuard e IPsec** (una red remota que no es de ningún router del mapa aparece como "Sitio …"), los equipos descubiertos por LLDP con sus puertos y, para los servidores de la LAN del router que no tienen otro enlace, una línea punteada **"LAN"** hasta el router.
@@ -104,6 +121,96 @@ Instalación:
 3. **System → Scripts → Add**: nombre `mk-network-report`, pegar el contenido.
 4. **System → Scheduler → Add**: intervalo de `1h` a `8h`, On Event: `/system/script/run mk-network-report`. El script manda su intervalo (1.1.1+) y el portal ajusta a eso cuándo da el dato por viejo (1,5×) y cuándo abre "Dejó de reportar". Para controlar la VPN más seguido, sumá la prueba desde un servidor (`$VPN_CHECKS` en `config.ps1`).
 5. Probá: `/system/script/run mk-network-report` y `/log print where message~"mk-network"`.
+
+## 4. `mk-baseline.rsc` — aplicar el estándar Cenas
+
+Se corre **a mano**, las veces que haga falta: aplica lo que falta y no repite lo que ya está. No toca lo que puede cortar
+servicio. Requiere RouterOS 7.13+.
+
+1. **System → Scripts → Add**: nombre `mk-baseline`, pegar el contenido.
+2. Completá la configuración del principio:
+
+   | Variable | Para qué | Ejemplo |
+   |---|---|---|
+   | `kumaIps` | IPs del monitoreo (Uptime Kuma) que chequean la VPN desde afuera de Uruguay | `{"203.0.113.10"}` |
+   | `netwatchHosts` | Equipos de la LAN a vigilar con netwatch | `{"192.168.1.100"="facturacion"; "192.168.1.250"="NAS"}` |
+   | `disableInsecure` | Apagar telnet, ftp, www, api y api-ssl | `true` |
+   | `pptpProtect` | Limitar PPTP a Uruguay + fuerza bruta. `false` = no tocar la VPN de este router | `true` |
+   | `reportEvery` | Intervalo del scheduler de `mk-network-report` si hay que crearlo | `8h` |
+3. Corré `/system/script/run mk-baseline`. Imprime cada cambio con `+` y cada aviso con `!`, y al final manda un reporte
+   nuevo al portal. También queda en el log: `/log print where message~"baseline"`.
+
+**Aplica:**
+- apaga telnet, ftp, www, api y api-ssl (Winbox, SSH y www-ssl quedan como están);
+- log a disco de `critical`, `interface` y `netwatch` (no se pierde al reiniciar);
+- netwatch cada 10 s del gateway del proveedor, de Internet (8.8.8.8) y de `netwatchHosts`; cada caída y vuelta queda en el log como `NW DOWN …` / `NW UP …`;
+- si la VPN PPTP está prendida: scheduler semanal de `uy-list`, la regla que acepta PPTP pasa a aceptar solo `pais-uy`, regla "PPTP para Kuma" antes de esa, y el **bloqueo de fuerza bruta** (4 reglas al principio de `input`, ver abajo);
+- deshabilita (no borra) las reglas que aceptan SSTP, L2TP o IPsec si esos servicios están apagados y no hay túneles IPsec;
+- crea el scheduler de `mk-network-report` si falta.
+
+**Solo avisa** (para hacer fuera de hora): IP de la LAN en un puerto del bridge, falta la regla final del firewall o la
+lista WAN está vacía, Winbox abierto a todo Internet, usuario `admin` habilitado, reglas de fuerza bruta en mal orden.
+
+**Bloqueo de fuerza bruta (PPTP).** Una IP que abre 3 o más conexiones nuevas en un par de minutos queda bloqueada 1 hora
+(lista `pptp-block`); Kuma está exceptuado. **El orden importa**: las cuatro reglas tienen que estar antes de la que acepta
+PPTP y antes de "accept established"; si quedan después no hacen nada.
+
+```
+1. PPTP bloqueados          drop                     src-address-list=pptp-block
+2. PPTP s2->block           add-src-to-address-list  pptp-s2 -> pptp-block (1h)
+3. PPTP s1->s2              add-src-to-address-list  pptp-s1 -> pptp-s2 (1m)
+4. PPTP anti fuerza bruta   add-src-to-address-list  !kuma -> pptp-s1 (1m)
+5. defconf: accept established…
+   …
+   PPTP para Kuma           accept 1723 src-address-list=kuma
+   allow pptp               accept 1723 src-address-list=pais-uy
+```
+
+Para revisar: `/ip firewall filter print stats where comment~"PPTP"` y `/ip firewall address-list print where list=pptp-block`.
+
+## 5. `mk-uy-list.rsc` — lista de Uruguay (`pais-uy`)
+
+Baja los rangos de IP de Uruguay (ipdeny.com) a la lista `pais-uy`. Si la descarga falla o viene vacía, no toca la lista que hay.
+
+1. **System → Scripts → Add**: nombre **`uy-list`** (así lo busca `mk-baseline`), pegar el contenido.
+2. Corré `/system/script/run uy-list` y verificá: `/ip firewall address-list print count-only where list=pais-uy` (del orden de 100–200 rangos).
+3. El scheduler semanal lo crea `mk-baseline`. A mano: `/system scheduler add name=uy-list interval=7d start-time=04:00:00 on-event="/system/script/run uy-list"`.
+
+**Las excepciones no van en `pais-uy`**: esa lista se borra y se vuelve a cargar cada semana. Van en otra lista con su
+propia regla, como `kuma` para el monitoreo.
+
+Un usuario que viaja al exterior no se va a poder conectar a la VPN mientras esté afuera.
+
+## 6. Recetas
+
+**IP de la LAN al bridge** (fuera de hora; si entrás por la IP pública no te cortás):
+```
+/ip address set [find address="192.168.1.1/24"] interface=bridge
+/ip dhcp-server set [find interface=ether2] interface=bridge
+```
+Para volver atrás: lo mismo con `interface=ether2`. Si los usuarios de VPN reciben IPs de la LAN, el proxy-arp va en el
+bridge: `/interface bridge set bridge arp=proxy-arp`.
+
+**Loop-protect** en el puerto que va a los switches (si detecta un loop apaga el puerto 5 minutos y lo deja en el log;
+por eso, fuera de hora):
+```
+/interface ethernet set ether2 loop-protect=on loop-protect-disable-time=5m
+```
+
+**Ver qué se cayó** (con el netwatch y el log a disco de `mk-baseline`):
+```
+/log print where message~"NW "
+```
+Si cae el gateway o Internet, es el proveedor; si caen solo equipos de la LAN, es la LAN o esos equipos.
+
+**Reglas de firewall por número**: los números (`disable 1,2,3`, `move 4 destination=6`) son los del **último `print`** y
+cambian cuando se agregan o mueven reglas. `destination=N` deja la regla **antes de la regla N**, no en la posición N.
+Siempre que se pueda, usá `[find comment="…"]` en lugar de números.
+
+**WireGuard entre sitios** (coexiste con IPsec): interfaz propia en un puerto que no esté en uso (ej. `wg-sitios`,
+UDP 13232), MTU 1412, una /24 de túnel (ej. 10.10.10.0/24), masquerade desde el túnel hacia la LAN si el otro lado no
+tiene ruta de vuelta, y `[monitor]` en el comentario del peer del lado del centro para que el portal lo vigile. El sitio
+remoto sin IP fija pone el endpoint con el DDNS de IP Cloud del centro (`…sn.mynetname.net`) y `persistent-keepalive=25s`.
 
 ## Reporte de dispositivos Wi-Fi
 
