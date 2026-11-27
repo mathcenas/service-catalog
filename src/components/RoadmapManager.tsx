@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { Plus, Trash2, Eye, EyeOff, Save, Rocket, Sparkles, Database, CreditCard, Lightbulb, MapPin, User, Send, CalendarClock, BookOpen, Check, CheckCheck, CheckCircle2, AlertTriangle, AlertCircle, Wrench, RefreshCw, History, Users, MousePointerClick } from 'lucide-react';
+import { Plus, Trash2, Eye, EyeOff, Save, Rocket, Sparkles, Database, CreditCard, Lightbulb, MapPin, User, Send, CalendarClock, BookOpen, Check, CheckCheck, CheckCircle2, AlertTriangle, AlertCircle, Wrench, RefreshCw, History, Users, MousePointerClick, Clock } from 'lucide-react';
 import { supabase, Client, Service, RoadmapItem, ROADMAP_STATUSES, RoadmapStatus, ROADMAP_CATEGORIES, RoadmapCategory, RoadmapItemUpdate } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { reminderDue, buildReminderDraft } from '../lib/reminderDraft';
 
 const CATEGORY_META: Record<RoadmapCategory, { icon: typeof Rocket; color: string }> = {
   idea: { icon: Lightbulb, color: 'text-amber-600 bg-amber-50' },
@@ -370,7 +371,7 @@ export function RoadmapManager({ clients, services }: Props) {
     };
   };
 
-  const sendNotifyEmail = async (item: RoadmapItem, isUpdate = false, updateNote?: string) => {
+  const sendNotifyEmail = async (item: RoadmapItem, isUpdate = false, updateNote?: string, reminder = false) => {
     if (!item.client_id) return false;
     const client = clients.find(c => c.id === item.client_id);
     if (!client || recipientsFor(item, client).length === 0) return false;
@@ -392,6 +393,7 @@ export function RoadmapManager({ clients, services }: Props) {
     }
 
     const subjectPrefix =
+      reminder ? 'Recordatorio' :
       isUpdate ? 'Actualización' :
       item.category === 'problem' ? 'Incidente' :
       item.category === 'change_request' ? 'Solicitud de cambio' :
@@ -419,11 +421,13 @@ export function RoadmapManager({ clients, services }: Props) {
         event_type: 'notify',
         new_status: isUpdate ? item.status : undefined,
         update_note: updateNote || undefined,
+        note_label: reminder ? 'Recordatorio' : undefined,
       }),
     });
 
     if (res.ok) {
-      await updateItem(item.id, { notified_at: new Date().toISOString() }); loadTracking();
+      const now = new Date().toISOString();
+      await updateItem(item.id, reminder ? { notified_at: now, reminded_at: now } : { notified_at: now }); loadTracking();
       return true;
     } else {
       const errText = await res.text();
@@ -445,7 +449,7 @@ export function RoadmapManager({ clients, services }: Props) {
     setNotifying(null);
   };
 
-  const sendUpdateEmail = async (item: RoadmapItem, updateNote?: string) => {
+  const sendUpdateEmail = async (item: RoadmapItem, updateNote?: string, reminder = false) => {
     if (!item.client_id) return;
     setNotifying(item.id);
     try {
@@ -455,7 +459,7 @@ export function RoadmapManager({ clients, services }: Props) {
         note: updateNote || null,
         status: item.status,
       });
-      await sendNotifyEmail(item, true, updateNote);
+      await sendNotifyEmail(item, true, updateNote, reminder);
     } catch (err) {
       alert(`Network error: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -785,7 +789,7 @@ export function RoadmapManager({ clients, services }: Props) {
   );
 }
 
-function RoadmapRow({ item, clients, notifying, tracking, onRefreshTracking, recipientOptions, recipients, clientServices, onUpdate, onDelete, onNotify, onSendUpdate, onMarkReleased, onClosePublish, closePublishResult }: {
+function RoadmapRow({ item, clients, services, notifying, tracking, onRefreshTracking, recipientOptions, recipients, clientServices, onUpdate, onDelete, onNotify, onSendUpdate, onMarkReleased, onClosePublish, closePublishResult }: {
   item: RoadmapItem;
   clients: Client[];
   services: Service[];
@@ -800,7 +804,7 @@ function RoadmapRow({ item, clients, notifying, tracking, onRefreshTracking, rec
   onUpdate: (id: string, patch: Partial<RoadmapItem>) => void;
   onDelete: (id: string) => void;
   onNotify: (item: RoadmapItem) => void;
-  onSendUpdate: (item: RoadmapItem, note?: string) => void;
+  onSendUpdate: (item: RoadmapItem, note?: string, reminder?: boolean) => void;
   onMarkReleased: (item: RoadmapItem) => void;
   onClosePublish: (item: RoadmapItem) => void;
   closePublishResult: { closed: 'ok'|'err'; webhook: 'ok'|'err'|'skip'; email: 'ok'|'err'|'skip' } | null;
@@ -816,6 +820,19 @@ function RoadmapRow({ item, clients, notifying, tracking, onRefreshTracking, rec
   const [savedFlash, setSavedFlash] = useState(false);
   const [showUpdateForm, setShowUpdateForm] = useState(false);
   const [updateNote, setUpdateNote] = useState('');
+  // Recordatorio sugerido: el formulario de actualización con el borrador armado desde la telemetría
+  const [reminderMode, setReminderMode] = useState(false);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const reminderDays = reminderDue(item);
+  const openReminder = async () => {
+    setDraftLoading(true);
+    try { setUpdateNote(await buildReminderDraft(item, services)); }
+    catch { setUpdateNote('Te escribimos de nuevo por el aviso anterior.\nQué sigue pasando: \nConsecuencia: \nNecesitamos tu confirmación para avanzar con la solución.'); }
+    setDraftLoading(false);
+    setReminderMode(true);
+    setShowUpdateForm(true);
+  };
+  const closeUpdateForm = () => { setShowUpdateForm(false); setUpdateNote(''); setReminderMode(false); };
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const descTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleDirty = useRef(false);
@@ -1076,11 +1093,21 @@ function RoadmapRow({ item, clients, notifying, tracking, onRefreshTracking, rec
                 </div>
               )}
             </div>
+            {reminderDays != null && !showUpdateForm && (
+              <div className="flex flex-wrap items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
+                <Clock className="w-3.5 h-3.5 shrink-0" />
+                <span className="min-w-0">Recordatorio sugerido: se avisó hace {reminderDays} días y no hubo novedades.</span>
+                <button onClick={openReminder} disabled={draftLoading || notifying}
+                  className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-md font-semibold disabled:opacity-50">
+                  {draftLoading ? <span className="animate-pulse">Armando…</span> : <><Send className="w-3 h-3" /> Armar recordatorio</>}
+                </button>
+              </div>
+            )}
             {showUpdateForm && item.client_id && (
-              <div className="flex items-start gap-2 bg-sky-50 border border-sky-200 rounded-lg p-2">
+              <div className={`flex items-start gap-2 rounded-lg p-2 border ${reminderMode ? 'bg-amber-50 border-amber-200' : 'bg-sky-50 border-sky-200'}`}>
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-sky-700">Nota para el cliente</span>
+                    <span className={`text-[10px] font-semibold uppercase tracking-wide ${reminderMode ? 'text-amber-700' : 'text-sky-700'}`}>{reminderMode ? 'Recordatorio para el cliente (editalo antes de mandar)' : 'Nota para el cliente'}</span>
                     {item.status === 'In Progress' && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-semibold">
                         <Wrench className="w-2.5 h-2.5" /> En proceso
@@ -1101,21 +1128,21 @@ function RoadmapRow({ item, clients, notifying, tracking, onRefreshTracking, rec
                     value={updateNote}
                     onChange={e => setUpdateNote(e.target.value)}
                     placeholder="Ej: Comenzamos los trabajos hoy, estimamos terminar mañana..."
-                    rows={2}
+                    rows={reminderMode ? 6 : 2}
                     autoFocus
                     className="w-full px-2 py-1.5 border border-sky-200 rounded-md text-xs text-gray-700 outline-none focus:ring-2 focus:ring-sky-400 resize-none bg-white"
                   />
                 </div>
                 <div className="flex flex-col gap-1 shrink-0 pt-5">
                   <button
-                    onClick={() => { onSendUpdate(item, updateNote); setShowUpdateForm(false); setUpdateNote(''); }}
+                    onClick={() => { onSendUpdate(item, updateNote, reminderMode); closeUpdateForm(); }}
                     disabled={notifying}
                     className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-md text-xs font-semibold transition-colors disabled:opacity-50"
                   >
                     {notifying ? <span className="animate-pulse">...</span> : <><Send className="w-3 h-3" /> Enviar</>}
                   </button>
                   <button
-                    onClick={() => { setShowUpdateForm(false); setUpdateNote(''); }}
+                    onClick={closeUpdateForm}
                     className="inline-flex items-center justify-center px-2.5 py-1.5 bg-white hover:bg-gray-100 text-gray-500 rounded-md text-xs border border-gray-200 transition-colors"
                   >
                     Cancelar

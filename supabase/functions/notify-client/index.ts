@@ -29,6 +29,8 @@ interface NotifyPayload {
   event_type?: 'notify' | 'released' | 'closed';
   new_status?: string;
   update_note?: string;
+  /** Título del recuadro de la nota ("Actualización" por defecto, "Recordatorio" para el segundo aviso) */
+  note_label?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -79,6 +81,7 @@ Deno.serve(async (req: Request) => {
       event_type,
       new_status,
       update_note,
+      note_label,
     } = payload;
 
     if (!client_email || !subject || !title) {
@@ -211,8 +214,8 @@ Deno.serve(async (req: Request) => {
           })()}
           ${update_note ? `
           <div style="background:#f0f9ff;border-left:3px solid ${B.accent};border-radius:0 8px 8px 0;padding:14px 16px;margin:0 0 16px;">
-            <p style="color:#0369a1;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin:0 0 6px;">Actualización</p>
-            <p style="color:#0c4a6e;font-size:14px;line-height:1.6;margin:0;">${update_note.replace(/\n/g, "<br>")}</p>
+            <p style="color:#0369a1;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin:0 0 6px;">${(note_label || "Actualización").replace(/[<>&"]/g, "")}</p>
+            <p style="color:#0c4a6e;font-size:14px;line-height:1.6;margin:0;">${update_note.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!)).replace(/\n/g, "<br>")}</p>
           </div>` : ""}
           <div style="background:${B.bg};border:1px solid ${B.border};border-radius:8px;padding:20px;margin:0 0 16px;">
             ${service_name ? `<p style="color:${B.textMid};margin:0 0 6px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">${service_name}</p>` : ""}

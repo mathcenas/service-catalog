@@ -263,6 +263,8 @@ export type RoadmapItem = {
   amount_type?: 'money' | 'hours';
   scheduled_date?: string;
   notified_at?: string;
+  /** Recordatorio (segundo aviso) enviado: no se sugiere otro */
+  reminded_at?: string | null;
   /** Destinatarios elegidos; null/vacío = principal + alternativo + CC del cliente */
   notify_emails?: string[] | null;
   publish_to_changelog: boolean;
