@@ -141,7 +141,7 @@ export function emailPortalPanel(opts: {
 /** Small footer line below portal panel */
 export function emailMeta(companyName: string): string {
   return `<p style="color:${B.textSoft};font-size:10px;text-align:center;margin-top:12px;">
-    Cenas IT Solutions &mdash; Procesos bajo norma ISO/IEC 20000
+    Cenas.uy IT Solutions &mdash; Procesos bajo norma ISO/IEC 20000
   </p>`;
 }
 

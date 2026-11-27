@@ -395,7 +395,7 @@ Deno.serve(async (req: Request) => {
         subject,
       });
 
-      const htmlWithPixel = html + `<img src="${pixelUrl}" width="1" height="1" style="display:none;" alt="" />`;
+      const htmlWithPixel = html + `<img src="${pixelUrl}" width="1" height="1" alt="" style="border:0;" />`;
 
       await fetch("https://api.resend.com/emails", {
         method: "POST",
