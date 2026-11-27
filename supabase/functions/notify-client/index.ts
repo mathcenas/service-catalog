@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { B, EMAIL_FONT, emailHeader, emailPortalPanel, emailMeta, emailLogo } from "../_shared/emailBrand.ts";
+import { B, LABEL_COLORS, emailPortalPanel, emailMeta, emailLogo } from "../_shared/emailBrand.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,6 +31,14 @@ interface NotifyPayload {
   update_note?: string;
   /** Título del recuadro de la nota ("Actualización" por defecto, "Recordatorio" para el segundo aviso) */
   note_label?: string;
+}
+
+/** Nota del admin → HTML: escapa, convierte saltos de línea y deja las URLs como links reales con el color de la marca */
+function noteHtml(note: string): string {
+  const esc = note.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+  return esc
+    .replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)]/g, url => `<a href="${url}" style="color:${LABEL_COLORS.info.text};text-decoration:underline;">${url}</a>`)
+    .replace(/\n/g, "<br>");
 }
 
 Deno.serve(async (req: Request) => {
@@ -102,7 +110,7 @@ Deno.serve(async (req: Request) => {
     const TZ = "America/Montevideo";
 
     const formattedDate = scheduled_date
-      ? new Date(scheduled_date + "T12:00:00Z").toLocaleDateString("en-US", {
+      ? new Date(scheduled_date + "T12:00:00Z").toLocaleDateString("es-UY", {
           weekday: "long",
           year: "numeric",
           month: "long",
@@ -111,16 +119,15 @@ Deno.serve(async (req: Request) => {
         })
       : null;
 
-    const nowTime = new Date().toLocaleString("en-US", {
+    const nowTime = new Date().toLocaleString("es-UY", {
       weekday: "long",
       year: "numeric",
       month: "long",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      timeZoneName: "short",
       timeZone: TZ,
-    });
+    }) + " (hora de Uruguay)";
 
     // Header label and accent color — event_type overrides category when releasing/closing
     type EmailMeta = { label: string; color: string; footer: string };
@@ -198,13 +205,15 @@ Deno.serve(async (req: Request) => {
           </p>
 
           ${(() => {
-            const STATUS_BADGE: Record<string, { label: string; color: string; bg: string; border: string }> = {
-              'Planned':      { label: 'Planificado',      color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1' },
-              'In Progress':  { label: 'En proceso',       color: '#b45309', bg: '#fef3c7', border: '#fcd34d' },
-              'Next Release': { label: 'Pendiente cierre', color: '#1d4ed8', bg: '#eff6ff', border: '#93c5fd' },
-              'Released':     { label: 'Completado',       color: '#15803d', bg: '#f0fdf4', border: '#86efac' },
+            // Colores del kit de marca (LABEL_COLORS): no un ámbar/azul propio por feature
+            const STATUS_BADGE: Record<string, { label: string; pair: { text: string; bg: string; border: string } }> = {
+              'Planned':      { label: 'Planificado',      pair: LABEL_COLORS.default },
+              'In Progress':  { label: 'En proceso',       pair: LABEL_COLORS.warning },
+              'Next Release': { label: 'Pendiente cierre', pair: LABEL_COLORS.info },
+              'Released':     { label: 'Completado',       pair: LABEL_COLORS.success },
             };
-            const badge = new_status ? STATUS_BADGE[new_status] : null;
+            const st = new_status ? STATUS_BADGE[new_status] : null;
+            const badge = st ? { label: st.label, color: st.pair.text, bg: st.pair.bg, border: st.pair.border } : null;
             return badge ? `
               <div style="margin:0 0 12px;">
                 <span style="display:inline-block;background:${badge.bg};border:1px solid ${badge.border};color:${badge.color};border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;letter-spacing:.3px;">
@@ -213,14 +222,14 @@ Deno.serve(async (req: Request) => {
               </div>` : '';
           })()}
           ${update_note ? `
-          <div style="background:#f0f9ff;border-left:3px solid ${B.accent};border-radius:0 8px 8px 0;padding:14px 16px;margin:0 0 16px;">
-            <p style="color:#0369a1;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin:0 0 6px;">${(note_label || "Actualización").replace(/[<>&"]/g, "")}</p>
-            <p style="color:#0c4a6e;font-size:14px;line-height:1.6;margin:0;">${update_note.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!)).replace(/\n/g, "<br>")}</p>
+          <div style="background:${LABEL_COLORS.info.bg};border-left:3px solid ${B.accent};border-radius:0 8px 8px 0;padding:14px 16px;margin:0 0 16px;">
+            <p style="color:${LABEL_COLORS.info.text};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin:0 0 6px;">${(note_label || "Actualización").replace(/[<>&"]/g, "")}</p>
+            <p style="color:${B.textMain};font-size:14px;line-height:1.6;margin:0;">${noteHtml(update_note)}</p>
           </div>` : ""}
           <div style="background:${B.bg};border:1px solid ${B.border};border-radius:8px;padding:20px;margin:0 0 16px;">
             ${service_name ? `<p style="color:${B.textMid};margin:0 0 6px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">${service_name}</p>` : ""}
             <h3 style="color:${B.primary};margin:0 0 8px;font-size:17px;">${title}</h3>
-            ${description ? `<p style="color:#475569;margin:0 0 12px;font-size:14px;line-height:1.5;">${description.replace(/\n/g, "<br>")}</p>` : ""}
+            ${description ? `<p style="color:${B.textMain};margin:0 0 12px;font-size:14px;line-height:1.5;">${description.replace(/\n/g, "<br>")}</p>` : ""}
             ${formattedDate ? `<p style="color:${B.accent};margin:0;font-size:14px;font-weight:600;">Programado: ${formattedDate}</p>` : ""}
           </div>
 
@@ -285,7 +294,7 @@ Deno.serve(async (req: Request) => {
       let html = htmlBody;
       if (trackRecord?.tracking_id) {
         const pixelUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/track-open?t=${trackRecord.tracking_id}`;
-        html += `<img src="${pixelUrl}" width="1" height="1" style="display:none;" alt="" />`;
+        html += `<img src="${pixelUrl}" width="1" height="1" alt="" style="border:0;" />`;
       }
       tracked.push({ email, trackingId: trackRecord?.tracking_id ?? null, html });
     }
