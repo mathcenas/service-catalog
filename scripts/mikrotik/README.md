@@ -103,6 +103,7 @@ El portal actualiza solo la IP pública, la IP LAN, el modelo, la versión de Ro
 | 1.2.0 | **Equipos de la LAN** (ARP + tabla del bridge: IP, MAC y puerto del router). El mapa muestra en qué puerto está cada servidor y **deduce los switches no administrables**: 3 o más equipos físicos por un mismo puerto (las máquinas virtuales no cuentan) |
 | 1.3.0 | **Seguridad**: servicios del router, VPN encendidas y usuarios conectados, puertos que acepta el firewall (y si están limitados a una lista), IPs bloqueadas, netwatch, log a disco, IP de la LAN en un puerto del bridge, usuario `admin`. **Ticket automático** si falta la regla final del firewall |
 | 1.3.1 | Corrige el error de sintaxis en RouterOS 7.17+ (el servidor OpenVPN pasó a ser una lista) |
+| 1.3.2 | Detecta bien la regla `drop … in-interface-list=!LAN` (antes daba falso aviso de firewall abierto en algunas versiones) |
 
 **Actualizar el script** sin perder la configuración: abrí el script en el router, copiá tus cuatro valores
 (`serviceId`, `ingestSecret`, `supabaseUrl`, `supabaseAnon`), pegá la versión nueva entera y volvé a poner esos valores.
