@@ -16,8 +16,31 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
  * en el mismo navegador, y no pisa la sesión del cliente principal.
  */
 export function createShareClient(token: string) {
+  // Si una consulta del portal falla (permiso, columna…), se avisa a portal-error para que
+  // quede en el Dashboard del admin. Una vez por consulta y carga de página.
+  const reported = new Set<string>();
+  const reportingFetch: typeof fetch = async (input, init) => {
+    const res = await fetch(input, init);
+    try {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+      if (!res.ok && url.pathname.includes('/rest/v1/')) {
+        const table = url.pathname.split('/rest/v1/')[1] ?? '';
+        const path = `${table}?select=${url.searchParams.get('select') ?? ''}`;
+        if (!reported.has(path)) {
+          reported.add(path);
+          const text = await res.clone().text().catch(() => '');
+          let message = text.slice(0, 300);
+          try { const j = JSON.parse(text); message = j.message || message; } catch { /* texto */ }
+          const body = JSON.stringify({ token, path, status: res.status, message });
+          const endpoint = `${supabaseUrl}/functions/v1/portal-error`;
+          if (!navigator.sendBeacon?.(endpoint, body)) fetch(endpoint, { method: 'POST', body, keepalive: true }).catch(() => {});
+        }
+      }
+    } catch { /* nunca romper el portal por avisar */ }
+    return res;
+  };
   return createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { 'x-share-token': token } },
+    global: { headers: { 'x-share-token': token }, fetch: reportingFetch },
     auth: {
       persistSession: false,
       autoRefreshToken: false,
