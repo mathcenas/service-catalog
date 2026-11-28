@@ -1,5 +1,5 @@
 # ==============================================================
-# mk-network-report.rsc  v1.3.1
+# mk-network-report.rsc  v1.3.2
 # Manda al portal Cenas IT cómo está armada la red del router:
 #   - redes LAN, WAN e IP pública (PPPoE / DHCP / IP Cloud)
 #   - nombre DDNS de IP Cloud
@@ -46,7 +46,7 @@
 :local wgDownMinutes 5
 # ─────────────────────────────────────────────────────────────
 
-:local scriptVersion "1.3.1"
+:local scriptVersion "1.3.2"
 :local issues [:toarray ""]
 
 # ── Redes (LAN / WAN) ─────────────────────────────────────────
@@ -305,8 +305,27 @@
 :do { :set pppActive [:len [/ppp/active/find]] } on-error={}
 :do { :set pppSecrets [:len [/ppp/secret/find where disabled=no]] } on-error={}
 
-# Regla final de fábrica: descarta lo que entra desde Internet
-:local dropWan (([:len [/ip/firewall/filter/find where chain=input action=drop disabled=no in-interface-list="!LAN"]] + [:len [/ip/firewall/filter/find where chain=input action=drop disabled=no in-interface-list="WAN"]]) > 0)
+# Regla que descarta lo que entra de Internet: un drop de input sin otras condiciones (sin puerto,
+# protocolo ni origen) por la lista WAN, por !LAN, por una interfaz o que corta todo. Se revisa regla
+# por regla: en algunas versiones "find where in-interface-list=\"!LAN\"" no encuentra la negada.
+:local dropWan false
+:foreach r in=[/ip/firewall/filter/find where chain=input action=drop disabled=no] do={
+  :local fIil ""
+  :local fIi ""
+  :local fSa ""
+  :local fSal ""
+  :local fDp ""
+  :local fPr ""
+  :do { :set fIil [:tostr [/ip/firewall/filter/get $r in-interface-list]] } on-error={}
+  :do { :set fIi [:tostr [/ip/firewall/filter/get $r in-interface]] } on-error={}
+  :do { :set fSa [:tostr [/ip/firewall/filter/get $r src-address]] } on-error={}
+  :do { :set fSal [:tostr [/ip/firewall/filter/get $r src-address-list]] } on-error={}
+  :do { :set fDp [:tostr [/ip/firewall/filter/get $r dst-port]] } on-error={}
+  :do { :set fPr [:tostr [/ip/firewall/filter/get $r protocol]] } on-error={}
+  :if ($fSa = "" && $fSal = "" && $fDp = "" && $fPr = "") do={
+    :if ($fIil~"LAN" || $fIil~"WAN" || $fIi != "" || $fIil = "") do={ :set dropWan true }
+  }
+}
 :local wanList ([:len [/interface/list/member/find where list="WAN"]] > 0)
 :local pptpBrute ([:len [/ip/firewall/filter/find where chain=input action=drop disabled=no src-address-list="pptp-block"]] > 0)
 :local blockedIps [:len [/ip/firewall/address-list/find where list="pptp-block"]]
