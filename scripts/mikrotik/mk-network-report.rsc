@@ -1,5 +1,5 @@
 # ==============================================================
-# mk-network-report.rsc  v1.3.0
+# mk-network-report.rsc  v1.3.1
 # Manda al portal Cenas IT cómo está armada la red del router:
 #   - redes LAN, WAN e IP pública (PPPoE / DHCP / IP Cloud)
 #   - nombre DDNS de IP Cloud
@@ -46,7 +46,7 @@
 :local wgDownMinutes 5
 # ─────────────────────────────────────────────────────────────
 
-:local scriptVersion "1.3.0"
+:local scriptVersion "1.3.1"
 :local issues [:toarray ""]
 
 # ── Redes (LAN / WAN) ─────────────────────────────────────────
@@ -293,8 +293,12 @@
 :do { :set vpnPptp [/interface/pptp-server/server/get enabled] } on-error={}
 :do { :set vpnSstp [/interface/sstp-server/server/get enabled] } on-error={}
 :do { :set vpnL2tp [/interface/l2tp-server/server/get enabled] } on-error={}
-:do { :set vpnOvpn [/interface/ovpn-server/server/get enabled] } on-error={
-  :do { :set vpnOvpn ([:len [/interface/ovpn-server/server/find where disabled=no]] > 0) } on-error={}
+# OpenVPN: hasta 7.16 es un único servidor (get enabled); desde 7.17 es una lista (find).
+# Con :parse el comando se interpreta al correr, así la versión que no corresponde no rompe el script.
+:do {
+  :set vpnOvpn [[:parse ":return [/interface/ovpn-server/server/get enabled]"]]
+} on-error={
+  :do { :set vpnOvpn ([:len [[:parse ":return [/interface/ovpn-server/server/find where disabled=no]"]]] > 0) } on-error={}
 }
 :local pppActive 0
 :local pppSecrets 0
